@@ -1,0 +1,30 @@
+<!-- src/modules/mailer/templates/trial-ending.hbs -->
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #8B5CF6; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Free Trial Ending Soon</h1>
+        </div>
+        <div class="content">
+            <p>Hi {{companyName}},</p>
+            <p>Your 2-month free trial is ending soon!</p>
+            <p><strong>Trial Ends:</strong> {{expiresAt}}</p>
+            <p>To continue uninterrupted service, subscribe now for just ₦100/month:</p>
+            <p style="text-align: center; margin: 20px 0;">
+                <a href="{{subscribeUrl}}" style="display: inline-block; padding: 12px 24px; background: #8B5CF6; color: white; text-decoration: none; border-radius: 5px;">
+                    Subscribe Now
+                </a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

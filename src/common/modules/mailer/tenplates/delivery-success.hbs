@@ -1,0 +1,35 @@
+<!-- src/modules/mailer/templates/delivery-success.hbs -->
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #10B981; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background: #f9f9f9; }
+        .success-icon { font-size: 48px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>✅ Delivery Successful!</h1>
+        </div>
+        <div class="content">
+            <div class="success-icon">🎉</div>
+            <p>Your order has been delivered successfully!</p>
+            <p><strong>Order Number:</strong> {{orderNumber}}</p>
+            {{
+#if
+ deliveryPhoto}}
+            <p><strong>Delivery Photo:</strong></p>
+            <img src="{{deliveryPhoto}}" style="max-width: 100%; border-radius: 8px;" />
+            {{
+/if
+}}
+            <p>Thank you for shopping with Alaba Marketplace!</p>
+            <p>If you have any concerns, please contact support.</p>
+        </div>
+    </div>
+</body>
+</html>
