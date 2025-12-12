@@ -46,4 +46,3 @@ databases:
     databaseName: alaba_marketplace
     plan: free
     region: oregon
-    postgresMajorVersion: '15'
