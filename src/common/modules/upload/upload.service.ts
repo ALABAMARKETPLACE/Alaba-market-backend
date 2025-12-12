@@ -5,7 +5,6 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from './entities/upload.entity';
 import { CreateUploadDto } from './dto/create-upload.dto';
 import { UpdateUploadDto } from './dto/update-upload.dto';
-import sharp = require('sharp');
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -51,21 +50,8 @@ export class UploadService {
       let fileBuffer = file.buffer;
       let metadata: any = {};
 
-      // Process images with sharp
-      if (file.mimetype.startsWith('image/')) {
-        const imageInfo = await sharp(file.buffer).metadata();
-        metadata = {
-          width: imageInfo.width,
-          height: imageInfo.height,
-          format: imageInfo.format,
-        };
-
-        // Optionally compress/resize images
-        fileBuffer = await sharp(file.buffer)
-          .resize(2000, 2000, { fit: 'inside', withoutEnlargement: true })
-          .jpeg({ quality: 85 })
-          .toBuffer();
-      }
+      // Note: Image processing removed to avoid native dependencies
+      // Upload original images without compression
 
       // In non-production environments, bypass S3 and use a fake local URL
       const isDev = process.env.NODE_ENV !== 'production';
