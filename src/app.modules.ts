@@ -70,7 +70,7 @@ import { Notification } from './common/modules/notifications/entities/notificati
               Notification,
             ],
             autoLoadModels: true,
-            synchronize: false,
+            synchronize: true,
             logging: process.env.NODE_ENV === 'development' ? console.log : false,
           }
         : {
@@ -91,9 +91,9 @@ import { Notification } from './common/modules/notifications/entities/notificati
               Notification,
             ],
             autoLoadModels: true,
-            synchronize: false,
+            synchronize: true,
             logging: process.env.NODE_ENV === 'development' ? console.log : false,
-          }
+          },
     ),
 
     // Caching
