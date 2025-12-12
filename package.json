@@ -68,10 +68,11 @@
     "socket.io": "^4.8.1",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.28",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "@nestjs/cli": "^10.4.9",
+    "typescript": "^5.7.2"
   },
   "devDependencies": {
-    "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@nestjs/testing": "^10.4.15",
     "@types/bcrypt": "^5.0.2",
@@ -96,8 +97,7 @@
     "ts-jest": "^29.2.5",
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.2"
+    "tsconfig-paths": "^4.2.0"
   },
   "jest": {
     "moduleFileExtensions": [
