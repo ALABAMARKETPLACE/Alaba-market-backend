@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ObjectCannedACL } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ObjectCannedACL,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from './entities/upload.entity';
 import { CreateUploadDto } from './dto/create-upload.dto';
@@ -11,7 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 export class UploadService {
   private s3Client: S3Client;
   private bucketName: string;
-ß
+  ß;
   constructor(
     @InjectModel(Upload)
     private uploadModel: typeof Upload,
@@ -30,8 +36,13 @@ export class UploadService {
     if (mimeType.startsWith('image/')) return 'image';
     if (mimeType.startsWith('video/')) return 'video';
     if (mimeType.startsWith('audio/')) return 'audio';
-    if (mimeType.includes('pdf') || mimeType.includes('document') || 
-        mimeType.includes('sheet') || mimeType.includes('text')) return 'document';
+    if (
+      mimeType.includes('pdf') ||
+      mimeType.includes('document') ||
+      mimeType.includes('sheet') ||
+      mimeType.includes('text')
+    )
+      return 'document';
     return 'other';
   }
 
@@ -126,7 +137,7 @@ export class UploadService {
     entityId?: string,
     isPublic: boolean = false,
   ): Promise<Upload[]> {
-    const uploadPromises = files.map(file =>
+    const uploadPromises = files.map((file) =>
       this.uploadFile(file, userId, entityType, entityId, isPublic),
     );
     return Promise.all(uploadPromises);
@@ -221,16 +232,15 @@ export class UploadService {
 
   async getRefreshedUrl(id: string): Promise<string> {
     const upload = await this.findOne(id);
-    
+
     if (upload.isPublic) {
       return upload.url;
     }
-    
+
     if (upload.s3Key) {
       return await this.getSignedUrl(upload.s3Key);
     }
-    
+
     throw new BadRequestException('Cannot generate URL for this upload');
   }
 }
-

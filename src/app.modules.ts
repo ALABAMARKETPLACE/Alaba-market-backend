@@ -4,7 +4,6 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CacheModule } from '@nestjs/cache-manager';
 import { MailerModule } from '@nestjs-modules/mailer';
-import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { join } from 'path';
 
@@ -92,7 +91,7 @@ import { Notification } from './common/modules/notifications/entities/notificati
     // Scheduler
     ScheduleModule.forRoot(),
 
-    // Mailer
+    // Mailer (template processing disabled to avoid native dependencies)
     MailerModule.forRoot({
       transport: {
         host: process.env.MAIL_HOST,
@@ -105,13 +104,6 @@ import { Notification } from './common/modules/notifications/entities/notificati
       },
       defaults: {
         from: `"Alaba Marketplace" <${process.env.MAIL_FROM}>`,
-      },
-      template: {
-        dir: join(__dirname, 'common/modules/mailer/templates'),
-        adapter: new HandlebarsAdapter(),
-        options: {
-          strict: true,
-        },
       },
     }),
 
