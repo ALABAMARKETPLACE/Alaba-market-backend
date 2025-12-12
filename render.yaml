@@ -2,7 +2,7 @@ services:
   # Web Service (Backend API)
   - type: web
     name: alaba-marketplace-api
-    env: node
+    runtime: node
     region: oregon
     plan: free
     buildCommand: npm install && npm run build
@@ -11,6 +11,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NPM_PRODUCTION
+        value: 'false'
       - key: PORT
         value: 3002
       - key: DATABASE_URL
@@ -33,11 +35,19 @@ services:
         value: 5242880
       - key: UPLOAD_PATH
         value: ./uploads
+      - key: FRONTEND_URL
+        value: '*'
+      - key: APP_URL
+        value: 'https://alaba-marketplace-api.onrender.com'
     autoDeploy: true
+    disk:
+      name: alaba-uploads
+      mountPath: /app/uploads
+      sizeGB: 1
 
-  # PostgreSQL Database
 databases:
   - name: alaba-marketplace-db
     databaseName: alaba_marketplace
     plan: free
     region: oregon
+    postgresMajorVersion: '15'
