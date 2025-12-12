@@ -1,7 +1,7 @@
 // src/modules/auth/dto/register.dto.ts
 import { IsEmail, IsString, MinLength, IsEnum, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole } from "../../../enums/user-role.enum"
+import { UserRole } from '../../../enums/user-role.enum';
 
 export class RegisterDto {
   @ApiProperty()
@@ -44,5 +44,54 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   state?: string;
-}
 
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  countrycode?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  licenseNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  vehicleNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  companyName?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  companyDescription?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  registrationNumber?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  companyAddress?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  companyPhone?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  driverAddress?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  driverPhone?: string;
+}

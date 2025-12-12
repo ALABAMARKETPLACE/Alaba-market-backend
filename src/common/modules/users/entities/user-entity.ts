@@ -103,6 +103,66 @@ export class User extends Model<User> {
   postalCode: string;
 
   @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  countrycode: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  licenseNumber: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  vehicleNumber: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  companyName: string;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  companyDescription: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  registrationNumber: string;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  companyAddress: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  companyPhone: string;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+  })
+  driverAddress: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  driverPhone: string;
+
+  @Column({
     type: DataType.BOOLEAN,
     defaultValue: true,
   })

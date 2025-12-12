@@ -29,7 +29,7 @@ export class Driver extends Model<Driver> {
   @ForeignKey(() => DeliveryCompany)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
   companyId: string;
 

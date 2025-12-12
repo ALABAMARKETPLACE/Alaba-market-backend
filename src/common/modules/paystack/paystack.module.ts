@@ -1,16 +1,21 @@
 // src/modules/paystack/paystack.module.ts
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { PaystackController } from './paystack.controller';
 import { PaystackService } from './paystack.service';
 import { Order } from '../orders/entities/order-entity';
 import { Subscription } from '../subscription/entities/subscription.entity';
+import { OrdersModule } from '../orders/orders.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { User } from '../users/entities/user-entity';
 
 @Module({
   imports: [
     HttpModule,
-    SequelizeModule.forFeature([Order, Subscription]),
+    SequelizeModule.forFeature([Order, Subscription, User]),
+    NotificationsModule,
+    forwardRef(() => OrdersModule),
   ],
   controllers: [PaystackController],
   providers: [PaystackService],

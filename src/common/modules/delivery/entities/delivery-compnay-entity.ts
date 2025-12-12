@@ -113,5 +113,3 @@ export class DeliveryCompany extends Model<DeliveryCompany> {
   @HasMany(() => Order)
   orders: Order[];
 }
-
-

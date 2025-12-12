@@ -1,4 +1,3 @@
-
 {
   "name": "alaba-marketplace-backend",
   "version": "1.0.0",
@@ -6,30 +5,25 @@
   "author": "Alaba Team",
   "private": true,
   "license": "MIT",
-
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "node dist/main.js",
+    "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main.js",
-
+    "start:prod": "node dist/main",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
-
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-
     "migration:generate": "sequelize-cli migration:generate --name",
     "migration:run": "sequelize-cli db:migrate",
     "migration:revert": "sequelize-cli db:migrate:undo",
     "seed:run": "sequelize-cli db:seed:all",
     "seed:revert": "sequelize-cli db:seed:undo:all"
   },
-
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
     "@aws-sdk/s3-request-presigner": "^3.939.0",
@@ -43,7 +37,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/platform-socket.io": "^10.4.15",
-    "@nestjs/schedule": "^4.1.1",
+    "@nestjs/schedule": "^4.1.2",
     "@nestjs/sequelize": "^10.0.1",
     "@nestjs/swagger": "^8.0.7",
     "@nestjs/websockets": "^10.4.15",
@@ -73,9 +67,9 @@
     "slugify": "^1.6.6",
     "socket.io": "^4.8.1",
     "swagger-ui-express": "^5.0.1",
+    "typeorm": "^0.3.28",
     "xlsx": "^0.18.5"
   },
-
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
@@ -104,5 +98,22 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.2"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
   }
 }

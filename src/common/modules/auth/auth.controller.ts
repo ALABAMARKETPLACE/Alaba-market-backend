@@ -46,12 +46,11 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt-refresh'))
   @Post('refresh')
   @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Refresh access token using Authorization header (Bearer refresh token)' })
+  @ApiOperation({
+    summary: 'Refresh access token using Authorization header (Bearer refresh token)',
+  })
   async refreshTokens(@Req() req: any) {
-    const tokens = await this.authService.refreshTokens(
-      req.user.sub,
-      req.user.refreshToken,
-    );
+    const tokens = await this.authService.refreshTokens(req.user.sub, req.user.refreshToken);
     return {
       success: true,
       data: {
@@ -95,6 +94,73 @@ export class AuthController {
     return {
       success: true,
       data: req.user,
+    };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('update-profile')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Update user profile' })
+  async updateProfile(@Req() req: any, @Body() updateData: any) {
+    const user = await this.authService.updateProfile(req.user.id, updateData);
+    return {
+      success: true,
+      data: user,
+    };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Change user password' })
+  async changePassword(
+    @Req() req: any,
+    @Body() body: { currentPassword: string; newPassword: string },
+  ) {
+    const result = await this.authService.changePassword(
+      req.user.id,
+      body.currentPassword,
+      body.newPassword,
+    );
+    return {
+      success: true,
+      message: result.message,
+    };
+  }
+
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Request password reset' })
+  async forgotPassword(@Body() body: { email: string }) {
+    await this.authService.forgotPassword(body.email);
+    return {
+      success: true,
+      message: 'Password reset instructions have been sent to your email',
+    };
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Reset password with token' })
+  async resetPassword(@Body() body: { token: string; newPassword: string }) {
+    await this.authService.resetPassword(body.token, body.newPassword);
+    return {
+      success: true,
+      message: 'Password has been reset successfully',
+    };
+  }
+
+  @Post('social-login')
+  @ApiOperation({ summary: 'Login with social provider (Google/Facebook)' })
+  async socialLogin(@Body() body: { provider: string; token: string }) {
+    const result = await this.authService.socialLogin(body.provider, body.token);
+    return {
+      success: true,
+      data: {
+        user: result.user,
+        tokens: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
+      },
     };
   }
 }

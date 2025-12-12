@@ -68,8 +68,8 @@ async function bootstrap() {
   });
 
   const port = process.env.PORT || 3002;
-  await app.listen(port);
-  
+  await app.listen(port, '0.0.0.0'); // Listen on all network interfaces
+
   console.log(`
   🚀 Application is running on: http://localhost:${port}
   📚 Swagger documentation: http://localhost:${port}/api/docs

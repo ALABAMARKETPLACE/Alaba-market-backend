@@ -20,11 +20,15 @@ import { PaystackModule } from './common/modules/paystack/paystack.module';
 import { SubscriptionModule } from './common/modules/subscription/subscription.module';
 import { WebhooksModule } from './common/modules/webhooks/webhooks.module';
 import { UploadModule } from './common/modules/upload/upload.modules';
+import { NotificationsModule } from './common/modules/notifications/notifications.module';
 // import { GatewaysModule } from './gateways/gateways.module';
 
 // Filters & Interceptors
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform-interception';
+
+// Controllers
+import { HealthController } from './health.controller';
 
 // Entities
 import { User } from './common/modules/users/entities/user-entity';
@@ -34,6 +38,7 @@ import { DeliveryCompany } from './common/modules/delivery/entities/delivery-com
 import { Driver } from './common/modules/drivers/entities/driver.entity';
 import { DeliveryLog } from './common/modules/delivery/entities/delivery-log.entity';
 import { Subscription } from './common/modules/subscription/entities/subscription.entity';
+import { Notification } from './common/modules/notifications/entities/notification.entity';
 
 @Module({
   imports: [
@@ -46,12 +51,33 @@ import { Subscription } from './common/modules/subscription/entities/subscriptio
     // Database
     SequelizeModule.forRoot({
       dialect: 'postgres',
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT, 10),
-      username: process.env.DB_USERNAME,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      models: [User, Product, Order, DeliveryCompany, Driver, DeliveryLog, Subscription],
+      ...(process.env.DATABASE_URL
+        ? {
+            url: process.env.DATABASE_URL,
+            dialectOptions: {
+              ssl: {
+                require: true,
+                rejectUnauthorized: false,
+              },
+            },
+          }
+        : {
+            host: process.env.DB_HOST,
+            port: parseInt(process.env.DB_PORT, 10),
+            username: process.env.DB_USERNAME,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME,
+          }),
+      models: [
+        User,
+        Product,
+        Order,
+        DeliveryCompany,
+        Driver,
+        DeliveryLog,
+        Subscription,
+        Notification,
+      ],
       autoLoadModels: true,
       synchronize: false, // Use migrations in production
       logging: process.env.NODE_ENV === 'development' ? console.log : false,
@@ -81,7 +107,7 @@ import { Subscription } from './common/modules/subscription/entities/subscriptio
         from: `"Alaba Marketplace" <${process.env.MAIL_FROM}>`,
       },
       template: {
-        dir: join(__dirname, 'modules/mailer/templates'),
+        dir: join(__dirname, 'common/modules/mailer/templates'),
         adapter: new HandlebarsAdapter(),
         options: {
           strict: true,
@@ -101,7 +127,9 @@ import { Subscription } from './common/modules/subscription/entities/subscriptio
     SubscriptionModule,
     WebhooksModule,
     UploadModule,
+    NotificationsModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}
 

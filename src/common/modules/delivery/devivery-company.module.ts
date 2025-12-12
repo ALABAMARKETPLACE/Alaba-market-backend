@@ -7,10 +7,12 @@ import { DeliveryCompany } from '../delivery/entities/delivery-compnay-entity';
 import { User } from '../users/entities/user-entity';
 import { Order } from '../orders/entities/order-entity';
 import { Driver } from '../drivers/entities/driver.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     SequelizeModule.forFeature([DeliveryCompany, User, Order, Driver]),
+    NotificationsModule,
   ],
   controllers: [DeliveryCompanyController],
   providers: [DeliveryCompanyService],

@@ -1,13 +1,5 @@
 // src/modules/orders/orders.controller.ts
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  UseGuards,
-  Req,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
@@ -50,6 +42,24 @@ export class OrdersController {
     };
   }
 
+  @Get()
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get all marketplace orders (unassigned)' })
+  async getAllMarketplaceOrders(@Req() req: any) {
+    const orders = await this.ordersService.getUnassignedOrders();
+    const mapped = this.ordersService.mapOrdersForFrontend(orders as any);
+    return {
+      success: true,
+      data: {
+        items: mapped,
+        total: mapped.length,
+        page: 1,
+        limit: mapped.length,
+        totalPages: 1,
+      },
+    };
+  }
+
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Get order by ID' })
@@ -68,6 +78,7 @@ export class OrdersController {
     @Body() body: { barcodeShortCode: string; packagePhoto: string },
     @Req() req: any,
   ) {
+    console.log('📦 Controller: confirmPackageReceived called');
     const order = await this.ordersService.confirmPackageReceived(
       id,
       body.barcodeShortCode,
@@ -75,7 +86,14 @@ export class OrdersController {
       req.user.id,
     );
     const mapped = this.ordersService.mapOrderForFrontend(order as any);
-    return { success: true, data: mapped };
+    const response = { success: true, data: mapped };
+    console.log('✅ Controller: Sending success response', {
+      success: response.success,
+      hasData: !!response.data,
+      orderId: mapped?.id,
+      status: mapped?.status,
+    });
+    return response;
   }
 
   @Post(':id/confirm-delivery')
@@ -103,7 +121,33 @@ export class OrdersController {
     const mapped = this.ordersService.mapOrderForFrontend(order as any);
     return { success: true, data: mapped };
   }
+
+  @Post(':id/confirm-payment')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Update order status to payment confirmed' })
+  async confirmPayment(@Param('id') id: string) {
+    const order = await this.ordersService.confirmPayment(id);
+    const mapped = this.ordersService.mapOrderForFrontend(order as any);
+    return { success: true, data: mapped };
+  }
+
+  @Post(':id/picked-up')
+  @Roles(UserRole.DRIVER, UserRole.COMPANY)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Mark order as picked up from warehouse' })
+  async markAsPickedUp(@Param('id') id: string, @Req() req: any) {
+    const order = await this.ordersService.markAsPickedUp(id, req.user.id, req.user.role);
+    const mapped = this.ordersService.mapOrderForFrontend(order as any);
+    return { success: true, data: mapped };
+  }
+
+  @Post(':id/out-for-delivery')
+  @Roles(UserRole.DRIVER, UserRole.COMPANY)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Mark order as out for delivery' })
+  async markAsOutForDelivery(@Param('id') id: string, @Req() req: any) {
+    const order = await this.ordersService.markAsOutForDelivery(id, req.user.id, req.user.role);
+    const mapped = this.ordersService.mapOrderForFrontend(order as any);
+    return { success: true, data: mapped };
+  }
 }
-
-
-
