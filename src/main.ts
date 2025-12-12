@@ -6,6 +6,13 @@ import * as express from 'express';
 import { join } from 'path';
 
 async function bootstrap() {
+  // Log database configuration for debugging
+  console.log('Database Configuration:');
+  console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+  console.log('DB_HOST:', process.env.DB_HOST || 'NOT SET');
+  console.log('DB_PORT:', process.env.DB_PORT || 'NOT SET');
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  
   const app = await NestFactory.create(AppModule);
 
   // CORS
