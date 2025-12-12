@@ -40,10 +40,6 @@ services:
       - key: APP_URL
         value: 'https://alaba-marketplace-api.onrender.com'
     autoDeploy: true
-    disk:
-      name: alaba-uploads
-      mountPath: /app/uploads
-      sizeGB: 1
 
 databases:
   - name: alaba-marketplace-db
