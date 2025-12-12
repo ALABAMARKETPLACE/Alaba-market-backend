@@ -48,39 +48,53 @@ import { Notification } from './common/modules/notifications/entities/notificati
     }),
 
     // Database
-    SequelizeModule.forRoot({
-      dialect: 'postgres',
-      ...(process.env.DATABASE_URL
+    SequelizeModule.forRoot(
+      process.env.DATABASE_URL
         ? {
-            url: process.env.DATABASE_URL,
+            dialect: 'postgres',
+            uri: process.env.DATABASE_URL,
             dialectOptions: {
               ssl: {
                 require: true,
                 rejectUnauthorized: false,
               },
             },
+            models: [
+              User,
+              Product,
+              Order,
+              DeliveryCompany,
+              Driver,
+              DeliveryLog,
+              Subscription,
+              Notification,
+            ],
+            autoLoadModels: true,
+            synchronize: false,
+            logging: process.env.NODE_ENV === 'development' ? console.log : false,
           }
         : {
-            host: process.env.DB_HOST,
-            port: parseInt(process.env.DB_PORT, 10),
-            username: process.env.DB_USERNAME,
+            dialect: 'postgres',
+            host: process.env.DB_HOST || 'localhost',
+            port: parseInt(process.env.DB_PORT, 10) || 5432,
+            username: process.env.DB_USERNAME || 'postgres',
             password: process.env.DB_PASSWORD,
-            database: process.env.DB_NAME,
-          }),
-      models: [
-        User,
-        Product,
-        Order,
-        DeliveryCompany,
-        Driver,
-        DeliveryLog,
-        Subscription,
-        Notification,
-      ],
-      autoLoadModels: true,
-      synchronize: false, // Use migrations in production
-      logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    }),
+            database: process.env.DB_NAME || 'alaba_marketplace',
+            models: [
+              User,
+              Product,
+              Order,
+              DeliveryCompany,
+              Driver,
+              DeliveryLog,
+              Subscription,
+              Notification,
+            ],
+            autoLoadModels: true,
+            synchronize: false,
+            logging: process.env.NODE_ENV === 'development' ? console.log : false,
+          }
+    ),
 
     // Caching
     CacheModule.register({

@@ -12,7 +12,7 @@ async function bootstrap() {
   console.log('DB_HOST:', process.env.DB_HOST || 'NOT SET');
   console.log('DB_PORT:', process.env.DB_PORT || 'NOT SET');
   console.log('NODE_ENV:', process.env.NODE_ENV);
-  
+
   const app = await NestFactory.create(AppModule);
 
   // CORS
