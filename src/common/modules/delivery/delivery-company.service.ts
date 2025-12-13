@@ -733,6 +733,15 @@ export class DeliveryCompanyService {
     try {
       const orders = await this.orderModel.findAll({
         where,
+        include: [
+          { model: User, as: 'buyer' },
+          { model: User, as: 'seller' },
+          {
+            model: Driver,
+            as: 'driver',
+            include: [{ model: User, as: 'user' }],
+          },
+        ],
         order: [['createdAt', 'DESC']],
       });
 
