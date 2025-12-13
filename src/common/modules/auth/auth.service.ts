@@ -75,6 +75,49 @@ export class AuthService {
     };
   }
 
+  async googleLogin(googleDto: { idToken: string; email: string; name?: string; photo?: string }) {
+    // Check if user exists
+    let user = await this.userModel.findOne({
+      where: { email: googleDto.email },
+    });
+
+    // If user doesn't exist, create new account
+    if (!user) {
+      const [firstName, ...lastNameParts] = (googleDto.name || googleDto.email).split(' ');
+      const lastName = lastNameParts.join(' ') || '';
+
+      user = await this.userModel.create({
+        email: googleDto.email,
+        firstName,
+        lastName,
+        password: Math.random().toString(36), // Random password (won't be used)
+        role: 'driver', // Default role
+        avatar: googleDto.photo,
+        emailVerified: true, // Google accounts are pre-verified
+        isActive: true,
+      } as any);
+
+      // Create driver record
+      await this.driverModel.create({
+        userId: user.id,
+        name: googleDto.name || `${firstName} ${lastName}`,
+        phone: '',
+        email: googleDto.email,
+        isActive: true,
+        isAvailable: true,
+        companyId: null,
+      });
+    }
+
+    const tokens = await this.generateTokens(user);
+    await this.updateRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      user: user.toJSON(),
+      ...tokens,
+    };
+  }
+
   async refreshTokens(userId: string, refreshToken: string) {
     const user = await this.userModel.findByPk(userId);
     if (!user || !user.refreshToken) {

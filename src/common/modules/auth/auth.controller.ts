@@ -43,6 +43,26 @@ export class AuthController {
     };
   }
 
+  @Post('google')
+  @ApiOperation({ summary: 'Google Sign-In' })
+  async googleLogin(
+    @Body() googleDto: { idToken: string; email: string; name?: string; photo?: string },
+  ) {
+    // For now, create/login user with Google email
+    // In production, verify idToken with Google API
+    const result = await this.authService.googleLogin(googleDto);
+    return {
+      success: true,
+      data: {
+        user: result.user,
+        tokens: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
+      },
+    };
+  }
+
   @UseGuards(AuthGuard('jwt-refresh'))
   @Post('refresh')
   @ApiBearerAuth('JWT-auth')
