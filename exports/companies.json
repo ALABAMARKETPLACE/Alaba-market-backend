@@ -1,0 +1,15 @@
+[
+  {
+    "companyId": "d5ecb2ad-3fc8-4bf1-84cc-90cec7c8c18a",
+    "companyName": "FastMove Logistics",
+    "subscriptionStatus": "active",
+    "isActive": true,
+    "adminEmail": "deliveryowner@example.com",
+    "adminPassword": "$2b$10$L..finBgbScJw90wZJO1ju6vA9xRDGstYp7cIS3B.4Q.uiRTLzpLS",
+    "adminFirstName": "Delivery",
+    "adminLastName": "Owner",
+    "adminPhone": "08055555555",
+    "driverCount": "5",
+    "createdAt": "2025-12-15T16:57:30.536Z"
+  }
+]

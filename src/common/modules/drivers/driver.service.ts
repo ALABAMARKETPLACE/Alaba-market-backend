@@ -1648,102 +1648,132 @@ export class DriversService {
   }
 
   async assignToOrder(dto: AssignDriverDto): Promise<Order> {
-    console.log('🚗 assignToOrder called:', dto);
+    console.log('🚗 assignToOrder called with:', JSON.stringify(dto, null, 2));
 
-    const [order, driver] = await Promise.all([
-      this.orderModel.findByPk(dto.orderId, {
-        include: [{ model: User, as: 'buyer' }, { model: DeliveryCompany }],
-      }),
-      this.driverModel.findByPk(dto.driverId),
-    ]);
-
-    if (!order) {
-      throw new NotFoundException('Order not found');
-    }
-
-    if (!driver) {
-      throw new NotFoundException('Driver not found');
-    }
-
-    if (order.deliveryCompanyId !== driver.companyId) {
-      throw new ForbiddenException('Driver does not belong to assigned company');
-    }
-
-    if (!driver.isActive || !driver.isAvailable) {
-      throw new BadRequestException('Driver is not available for assignment');
-    }
-
-    await order.update({
-      driverId: driver.id,
-      status: OrderStatus.ASSIGNED,
-      assignedAt: new Date(),
-      trackingHistory: [
-        ...(order.trackingHistory || []),
-        {
-          status: OrderStatus.ASSIGNED,
-          timestamp: new Date(),
-          remarks: `Assigned to driver: ${driver.name}`,
-        },
-      ],
-    } as any);
-
-    // 🔔 PUSH NOTIFICATION: Driver assigned to order
     try {
-      // Notify driver
-      if (driver.userId) {
+      const [order, driver] = await Promise.all([
+        this.orderModel.findByPk(dto.orderId, {
+          include: [{ model: User, as: 'buyer' }, { model: DeliveryCompany }],
+        }),
+        this.driverModel.findByPk(dto.driverId),
+      ]);
+
+      console.log('📦 Order found:', order ? `Yes (${order.id})` : 'No');
+      console.log('👤 Driver found:', driver ? `Yes (${driver.id} - ${driver.name})` : 'No');
+
+      if (!order) {
+        console.error('❌ Order not found:', dto.orderId);
+        throw new NotFoundException('Order not found');
+      }
+
+      if (!driver) {
+        console.error('❌ Driver not found:', dto.driverId);
+        throw new NotFoundException('Driver not found');
+      }
+
+      console.log('🏢 Order company:', order.deliveryCompanyId);
+      console.log('🏢 Driver company:', driver.companyId);
+      console.log('✅ Driver active:', driver.isActive);
+      console.log('✅ Driver available:', driver.isAvailable);
+
+      if (order.deliveryCompanyId !== driver.companyId) {
+        console.error(
+          '❌ Company mismatch - Order:',
+          order.deliveryCompanyId,
+          'Driver:',
+          driver.companyId,
+        );
+        throw new ForbiddenException('Driver does not belong to assigned company');
+      }
+
+      if (!driver.isActive || !driver.isAvailable) {
+        console.error(
+          '❌ Driver not available - Active:',
+          driver.isActive,
+          'Available:',
+          driver.isAvailable,
+        );
+        throw new BadRequestException('Driver is not available for assignment');
+      }
+
+      console.log('🔄 Updating order...');
+      await order.update({
+        driverId: driver.id,
+        status: OrderStatus.ASSIGNED,
+        assignedAt: new Date(),
+        trackingHistory: [
+          ...(order.trackingHistory || []),
+          {
+            status: OrderStatus.ASSIGNED,
+            timestamp: new Date(),
+            remarks: `Assigned to driver: ${driver.name}`,
+          },
+        ],
+      } as any);
+
+      console.log('✅ Order updated successfully');
+
+      // 🔔 PUSH NOTIFICATION: Driver assigned to order
+      try {
+        // Notify driver
+        if (driver.userId) {
+          await this.notificationsService.sendPushNotification(
+            driver.userId,
+            '📦 New Delivery Assignment',
+            `You have been assigned order #${order.id}`,
+            {
+              orderId: order.id,
+              orderNumber: order.id,
+              pickupAddress: order.deliveryAddress,
+              deliveryAddress: order.deliveryAddress,
+              type: 'driver_assigned_order',
+            },
+          );
+        }
+
+        // Notify buyer
         await this.notificationsService.sendPushNotification(
-          driver.userId,
-          '📦 New Delivery Assignment',
-          `You have been assigned order #${order.id}`,
+          order.buyerId,
+          '🚗 Driver Assigned to Your Order',
+          `${driver.name} will be delivering your order #${order.id}`,
           {
             orderId: order.id,
             orderNumber: order.id,
-            pickupAddress: order.deliveryAddress,
-            deliveryAddress: order.deliveryAddress,
-            type: 'driver_assigned_order',
-          },
-        );
-      }
-
-      // Notify buyer
-      await this.notificationsService.sendPushNotification(
-        order.buyerId,
-        '🚗 Driver Assigned to Your Order',
-        `${driver.name} will be delivering your order #${order.id}`,
-        {
-          orderId: order.id,
-          orderNumber: order.id,
-          driverId: driver.id,
-          driverName: driver.name,
-          type: 'order_driver_assigned',
-        },
-      );
-
-      // Notify company
-      const company = await this.companyModel.findByPk(driver.companyId);
-      if (company?.userId) {
-        await this.notificationsService.sendPushNotification(
-          company.userId,
-          '✅ Driver Assigned to Order',
-          `${driver.name} has been assigned to order #${order.id}`,
-          {
-            orderId: order.id,
             driverId: driver.id,
             driverName: driver.name,
-            type: 'company_driver_assigned',
+            type: 'order_driver_assigned',
           },
         );
+
+        // Notify company
+        const company = await this.companyModel.findByPk(driver.companyId);
+        if (company?.userId) {
+          await this.notificationsService.sendPushNotification(
+            company.userId,
+            '✅ Driver Assigned to Order',
+            `${driver.name} has been assigned to order #${order.id}`,
+            {
+              orderId: order.id,
+              driverId: driver.id,
+              driverName: driver.name,
+              type: 'company_driver_assigned',
+            },
+          );
+        }
+
+        this.logger.log(
+          `Assignment notifications sent for order ${order.id} and driver ${driver.id}`,
+        );
+      } catch (error) {
+        this.logger.error('Failed to send assignment notifications:', error);
       }
 
-      this.logger.log(
-        `Assignment notifications sent for order ${order.id} and driver ${driver.id}`,
-      );
+      console.log('✅ Order assigned successfully to driver:', driver.name);
+      return order;
     } catch (error) {
-      this.logger.error('Failed to send assignment notifications:', error);
+      console.error('❌ assignToOrder error:', error);
+      throw error;
     }
-
-    console.log('✅ Order assigned successfully to driver:', driver.name);
-    return order;
   }
 
   async getDriverStats(driverId: string): Promise<any> {

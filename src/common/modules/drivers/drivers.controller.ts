@@ -217,11 +217,19 @@ export class DriversController {
   @Roles(UserRole.COMPANY)
   @ApiOperation({ summary: 'Assign order to driver' })
   async assignToOrder(@Body() dto: AssignDriverDto) {
-    const order = await this.driversService.assignToOrder(dto);
-    return {
-      success: true,
-      data: order,
-    };
+    try {
+      console.log('🔵 POST /drivers/assign - Request received:', dto);
+      const order = await this.driversService.assignToOrder(dto);
+      console.log('✅ POST /drivers/assign - Success');
+      return {
+        success: true,
+        message: 'Driver assigned successfully',
+        data: order,
+      };
+    } catch (error) {
+      console.error('❌ POST /drivers/assign - Error:', error.message);
+      throw error;
+    }
   }
 
   @Get(':id')
