@@ -1,0 +1,496 @@
+import {
+  BadRequestException,
+  HttpException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+} from "@nestjs/common";
+import { Op, Sequelize, Transaction } from "sequelize";
+import { Order } from "../ORDER/order.entity";
+import { Products } from "../PRODUCTS/products.entity";
+import { DataResponseDto } from "../shared/dto/data-response-dto";
+import { getErrorMessage } from "../shared/helpers/errormessage";
+import { CreateSettlementsDto } from "./dto/createSettlements.dto";
+import { SettlementsQueryDto } from "./dto/queryDto.dto";
+import { Settlements } from "./settlements.entity";
+import { Store } from "../STORE/store.entity";
+import { UserBankAccount } from "../USER_BANK_ACCOUNTS/user_bank_accounts.entity";
+export class SettlementsService {
+  constructor(
+    @Inject("SettlementsRepository")
+    private readonly SettlementsRepository: typeof Settlements,
+    @Inject("ProductsRepository")
+    private readonly ProductsRepository: typeof Products
+  ) {}
+
+  async findAll(storeId: number, pageOptions: SettlementsQueryDto) {
+    try {
+      const { offset, limit, settle_status } = pageOptions;
+      const result = await this.SettlementsRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const datas = await this.SettlementsRepository.findAndCountAll({
+            limit,
+            offset,
+            order: [["updatedAt", "DESC"]],
+            where: {
+              storeId,
+              ...(settle_status && { status: settle_status }),
+            },
+            include: [
+              { model: Store, attributes: ["store_name"] },
+              {
+                model: UserBankAccount,
+                required: false,
+              },
+            ],
+            transaction,
+          });
+
+          return datas;
+        }
+      );
+      const { rows, count } = result;
+      return new DataResponseDto(rows, true, "Success", pageOptions, count);
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+  async findOneById(storeId: number, id: number): Promise<DataResponseDto> {
+    try {
+      const data = await this.SettlementsRepository.findOne({
+        where: {
+          storeId,
+          id,
+        },
+        order: [["updatedAt", "DESC"]],
+        include: [
+          { model: Store },
+          {
+            model: UserBankAccount,
+            required: false,
+          },
+        ],
+      });
+
+      if (!data) {
+        return new DataResponseDto(
+          [],
+          false,
+          `No settlement found with id ${id}`
+        );
+      }
+
+      return new DataResponseDto(data, true, "Success");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async findAllSettlement(
+    storeId: number,
+    pageOptions: SettlementsQueryDto,
+    type: string
+  ) {
+    try {
+      const { offset, limit, settle_status } = pageOptions;
+      const result = await this.SettlementsRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const whereClause: any = {
+            ...(settle_status && { status: settle_status }),
+          };
+
+          if (type === "store") {
+            whereClause.storeId = storeId;
+          }
+
+          const datas = await this.SettlementsRepository.findAndCountAll({
+            limit,
+            offset,
+            order: [["updatedAt", "DESC"]],
+            where: whereClause,
+            transaction,
+            include: [
+              { model: Store, attributes: ["store_name"] },
+              {
+                model: UserBankAccount,
+                attributes: ["accountHolderName", "accountNumber"],
+              },
+            ],
+          });
+
+          return datas;
+        }
+      );
+
+      const { rows, count } = result;
+      return new DataResponseDto(rows, true, "Success", pageOptions, count);
+    } catch (err) {
+      console.log("err-->>");
+      console.log(err);
+      console.log("err-->>");
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async findSummary(storeId: number) {
+    try {
+      const result = await this.SettlementsRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const [totalOrderPrice, totalSettledPrice, settlementPending] =
+            await Promise.all([
+              (await Order.sum("grandTotal", {
+                where: { storeId, status: "delivered" },
+                transaction,
+              })) ?? 0,
+              (await this.SettlementsRepository.sum("paid", {
+                where: { storeId, status: "success" },
+                transaction,
+              })) ?? 0,
+              (await this.SettlementsRepository.sum("paid", {
+                where: { storeId, status: { [Op.notIn]: ["success"] } },
+                transaction,
+              })) ?? 0,
+            ]);
+
+          const amountToSettle = totalOrderPrice - totalSettledPrice;
+          return {
+            amountToSettle,
+            totalOrderPrice,
+            totalSettledPrice,
+            settlementPending,
+          };
+        }
+      );
+
+      return {
+        data: {
+          ...result,
+        },
+        message: "",
+        status: true,
+        statusCode: 200,
+      };
+    } catch (err) {
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async findOne(id: number) {
+    try {
+      const settlements = await this.SettlementsRepository.findByPk(id);
+      if (!settlements) throw new Error("No Data Found.@@");
+      return new DataResponseDto(settlements, true, "Successfully fetched");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async create(data: CreateSettlementsDto) {
+    try {
+      const result = await this.SettlementsRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const settlements = new Settlements();
+          settlements.storeId = data.storeId;
+          settlements.total = 0;
+          settlements.balance = 0;
+          settlements.paid = data.paid;
+          settlements.status = data.status;
+
+          settlements.payment_type = data.payment_type;
+          const created = await settlements.save({ transaction });
+          const [totalOrderPrice, totalSettledPrice] = await Promise.all([
+            (await Order.sum("grandTotal", {
+              where: { storeId: data?.storeId, status: "delivered" },
+              transaction,
+            })) ?? 0,
+            (await this.SettlementsRepository.sum("paid", {
+              where: { storeId: data?.storeId, status: "success" },
+              transaction,
+            })) ?? 0,
+          ]);
+          created.total = totalSettledPrice;
+          created.balance = totalOrderPrice - totalSettledPrice;
+          if (created.balance < 0) {
+            throw new BadRequestException(
+              "Settlement amount can't be more than Total balance"
+            );
+          }
+          await created.save({ transaction });
+          if (data.paid > created.balance) {
+            throw new BadRequestException(
+              "Settlement amount can't be more than Total balance"
+            );
+          }
+          return created;
+        }
+      );
+      return new DataResponseDto(result, true, "Successfully Created");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+  async createByStore(id: number, data: CreateSettlementsDto) {
+    try {
+      const result = await this.SettlementsRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const settlements = new Settlements();
+          settlements.storeId = id;
+          settlements.total = 0;
+          settlements.balance = 0;
+          settlements.paid = data.paid;
+          settlements.user_bank_id = data.user_bank_id;
+          settlements.status = "requested";
+          settlements.remark = data.remark;
+          settlements.payment_type = data.payment_type;
+          const created = await settlements.save({ transaction });
+          const [totalOrderPrice, totalSettledPrice] = await Promise.all([
+            (await Order.sum("grandTotal", {
+              where: { storeId: id, status: "delivered" },
+              transaction,
+            })) ?? 0,
+            (await this.SettlementsRepository.sum("paid", {
+              where: { storeId: id, status: "success" },
+              transaction,
+            })) ?? 0,
+          ]);
+          created.total = totalSettledPrice;
+          created.balance = totalOrderPrice - totalSettledPrice;
+          if (created.balance < 0) {
+            throw new BadRequestException(
+              "Settlement amount can't be more than Total balance"
+            );
+          }
+          await created.save({ transaction });
+          if (data.paid > created.balance) {
+            throw new BadRequestException(
+              "Settlement amount can't be more than Total balance"
+            );
+          }
+          return created;
+        }
+      );
+      return new DataResponseDto(result, true, "Successfully Created");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+  async getSettlementDetails(storeId: number) {
+    try {
+      const result = await Order.findOne({
+        attributes: [
+          [
+            Sequelize.fn("sum", Sequelize.literal('"grandTotal"')),
+            "grandTotal",
+          ],
+          [
+            Sequelize.fn("sum", Sequelize.literal('"deliveryCharge"')),
+            "deliveryCharge",
+          ],
+          [Sequelize.fn("sum", Sequelize.literal('"total"')), "productTotal"],
+          [
+            Sequelize.fn("sum", Sequelize.literal('"totalItems"')),
+            "totalUnits",
+          ],
+          [Sequelize.fn("count", "*"), "totalOrders"],
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status = 'pending' THEN 1 ELSE null END"
+              )
+            ),
+            "pendingOrders",
+          ],
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status = 'delivered' THEN 1 ELSE null END"
+              )
+            ),
+            "deliveredOrders",
+          ],
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status = 'shipped' THEN 1 ELSE null END"
+              )
+            ),
+            "shippedOrders",
+          ],
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status = 'packed' THEN 1 ELSE null END"
+              )
+            ),
+            "packedOrders",
+          ],
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status = 'out_for_delivery' THEN 1 ELSE null END"
+              )
+            ),
+            "outforDeliveryOrders",
+          ],
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status = 'rejected' THEN 1 ELSE null END"
+              )
+            ),
+            "rejectedOrders",
+          ],
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status = 'cancelled' THEN 1 ELSE null END"
+              )
+            ),
+            "cancelledOrders",
+          ],
+
+          [
+            Sequelize.fn(
+              "count",
+              Sequelize.literal(
+                "CASE WHEN status NOT IN ('pending','delivered') THEN 1 ELSE null END"
+              )
+            ),
+            "otherOrders",
+          ],
+        ],
+        where: {
+          storeId,
+        },
+        raw: true,
+      });
+      return new DataResponseDto(result, true, "Successful");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+  async getOrderDetailsForStore(storeId: number) {
+    try {
+      const result = await this.SettlementsRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const [
+            totalOrderAmount,
+            totalOrderCount,
+            productsCount,
+            settledAmount,
+          ] = await Promise.all([
+            Order.sum("grandTotal", {
+              where: { storeId, status: "delivered" },
+              transaction,
+            }) ?? 0,
+            Order.count({
+              where: { storeId, status: "delivered" },
+              transaction,
+            }),
+            this.ProductsRepository.count({
+              where: { store_id: storeId, status: true },
+              transaction,
+            }),
+            this.SettlementsRepository.sum("paid", {
+              where: { storeId, status: "success" },
+              transaction,
+            }) ?? 0,
+          ]);
+
+          return {
+            totalOrderAmount,
+            totalOrderCount,
+            productsCount,
+            settledAmount,
+          };
+        }
+      );
+
+      return new DataResponseDto(result, true, "Success");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async updatePaymentStatus(id: number) {
+    try {
+      const result = await this.SettlementsRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const settle = await this.SettlementsRepository.findByPk(id, {
+            transaction,
+          });
+          if (!settle) throw new Error("No Settlement found@@");
+          settle.status = "success";
+          await settle.save({ transaction });
+          const [totalOrderPrice, totalSettledPrice] = await Promise.all([
+            (await Order.sum("grandTotal", {
+              where: { storeId: settle.storeId, status: "delivered" },
+              transaction,
+            })) ?? 0,
+            (await this.SettlementsRepository.sum("paid", {
+              where: { storeId: settle.storeId, status: "success" },
+              transaction,
+            })) ?? 0,
+          ]);
+          settle.total = totalSettledPrice;
+          settle.balance = totalOrderPrice - totalSettledPrice;
+          await settle.save({ transaction });
+          if (settle.balance < 0) {
+            throw new Error(
+              "Settlement Can't be completed.. Amount is more than Balance@@"
+            );
+          }
+          return settle;
+        }
+      );
+      return new DataResponseDto(result, true, "");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async updateRequestedStatus(
+    id: number,
+    type: string
+  ): Promise<DataResponseDto> {
+    try {
+      const [affectedCount, affectedRows] =
+        await this.SettlementsRepository.update(
+          { status: type },
+          {
+            where: { id, status: { [Op.notIn]: ["success", "cancelled"] } },
+            returning: true,
+          }
+        );
+
+      if (affectedCount === 0) {
+        return new DataResponseDto(
+          [],
+          true,
+          `No settlement found with id ${id}`
+        );
+      }
+
+      return new DataResponseDto(affectedRows, true, "Updated Successfully");
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException(getErrorMessage(error));
+    }
+  }
+}

@@ -1,0 +1,171 @@
+{
+  "cart": [
+    {
+      "id": "357",
+      "userId": 243,
+      "productId": 164,
+      "variantId": null,
+      "storeId": 66,
+      "quantity": 1,
+      "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1703676162398.jpg",
+      "combination": null,
+      "totalPrice": 100,
+      "storeDetails": {
+        "store_name": "Shop Savvy"
+      },
+      "productDetails": {
+        "_id": "164",
+        "name": "Lily Stargazer",
+        "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1703676162398.jpg",
+        "bar_code": "d32rt56hytgb",
+        "sku": "wf4htyngfb",
+        "brand": "Shop Savvy",
+        "purchase_rate": 10,
+        "retail_rate": 100,
+        "status": true,
+        "unit": 4,
+        "units": 10
+      },
+      "variantDetails": null,
+      "buyPrice": 100,
+      "name": "Lily Stargazer"
+    },
+    {
+      "id": "356",
+      "userId": 243,
+      "productId": 181,
+      "variantId": 68,
+      "storeId": 8,
+      "quantity": 3,
+      "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1704287917800.jpg",
+      "combination": [
+        {
+          "variant": "Color",
+          "value": "BLACK"
+        },
+        {
+          "variant": "Size",
+          "value": "750 ml"
+        }
+      ],
+      "totalPrice": 1977,
+      "storeDetails": {
+        "store_name": "Dollar Tree"
+      },
+      "productDetails": {
+        "_id": "181",
+        "name": "Cello Duro Tuff Stainless Steel Kent Flask",
+        "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1704287915503.jpg",
+        "bar_code": "NXBVGF64",
+        "sku": "SK4747492",
+        "brand": "cello",
+        "purchase_rate": 699,
+        "retail_rate": 699,
+        "status": true,
+        "unit": 9,
+        "units": 55
+      },
+      "variantDetails": {
+        "units": 6,
+        "combination": [
+          {
+            "variant": "Color",
+            "value": "BLACK"
+          },
+          {
+            "variant": "Size",
+            "value": "750 ml"
+          }
+        ],
+        "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1704287917800.jpg",
+        "sku": "SK47474924",
+        "barcode": "NXBVGF646",
+        "id": "68",
+        "price": 659
+      },
+      "buyPrice": 659,
+      "name": "Cello Duro Tuff Stainless Steel Kent Flask"
+    },
+    {
+      "id": "355",
+      "userId": 243,
+      "productId": 184,
+      "variantId": null,
+      "storeId": 76,
+      "quantity": 2,
+      "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1704772331887.jpg",
+      "combination": null,
+      "totalPrice": 20998,
+      "storeDetails": {
+        "store_name": "shahinshop"
+      },
+      "productDetails": {
+        "_id": "184",
+        "name": "Fossil Stainless Steel Analog Watch",
+        "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1704772331887.jpg",
+        "bar_code": "NXEKKEI394",
+        "sku": "SK00003KK",
+        "brand": "Fossil",
+        "purchase_rate": 9200,
+        "retail_rate": 10499,
+        "status": true,
+        "unit": 4,
+        "units": 6
+      },
+      "variantDetails": null,
+      "buyPrice": 10499,
+      "name": "Fossil Stainless Steel Analog Watch"
+    },
+    {
+      "id": "353",
+      "userId": 243,
+      "productId": 194,
+      "variantId": null,
+      "storeId": 8,
+      "quantity": 1,
+      "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1704984323162.jpg",
+      "combination": null,
+      "totalPrice": 54,
+      "storeDetails": {
+        "store_name": "Dollar Tree"
+      },
+      "productDetails": {
+        "_id": "194",
+        "name": "lotus flower",
+        "image": "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/products/1704984323162.jpg",
+        "bar_code": "NXEKEK3490",
+        "sku": "SK393939390",
+        "brand": "lotus corp",
+        "purchase_rate": 43,
+        "retail_rate": 54,
+        "status": true,
+        "unit": 11,
+        "units": 12
+      },
+      "variantDetails": null,
+      "buyPrice": 54,
+      "name": "lotus flower"
+    }
+  ],
+  "address": {
+    "id": "73",
+    "userId": 243,
+    "flat": "444",
+    "fullAddress": "26th Mile, Kaithapoyil Bridge, Kaithappoyil, Puduppadi, Kerala 673586, India",
+    "pin_code": "673586",
+    "state": "Kerala",
+    "city": "Tamarasserry",
+    "street": "Kaithappoyil",
+    "alt_phone": "8547631632",
+    "code": "+91",
+    "geo_location": "Kaithappoyil",
+    "type": "home",
+    "lat": 11.4826585,
+    "long": 75.9944074,
+    "createdAt": "2024-01-09T06:17:48.796Z",
+    "updatedAt": "2024-01-09T06:17:48.796Z",
+    "userDetails": {
+      "name": "AMAL BABU"
+    }
+  }
+}

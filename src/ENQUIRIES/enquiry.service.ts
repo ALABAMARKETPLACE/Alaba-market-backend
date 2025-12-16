@@ -1,0 +1,98 @@
+import {
+  HttpException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from "@nestjs/common";
+import { Enquiry } from "./enquiry.entity";
+import { CreateEnquiryDto } from "./dto/create.dto";
+import { DataResponseDto } from "../shared/dto/data-response-dto";
+import { getErrorMessage } from "../shared/helpers/errormessage";
+import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
+import { EnquirySearchDto } from "./dto/querySearch.dto";
+import { Op } from "sequelize";
+
+@Injectable()
+export class EnquiryService {
+  constructor(
+    @Inject("EnquiryRepository")
+    private readonly EnquiryRepository: typeof Enquiry
+  ) {}
+
+  async findAll(querys: EnquirySearchDto) {
+    const { offset, query, limit } = querys;
+    try {
+      const { rows, count } = await this.EnquiryRepository.findAndCountAll({
+        limit,
+        offset,
+        order: [["createdAt", "DESC"]],
+        where: {
+          ...(query && {
+            email: {
+              [Op.like]: `%${query}%`,
+            },
+          }),
+        },
+      });
+      return new DataResponseDto(rows, true, "Success", querys, count);
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async create(create: CreateEnquiryDto) {
+    try {
+      const enquiry = new Enquiry();
+      enquiry.email = create.email?.toLowerCase();
+      enquiry.message = create.message;
+      const createData = await enquiry.save();
+      return new DataResponseDto(createData, true, "Successfully added");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async delete(id: number) {
+    try {
+      const deleted = await this.EnquiryRepository.destroy({ where: { id } });
+      if (deleted == 0) throw new NotFoundException();
+      return new DataResponseDto(deleted);
+    } catch (err) {
+      throw new InternalServerErrorException();
+    }
+  }
+
+  async update(id: number, body: CreateEnquiryDto) {
+    try {
+      const [updated, [data]] = await this.EnquiryRepository.update(body, {
+        where: { id },
+        returning: true,
+      });
+      if (updated == 0) throw new NotFoundException();
+      return new DataResponseDto(data);
+    } catch (err) {
+      throw new InternalServerErrorException();
+    }
+  }
+
+  async patch(id: number, body: CreateEnquiryDto) {
+    try {
+      const [updated, [data]] = await this.EnquiryRepository.update(
+        {
+          message: body.message,
+        },
+        {
+          where: { id },
+          returning: true,
+        }
+      );
+      if (updated == 0) throw new NotFoundException();
+      return new DataResponseDto(data);
+    } catch (err) {
+      throw new InternalServerErrorException();
+    }
+  }
+}
