@@ -23,7 +23,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ vars.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Sync backend source only
+      - name: Sync backend source onlyy
         run: |
           rsync -avz --delete \
             --exclude node_modules \
