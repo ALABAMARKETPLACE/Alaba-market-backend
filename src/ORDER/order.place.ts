@@ -19,6 +19,7 @@ import {
   AddressType,
   Charges,
 } from "./dto/order_types.dto";
+
 import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced";
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { Order } from "./order.entity";
@@ -270,12 +271,6 @@ export class OrderPlaceService {
         storeDeliveryCharge = verified?.data?.amount ?? 0;
       }
 
-      // Generate pickup code (6-digit random number)
-      const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-      // Generate order OTP (6-digit random number) for delivery verification
-      const orderOtp = Math.floor(100000 + Math.random() * 900000).toString();
-
       const newOrder = await Order.create(
         {
           userId,
@@ -289,8 +284,6 @@ export class OrderPlaceService {
           tax: verified?.data?.tax ?? 0,
           deliveryCharge: storeDeliveryCharge,
           discount: storeDiscount,
-          pickup_code: pickupCode,
-          order_otp: orderOtp,
         },
         { transaction }
       );
@@ -454,56 +447,28 @@ export class OrderPlaceService {
     // }
   }
 
-  async orderPayment(
+    async orderPayment(
     orderId: number,
     grandTotal: number,
     payment: paymentType,
     t: Transaction
   ) {
-    try {
-      let paymentStatus = "pending";
-      let paymentInfo: any = null;
+    const status = payment?.ref ? "pending" : "pending";
 
-      if (payment?.ref) {
-        try {
-          paymentInfo = await this.verifyPaymentWithGateway(
-            payment.ref,
-            grandTotal
-          );
-
-          if (paymentInfo.verified) {
-            paymentStatus = paymentInfo.status;
-          } else {
-            throw new NotAcceptableException("Payment is Failed.");
-          }
-        } catch (verifyError) {
-          console.error("Payment verification error:", verifyError);
-          throw new NotAcceptableException("Payment is Failed.");
-        }
-      } else {
-        paymentStatus = "pending";
-      }
-
-      const newPayment = await OrderPayments.create(
-        {
-          orderId,
-          paymentType: payment?.ref
-            ? "pay-online"
-            : payment?.type == "Pay On Credit"
-            ? "pay-on-credit"
-            : "cash-on-delivery",
-          status: paymentStatus,
-          ref: payment?.ref,
-          currency: paymentInfo?.currency,
-          amount: paymentInfo?.amount ?? grandTotal * 100,
-          cardHolder: paymentInfo?.email,
-        },
-        { transaction: t }
-      );
-      return newPayment;
-    } catch (err) {
-      throw err;
-    }
+    return await OrderPayments.create(
+      {
+        orderId,
+        paymentType: payment?.ref
+          ? "pay-online"
+          : payment?.type == "Pay On Credit"
+          ? "pay-on-credit"
+          : "cash-on-delivery",
+        status,
+        ref: payment?.ref,
+        amount: grandTotal * 100,
+      },
+      { transaction: t }
+    );
   }
   async orderStatus(orderId: number, status: string, t: Transaction) {
     try {
@@ -526,7 +491,7 @@ export class OrderPlaceService {
     t: Transaction
   ): Promise<any> {
     try {
-      console.log("🔍 [orderAddress] Looking for address:", {
+      console.log("[orderAddress] Looking for address:", {
         addressId: addres?.id,
         userId,
       });
@@ -535,13 +500,13 @@ export class OrderPlaceService {
         raw: true,
         transaction: t,
       });
-      console.log("✅ [orderAddress] Address found:", address);
+      console.log("[orderAddress] Address found:", address);
       if (!address) throw new ServiceUnavailableException("Address Not found.");
       if (address.user_id != userId)
         throw new UnauthorizedException("Invalid Address");
       return address;
     } catch (err) {
-      console.error("❌ [orderAddress] Error:", err.message);
+      console.error("[orderAddress] Error:", err.message);
       throw err;
     }
   }
