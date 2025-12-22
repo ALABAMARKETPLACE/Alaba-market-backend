@@ -244,51 +244,66 @@ export class OrderService {
     }
   }
 
-  async findOrderByStore(storeId: number, pageOptionsDto: OrderSearchStoreDto) {
+  async findOrderByStore(storeId: number | undefined, pageOptionsDto: OrderSearchStoreDto) {
     const { from, to, status, orderId, offset, limit } = pageOptionsDto;
     try {
+      const whereConditions: any = {
+        ...(storeId && { storeId }), // Only filter by storeId if provided (seller), otherwise show ALL (admin)
+        ...(status && { status }),
+        ...(orderId && { order_id: orderId }),
+        ...(from &&
+          to && {
+            createdAt: {
+              [Op.and]: [
+                { [Op.gte]: new Date(from) },
+                { [Op.lte]: new Date(to).setHours(23, 59, 59, 999) },
+              ],
+            },
+          }),
+      };
+
       const { rows, count } = await this.OrderRepository.findAndCountAll({
-        attributes: {
-          include: [
-            [Sequelize.col("userDetails.name"), "name"],
-            [
-              Sequelize.literal(`(
+        attributes: [
+          'id',
+          'order_id',
+          'status',
+          'grandTotal',
+          'total',
+          'totalItems',
+          'paymentType',
+          'deliveryCharge',
+          'tax',
+          'discount',
+          'delivery_date',
+          'storeId',
+          'userId',
+          'delivery_company_id',
+          'createdAt',
+          [
+            Sequelize.literal(`(
               SELECT "image"
               FROM "ORDER_ITEMS" AS "orderItems"
               WHERE "orderItems"."orderId" = "Order"."id"
               LIMIT 1
             )`),
-              "image",
-            ],
+            "image",
           ],
-          exclude: [
-            "address",
-            "products",
-            "updatedAt",
-            "addressId",
-            "storeId",
-            "userId",
+          [
+            Sequelize.literal(`(
+              SELECT "name"
+              FROM "USER" AS "user"
+              WHERE "user"."_id" = "Order"."userId"
+              LIMIT 1
+            )`),
+            "name",
           ],
-        },
-        where: {
-          storeId,
-          ...(status && { status }),
-          ...(orderId && { order_id: orderId }),
-          ...(from &&
-            to && {
-              createdAt: {
-                [Op.and]: [
-                  { [Op.gte]: new Date(from) },
-                  { [Op.lte]: new Date(to).setHours(23, 59, 59, 999) },
-                ],
-              },
-            }),
-        },
+        ],
+        where: whereConditions,
         order: [["createdAt", pageOptionsDto.order]],
         limit,
         offset,
-        include: [{ model: User, required: true, attributes: [] }],
       });
+
       return new DataResponseDto(rows, true, "Success", pageOptionsDto, count);
     } catch (err) {
       if (err instanceof HttpException) throw err;

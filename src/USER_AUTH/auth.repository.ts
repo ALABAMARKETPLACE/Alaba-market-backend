@@ -6,6 +6,8 @@ import { generateFromEmail } from "unique-username-generator";
 import { signup_Request } from "./dto/signup.dto";
 import { Role } from "../shared/enum/role.enum";
 import { Store } from "../STORE/store.entity";
+import { DeliveryCompany } from "../DELIVERY_COMPANY/delivery_company.entity";
+import { Driver } from "../DELIVERY_COMPANY/driver.entity";
 
 @Injectable()
 export class AuthRepository {
@@ -33,6 +35,18 @@ export class AuthRepository {
                 `(SELECT COUNT(id) FROM "NOTIFICATIONS" WHERE "NOTIFICATIONS"."userId"="User"."_id")`
               ),
               "notifications",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT id FROM "DELIVERY_COMPANY" WHERE "DELIVERY_COMPANY"."user_id"="User"."_id" LIMIT 1)`
+              ),
+              "delivery_company_id",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT id FROM "DRIVER" WHERE "DRIVER"."user_id"="User"."_id" LIMIT 1)`
+              ),
+              "driver_id",
             ],
           ],
         },
@@ -74,6 +88,18 @@ export class AuthRepository {
                 `(SELECT COUNT(id) FROM "NOTIFICATIONS" WHERE "NOTIFICATIONS"."userId"="User"."_id")`
               ),
               "notifications",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT id FROM "DELIVERY_COMPANY" WHERE "DELIVERY_COMPANY"."user_id"="User"."_id" LIMIT 1)`
+              ),
+              "delivery_company_id",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT id FROM "DRIVER" WHERE "DRIVER"."user_id"="User"."_id" LIMIT 1)`
+              ),
+              "driver_id",
             ],
           ],
         },

@@ -20,6 +20,7 @@ import { Store } from "../STORE/store.entity";
 import { StoreReview } from "../STORE_REVIEW/storereview.entity";
 import { OrderItem } from "sequelize";
 import { OrderSubstitution } from "../ORDER_SUBSTITUTION/substitution.entity";
+import { DeliveryCompany } from "../DELIVERY_COMPANY/delivery_company.entity";
 @Table({ tableName: "ORDER" })
 export class Order extends Model<Order> {
   @PrimaryKey
@@ -36,6 +37,10 @@ export class Order extends Model<Order> {
 
   @Column({ type: DataType.INTEGER, allowNull: false })
   storeId: number;
+
+  @ForeignKey(() => DeliveryCompany)
+  @Column({ type: DataType.BIGINT, allowNull: true, comment: "Assigned delivery company" })
+  delivery_company_id: number;
 
   @Column({
     type: DataType.BIGINT,
@@ -81,6 +86,7 @@ export class Order extends Model<Order> {
         "failed",
         "substitution",
         "waiting_refund",
+        "picked_up",
       ],
     ],
   })
@@ -113,11 +119,56 @@ export class Order extends Model<Order> {
   @Column({ type: DataType.JSON })
   products: JSON;
 
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+    comment: "Order OTP for delivery verification - auto-generated when customer places order"
+  })
+  order_otp: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+    comment: "Pickup code for store pickup verification - auto-generated when customer places order"
+  })
+  pickup_code: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+    comment: "Product image URL uploaded during pickup"
+  })
+  pickup_image: string;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+    comment: "Description provided during pickup"
+  })
+  pickup_description: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+    comment: "Image URL uploaded during delivery confirmation"
+  })
+  delivery_image: string;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+    comment: "Description provided during delivery confirmation"
+  })
+  delivery_description: string;
+
   @BelongsTo(() => User)
   userDetails: User;
 
   @BelongsTo(() => Store, { foreignKey: 'storeId', constraints: false })
   storeDetails: Store;
+
+  @BelongsTo(() => DeliveryCompany, { foreignKey: 'delivery_company_id', constraints: false })
+  deliveryCompany: DeliveryCompany;
 
   @HasOne(() => OrderPayments, { onDelete: "cascade", hooks: true })
   orderPayment: OrderPayments;

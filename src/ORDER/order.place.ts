@@ -270,6 +270,12 @@ export class OrderPlaceService {
         storeDeliveryCharge = verified?.data?.amount ?? 0;
       }
 
+      // Generate pickup code (6-digit random number)
+      const pickupCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+      // Generate order OTP (6-digit random number) for delivery verification
+      const orderOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
       const newOrder = await Order.create(
         {
           userId,
@@ -283,6 +289,8 @@ export class OrderPlaceService {
           tax: verified?.data?.tax ?? 0,
           deliveryCharge: storeDeliveryCharge,
           discount: storeDiscount,
+          pickup_code: pickupCode,
+          order_otp: orderOtp,
         },
         { transaction }
       );

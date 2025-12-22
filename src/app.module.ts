@@ -68,6 +68,7 @@ import { NewAddressModule } from "./NEW_ADDRESS/newaddress.module";
 import { SubscriptionPlanModule } from "./SUBSCRIPTION_PLANS/subscription-plan.module";
 import { BoostRequestModule } from "./BOOST_REQUESTS/boost-request.module";
 import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.module";
+import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.module";
 @Module({
   imports: [
     DatabaseModule,
@@ -142,6 +143,7 @@ import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.mo
     SubscriptionPlanModule,
     BoostRequestModule,
     FeaturedProductsModule,
+    DeliveryCompanyModule,
   ],
   controllers: [],
   providers: [],
