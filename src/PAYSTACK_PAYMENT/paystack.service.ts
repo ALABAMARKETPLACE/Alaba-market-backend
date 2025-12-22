@@ -27,8 +27,8 @@ import { PaystackWebhookDto } from "./dto/paystack-webhook.dto";
 import { Store } from "../STORE/store.entity";
 import { PaymentSplitService } from "../PAYMENT_SPLITS/payment-split.service";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
-import { OrderStatus } from "src/ORDER_STATUS/order_status.entity";
-import { Order } from "src/ORDER/order.entity";
+import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
+import { Order } from "../ORDER/order.entity";
 
 @Injectable()
 export class PaystackService {
