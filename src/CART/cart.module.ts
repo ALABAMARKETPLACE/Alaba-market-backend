@@ -1,13 +1,16 @@
 import { Module } from "@nestjs/common";
 import { CartController } from "./cart.controller";
 import { CartServices } from "./cart.services";
-import { CartProvider } from "./cart.provider";
 import { CartRepository } from "./cart.repository";
+import { SequelizeModule } from "@nestjs/sequelize";
+import { CartTable } from "./cart.entity";
 
 @Module({
-  imports: [],
+  imports: [
+    SequelizeModule.forFeature([CartTable]),
+  ],
   controllers: [CartController],
-  providers: [CartServices, CartRepository, ...CartProvider],
+  providers: [CartServices, CartRepository],
   exports: [CartServices],
 })
 export class CartModule {}

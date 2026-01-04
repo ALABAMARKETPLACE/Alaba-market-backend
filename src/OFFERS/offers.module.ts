@@ -1,13 +1,14 @@
 import { Module } from "@nestjs/common";
 import { OffersController } from "./offers.controller";
 import { OffersService } from "./offers.service";
-import { OffersProvider } from "./offers.provider";
 import { SlugifyProvider } from "../shared/providers/slugify.provider";
+import { SequelizeModule } from "@nestjs/sequelize";
+import { Offers } from "./offers.entity";
 
 @Module({
-  imports: [],
+  imports: [SequelizeModule.forFeature([Offers])],
   controllers: [OffersController],
-  providers: [OffersService, ...OffersProvider, ...SlugifyProvider],
+  providers: [OffersService, ...SlugifyProvider],
   exports: [OffersService],
 })
 export class OffersModule {}

@@ -1,10 +1,10 @@
 import {
   HttpException,
   HttpStatus,
-  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Inject,
 } from "@nestjs/common";
 import { Offers } from "./offers.entity";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -14,15 +14,15 @@ import { OffersDto } from "./dto/offers.dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
 import { Products } from "../PRODUCTS/products.entity";
 import { OfferProducts } from "../OFFER_PRODUCTS/offer_products.entity";
-import sequelize, { Op, Sequelize } from "sequelize";
+import { Op } from "sequelize";
+import { InjectModel } from "@nestjs/sequelize";
 import { OffersQueryDto } from "./dto/query.dto";
 import { Role } from "../shared/enum/role.enum";
 @Injectable()
 export class OffersService {
   constructor(
-    @Inject("OffersRepository")
+    @InjectModel(Offers)
     private readonly OffersRepository: typeof Offers,
-    @Inject("SEQUELIZE") private readonly sequelize: Sequelize,
     @Inject("Slugify") private readonly slugify: (slug: string) => string
   ) {}
   async getOne(slug: string) {
@@ -112,7 +112,7 @@ export class OffersService {
 
   async create(body: CreateOffersDto) {
     try {
-      const result = await this.sequelize.transaction(async (t) => {
+      const result = await this.OffersRepository.sequelize.transaction(async (t) => {
         const created = await this.OffersRepository.create(
           {
             start_date: body.start_date,
@@ -143,7 +143,7 @@ export class OffersService {
 
   async update(id: number, body: UpdateOffersDto) {
     try {
-      const result = await this.sequelize.transaction(async (transaction) => {
+      const result = await this.OffersRepository.sequelize.transaction(async (transaction) => {
         const [updated, [offer]] = await this.OffersRepository.update(
           {
             ...body,

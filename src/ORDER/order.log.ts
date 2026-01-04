@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   HttpException,
-  Inject,
   Injectable,
   InternalServerErrorException,
 } from "@nestjs/common";
@@ -19,7 +18,8 @@ import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced"
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { ToUserOrderFailed } from "../MAILS/templates/orders/user_order_failed";
 import { Order } from "./order.entity";
-import { Sequelize, Transaction, ValidationError } from "sequelize";
+import { Transaction, ValidationError } from "sequelize";
+import { InjectModel } from "@nestjs/sequelize";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import { PaymentGateWayService } from "../PAYMENT_GATEWAY/payment_gateway.service";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
@@ -36,7 +36,8 @@ import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 @Injectable()
 export class OrderLogService {
   constructor(
-    @Inject("SEQUELIZE") private readonly sequelize: Sequelize,
+    @InjectModel(Order)
+    private readonly orderRepository: typeof Order,
     private readonly paymentGatewayService: PaymentGateWayService,
     private readonly paystackService: PaystackService,
     private readonly notificationService: NotificationsService,
@@ -46,7 +47,7 @@ export class OrderLogService {
 
   async create(userId: number, data: CreateOrderDto, remark: string) {
     try {
-      const result = await this.sequelize.transaction(async (t) => {
+      const result = await this.orderRepository.sequelize.transaction(async (t) => {
         const newOrders = [];
         const verified = await this.basicCheck(data);
         const products = await this.groupProducts(data.cart, t);

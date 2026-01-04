@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   HttpException,
-  Inject,
   Injectable,
   InternalServerErrorException,
   NotAcceptableException,
@@ -10,7 +9,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { Sequelize, Transaction } from "sequelize";
+import { Transaction } from "sequelize";
+import { InjectModel } from "@nestjs/sequelize";
 import { Address } from "../ADDRESS/address.entity";
 import { CartServices } from "../CART/cart.services";
 import { MailService } from "../MAILS/Mails.services";
@@ -43,7 +43,8 @@ import { ExceptionsHandler } from "@nestjs/core/exceptions/exceptions-handler";
 @Injectable()
 export class PrintPlaceService {
   constructor(
-    @Inject("SEQUELIZE") private readonly sequelize: Sequelize,
+    @InjectModel(Print)
+    private readonly printRepository: typeof Print,
     private readonly paymentGatewayService: PaymentGateWayService,
     private readonly cartService: CartServices,
     private readonly notificationService: NotificationsService,
@@ -54,7 +55,7 @@ export class PrintPlaceService {
 
   async create(userId: number, data: CreatePrintDto) {
     try {
-      const result = await this.sequelize.transaction(async (t) => {
+      const result = await this.printRepository.sequelize.transaction(async (t) => {
         const newPrints = [];
         const verified = await this.basicCheck(data);
         const products = await this.groupProducts(

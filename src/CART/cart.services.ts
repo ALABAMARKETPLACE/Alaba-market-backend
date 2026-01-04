@@ -13,12 +13,13 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { CartRepository } from "./cart.repository";
 import { Products } from "../PRODUCTS/products.entity";
 import { CartDataResponseDto } from "./dto/cart.dto";
+import { InjectModel } from "@nestjs/sequelize";
 
 @Injectable()
 export class CartServices {
   constructor(
     private readonly cartRepo: CartRepository,
-    @Inject("cartRepository")
+    @InjectModel(CartTable)
     private readonly cartRepository: typeof CartTable
   ) {}
 

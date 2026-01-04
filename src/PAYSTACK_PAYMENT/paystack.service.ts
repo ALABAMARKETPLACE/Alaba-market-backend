@@ -2,8 +2,8 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
-  Inject,
 } from "@nestjs/common";
+import { InjectModel } from "@nestjs/sequelize";
 import { HttpService } from "@nestjs/axios";
 import { catchError, lastValueFrom, map } from "rxjs";
 import * as crypto from "crypto";
@@ -37,10 +37,7 @@ export class PaystackService {
   constructor(
     private readonly httpService: HttpService,
 
-    @Inject("SEQUELIZE")
-    private readonly sequelize: Sequelize,
-
-    @Inject("StoreRepository")
+    @InjectModel(Store)
     private readonly storeRepository: typeof Store,
 
     private readonly paymentSplitService: PaymentSplitService
@@ -214,7 +211,7 @@ export class PaystackService {
      SUCCESS HANDLER (ATOMIC)
   ---------------------------------------------------- */
   private async handleSuccessfulPayment(paymentData: any): Promise<void> {
-    await this.sequelize.transaction(async (t: Transaction) => {
+    await OrderPayments.sequelize.transaction(async (t: Transaction) => {
       const payment = await OrderPayments.findOne({
         where: { ref: paymentData.reference },
         transaction: t,
@@ -257,7 +254,7 @@ export class PaystackService {
      FAILED HANDLER (ATOMIC)
   ---------------------------------------------------- */
   private async handleFailedPayment(paymentData: any): Promise<void> {
-    await this.sequelize.transaction(async (t: Transaction) => {
+    await OrderPayments.sequelize.transaction(async (t: Transaction) => {
       const payment = await OrderPayments.findOne({
         where: { ref: paymentData.reference },
         transaction: t,

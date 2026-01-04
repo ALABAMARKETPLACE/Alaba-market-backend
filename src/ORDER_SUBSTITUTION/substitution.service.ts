@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   HttpException,
-  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -12,7 +11,8 @@ import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { CreateSubstitutionDto } from "./dto/create.dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
-import { Op, Sequelize, Transaction, literal, or, where } from "sequelize";
+import { Op, Transaction, literal, or, where } from "sequelize";
+import { InjectModel } from "@nestjs/sequelize";
 import { SubstituteProducts } from "./substitute.products.entity";
 import { Order } from "../ORDER/order.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
@@ -31,11 +31,10 @@ import { error } from "console";
 @Injectable()
 export class OrderSubstitutionService {
   constructor(
-    @Inject("substitutionRepository")
+    @InjectModel(OrderSubstitution)
     private readonly repository: typeof OrderSubstitution,
-    @Inject("substitutionProductsRepo")
+    @InjectModel(SubstituteProducts)
     private readonly productrepo: typeof SubstituteProducts,
-    @Inject("SEQUELIZE") private readonly sequelize: Sequelize,
     private readonly tokenGateway: TokenGateway,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService
@@ -44,7 +43,7 @@ export class OrderSubstitutionService {
   async create(data: CreateSubstitutionDto, storeId: number) {
     try {
       console.log("this is the data i get", data, storeId);
-      const result = await this.sequelize.transaction(async (transaction) => {
+      const result = await this.repository.sequelize.transaction(async (transaction) => {
         const orderItems: any = await OrderItems.findOne({
           where: { id: data.orderItemId },
           include: [
@@ -64,7 +63,7 @@ export class OrderSubstitutionService {
         console.log("orderItems.quantity", orderItems.quantity);
         const newone = await this.repository.create(
           {
-            orderId: Sequelize.literal(
+            orderId: literal(
               `(SELECT "id" FROM "ORDER" WHERE "order_id" = ${data.orderId})`
             ),
 
@@ -286,7 +285,7 @@ export class OrderSubstitutionService {
   //   productId: UUID
   // ) {
   //   try {
-  //     const result = await this.sequelize.transaction(async (transaction) => {
+  //     const result = await this.repository.sequelize.transaction(async (transaction) => {
   //       let total = 0;
   //       let quantity = 0;
   //       const substitution = await this.repository.findOne({
@@ -416,7 +415,7 @@ export class OrderSubstitutionService {
     productId: UUID
   ) {
     try {
-      const result = await this.sequelize.transaction(async (transaction) => {
+      const result = await this.repository.sequelize.transaction(async (transaction) => {
         let total = 0;
         let quantity = 0;
         
@@ -546,7 +545,7 @@ export class OrderSubstitutionService {
 
   async updateOrder(userId: number, substituteId: number) {
     try {
-      const result = await this.sequelize.transaction(async (transaction) => {
+      const result = await this.repository.sequelize.transaction(async (transaction) => {
         let total = 0;
         let quantity = 0;
         const substitution = await this.repository.findOne({

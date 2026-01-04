@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, Inject } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { CartTable } from "./cart.entity";
 import { Sequelize, Transaction } from "sequelize";
+import { InjectModel } from "@nestjs/sequelize";
 import { Products } from "../PRODUCTS/products.entity";
 import { Store } from "../STORE/store.entity";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
@@ -10,9 +11,8 @@ import { escape } from "querystring";
 @Injectable()
 export class CartRepository {
   constructor(
-    @Inject("cartRepository")
-    private readonly cartRepository: typeof CartTable,
-    @Inject("SEQUELIZE") private readonly sequelize: Sequelize
+    @InjectModel(CartTable)
+    private readonly cartRepository: typeof CartTable
   ) {}
   async deleteCart(userId: number, id: number) {
     try {
@@ -144,7 +144,7 @@ export class CartRepository {
   }
   async updateCart(where, quantity: number, transaction: Transaction) {
     try {
-      const [data] = await this.sequelize.query(
+      const [data] = await this.cartRepository.sequelize.query(
         `UPDATE "CART"
       SET "quantity" = GREATEST(0, LEAST("CART"."quantity" + ?, "PRODUCTS"."unit"))
       FROM "PRODUCTS"

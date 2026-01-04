@@ -2,9 +2,10 @@ import {
   Injectable,
   HttpException,
   HttpStatus,
-  Inject,
+  // Inject,
   InternalServerErrorException,
 } from "@nestjs/common";
+import { InjectModel } from "@nestjs/sequelize";
 import { PaystackSubaccount } from "./paystack-subaccount.entity";
 import { Store } from "../STORE/store.entity";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -19,12 +20,14 @@ export class PaystackSubaccountService {
   private readonly paystackBaseUrl = "https://api.paystack.co";
 
   constructor(
-    @Inject("PaystackSubaccountRepository")
-    private readonly paystackSubaccountRepository: typeof PaystackSubaccount,
-    @Inject("StoreRepository")
-    private readonly storeRepository: typeof Store,
-    private readonly httpService: HttpService
-  ) {}
+  @InjectModel(PaystackSubaccount)
+  private readonly paystackSubaccountRepository: typeof PaystackSubaccount,
+
+  @InjectModel(Store)
+  private readonly storeRepository: typeof Store,
+
+  private readonly httpService: HttpService,
+) {}
 
   // Generate provisional subaccount code
   private generateProvisionalCode(): string {
@@ -244,8 +247,13 @@ export class PaystackSubaccountService {
         true,
         "Pending subaccounts fetched successfully"
       );
-    } catch (err) {
-      throw new InternalServerErrorException(getErrorMessage(err));
+    } 
+    // catch (err) {
+    //   throw new InternalServerErrorException(getErrorMessage(err));
+    // }
+      catch (error) {
+      console.error("ERROR in getPendingSubaccounts:", error);
+      throw error; // rethrow so Nest handles it
     }
   }
 
