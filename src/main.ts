@@ -1,63 +1,94 @@
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./app.module";
-import { Logger, ValidationPipe } from "@nestjs/common";
-import { setupSwagger } from "./swagger";
-import * as dotenv from "dotenv";
-import * as path from "path";
-import * as bodyParser from "body-parser";
-//test
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { setupSwagger } from './swagger';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+import * as bodyParser from 'body-parser';
+import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
+
+// Catch crashes OUTSIDE Nest (very important for PM2)
+process.on('unhandledRejection', (reason: any) => {
+  console.error('🔥 UNHANDLED REJECTION:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('🔥 UNCAUGHT EXCEPTION:', error);
+});
+
 async function bootstrap() {
-  //env config...===============================================
-  dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
-  const environment = process.env.NODE_ENV || ".env.development";
-  const envFilePath = path.resolve(__dirname, "..", `.env.${environment}`);
-  dotenv.config({ path: envFilePath });
-  //==============================================================
-  const logger = new Logger(process.env.NAME);
-  const app = await NestFactory.create(AppModule);
+  // ================= ENV CONFIG =================
+  const NODE_ENV = process.env.NODE_ENV || 'development';
+  const envPath = path.resolve(__dirname, '..', `.env.${NODE_ENV}`);
+  dotenv.config({ path: envPath });
+  // =============================================
+
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+  });
+
+  const logger = new Logger(process.env.NAME || 'NestApp');
+
+  // ================= GLOBAL FILTERS =================
+  app.useGlobalFilters(new AllExceptionsFilter());
+  // ==================================================
+
+  // ================= GLOBAL PIPES ===================
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
-    })
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
   );
-  setupSwagger(app);
+  // ==================================================
+
+  // ================= BODY LIMITS ====================
+  app.use(bodyParser.json({ limit: '50mb' }));
+  app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+  // ==================================================
+
+  // ================= CORS ===========================
   app.enableCors({
     origin: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: "*",
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: '*',
   });
-  
-  // Add comprehensive request logging for debugging
+  // ==================================================
+
+  // ================= REQUEST LOGGER =================
   app.use((req: any, res: any, next: any) => {
-    console.log('=== INCOMING REQUEST ===');
+    console.log('\n=== INCOMING REQUEST ===');
     console.log(`Method: ${req.method}`);
-    console.log(`URL: ${req.url}`);
+    console.log(`URL: ${req.originalUrl}`);
     console.log(`Origin: ${req.headers.origin}`);
     console.log(`User-Agent: ${req.headers['user-agent']}`);
     console.log(`Content-Type: ${req.headers['content-type']}`);
-    console.log(`Authorization: ${req.headers.authorization ? 'Present' : 'Not present'}`);
-    
-    if (req.url.includes('/auth/login')) {
-      console.log('=== AUTH LOGIN REQUEST ===');
-      console.log(`Body:`, req.body);
-      console.log(`Headers:`, JSON.stringify(req.headers, null, 2));
-    }
-    
+    console.log(
+      `Authorization: ${req.headers.authorization ? 'Present' : 'Not present'}`,
+    );
+
     res.on('finish', () => {
       console.log(`Response Status: ${res.statusCode}`);
       console.log('=== REQUEST COMPLETE ===\n');
     });
-    
+
     next();
   });
-  app.use(bodyParser.json({ limit: "50mb" }));
-  app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
-  await app.listen(process.env.PORT, "0.0.0.0", () =>
+  // ==================================================
+
+  // ================= SWAGGER ========================
+  setupSwagger(app);
+  // ==================================================
+
+  const PORT = Number(process.env.PORT) || 8000;
+
+  await app.listen(PORT, '0.0.0.0', () => {
     logger.log(
-      `server is running on port ${process.env.PORT} ${process.env.NODE_ENV}`
-    )
-  );
+      `🚀 Server running on port ${PORT} | ENV: ${NODE_ENV}`,
+    );
+  });
 }
-//test
+
 bootstrap();
