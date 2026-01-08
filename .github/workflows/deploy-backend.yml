@@ -38,12 +38,19 @@ jobs:
           ssh ${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }} << 'EOF'
           set -e
 
+          # ---- LOAD NVM (CRITICAL FIX) ----
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+          # Ensure correct Node version
+          nvm use 20.19.6
+
           cd /home/alabamarketplace_prod_user/alaba-marketplace-production/server
 
           npm install --legacy-peer-deps
           npm run build
 
-          PM2="/home/alabamarketplace_prod_user/.nvm/versions/node/v20.19.6/bin/pm2"
+          PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
           $PM2 delete alabamarketplace-api || true
 
@@ -54,4 +61,3 @@ jobs:
 
           $PM2 save
           EOF
-
