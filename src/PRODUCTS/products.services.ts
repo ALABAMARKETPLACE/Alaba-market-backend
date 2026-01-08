@@ -73,9 +73,15 @@ export class ProductsService {
           if (!coverImage?.url) {
             throw new BadRequestException("Cover image not found.");
           }
+
+          const imageLocation =
+          typeof coverImage.url === "string"
+            ? coverImage.url
+            : coverImage.url?.Location ?? "";
+
           const newP = {
             name: information?.name,
-            image: coverImage?.url?.Location ?? "",
+            image: imageLocation,
             bar_code: information?.bar_code,
             sku: information?.sku,
             brand: information?.brand,
