@@ -1,11 +1,9 @@
-name: Deploy Backend (Server API)
+name: Deploy Backend (Production API)
 
 on:
   push:
     branches:
       - main
-      - Master
-      - dev
 
 jobs:
   deploy:
@@ -23,7 +21,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ vars.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Sync backend source onlyy
+      - name: Sync backend source (production)
         run: |
           rsync -avz --delete \
             --exclude node_modules \
@@ -33,15 +31,27 @@ jobs:
             --exclude .github \
             --exclude .gitignore \
             . \
-            ${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}:/home/alabamarketplace_user/alaba-marketplace/server/
+            ${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }}:/home/alabamarketplace_prod_user/alaba-marketplace-production/server/
 
-      - name: Build & restart backend on server
+      - name: Build & restart backend (PM2, no ecosystem)
         run: |
           ssh ${{ vars.SERVER_USER }}@${{ vars.SERVER_HOST }} << 'EOF'
           set -e
-          cd /home/alabamarketplace_user/alaba-marketplace/server
+
+          cd /home/alabamarketplace_prod_user/alaba-marketplace-production/server
+
           npm install --legacy-peer-deps
           npm run build
-          /home/alabamarketplace_user/.nvm/versions/node/v20.19.6/bin/pm2 reload ../ecosystem.config.js --only alabamarketplace-backend \
-          || /home/alabamarketplace_user/.nvm/versions/node/v20.19.6/bin/pm2 start ../ecosystem.config.js
+
+          PM2="/home/alabamarketplace_prod_user/.nvm/versions/node/v20.19.6/bin/pm2"
+
+          $PM2 delete alabamarketplace-api || true
+
+          $PM2 start dist/main.js \
+            --name alabamarketplace-api \
+            --env production \
+            --node-args="-r dotenv/config"
+
+          $PM2 save
           EOF
+
