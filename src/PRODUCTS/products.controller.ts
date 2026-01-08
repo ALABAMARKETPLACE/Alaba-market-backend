@@ -136,8 +136,11 @@ export class ProductsController {
   @HttpCode(201)
   create(
     @StoreId() storeId: number,
-    @Body() createProductsDto: ProductsPayloadDto
+    @Body() createProductsDto: ProductsPayloadDto,
+    @Req() req
   ): Promise<DataResponseDto> {
+    console.log("raw req.body:", req.body);
+    console.log("mapped DTO:", createProductsDto);
     return this.ProductsService.create(storeId, createProductsDto);
   }
 
