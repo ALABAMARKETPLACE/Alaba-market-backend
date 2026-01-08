@@ -9,11 +9,11 @@ import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 
 // Catch crashes OUTSIDE Nest (very important for PM2)
 process.on('unhandledRejection', (reason: any) => {
-  console.error('🔥 UNHANDLED REJECTION:', reason);
+  console.error('UNHANDLED REJECTION:', reason);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('🔥 UNCAUGHT EXCEPTION:', error);
+  console.error('UNCAUGHT EXCEPTION:', error);
 });
 
 async function bootstrap() {
@@ -37,8 +37,9 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
+      // Allow extra properties (e.g., nested image objects) to pass through
+      whitelist: false,
+      forbidNonWhitelisted: false,
     }),
   );
   // ==================================================
@@ -86,7 +87,7 @@ async function bootstrap() {
 
   await app.listen(PORT, '0.0.0.0', () => {
     logger.log(
-      `🚀 Server running on port ${PORT} | ENV: ${NODE_ENV}`,
+      `Server running on port ${PORT} | ENV: ${NODE_ENV}`,
     );
   });
 }
