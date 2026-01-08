@@ -70,6 +70,10 @@ export class ProductsService {
 
       const response = await this.ProductsRepository.sequelize.transaction(
         async (transaction: Transaction) => {
+
+          console.log("Cover image received:", coverImage);
+          console.log("coverImage.url:", coverImage?.url);
+          
           if (!coverImage?.url) {
             throw new BadRequestException("Cover image not found.");
           }
