@@ -834,7 +834,7 @@ export class StoreService {
       today.setHours(0, 0, 0, 0);
       const totalOrders = await Order.count({ where: { storeId: id } });
       const totalProducts = await Products.count({ where: { store_id: id } });
-      const orderTotal = await Order.sum("total", {
+      const orderTotal = await Order.sum("grandTotal", {
         where: { storeId: id, status: "delivered" },
       });
       const data = await Order.findAll({
