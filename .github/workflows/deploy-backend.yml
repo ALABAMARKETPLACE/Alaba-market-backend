@@ -1,4 +1,4 @@
-name: Deploy Backend  (API)
+name: Deploy Backend (API)
 
 on:
   push:
@@ -12,8 +12,12 @@ jobs:
     environment: ${{ github.ref_name == 'Master' && 'production' || 'development' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      # -------------------------------------------------
+      # Set environment variables (SAFE FOR MULTILINE)
+      # -------------------------------------------------
       - name: Setup environment variables
         run: |
           if [[ "${GITHUB_REF_NAME}" == "Master" ]]; then
@@ -21,22 +25,47 @@ jobs:
             echo "SERVER_USER=${{ vars.PROD_SERVER_USER }}" >> $GITHUB_ENV
             echo "API_DIR=/home/${{ vars.PROD_SERVER_USER }}/alaba-marketplace-production/server" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-api" >> $GITHUB_ENV
-            echo "SSH_KEY=${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
+
+            echo "SSH_KEY<<EOF" >> $GITHUB_ENV
+            echo "${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
           else
             echo "SERVER_HOST=${{ vars.DEV_SERVER_HOST }}" >> $GITHUB_ENV
             echo "SERVER_USER=${{ vars.DEV_SERVER_USER }}" >> $GITHUB_ENV
             echo "API_DIR=/home/${{ vars.DEV_SERVER_USER }}/alaba-marketplace/server" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-backend" >> $GITHUB_ENV
-            echo "SSH_KEY=${{ secrets.DEV_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
+
+            echo "SSH_KEY<<EOF" >> $GITHUB_ENV
+            echo "${{ secrets.DEV_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
           fi
 
+      # -------------------------------------------------
+      # DEBUG (SAFE — remove later if you want)
+      # -------------------------------------------------
+      - name: Debug injected values
+        run: |
+          echo "Branch: $GITHUB_REF_NAME"
+          echo "SERVER_HOST=${SERVER_HOST:-EMPTY}"
+          echo "SERVER_USER=${SERVER_USER:-EMPTY}"
+          echo "API_DIR=${API_DIR:-EMPTY}"
+          echo "SSH_KEY=${SSH_KEY:+SET}"
+
+      # -------------------------------------------------
+      # SSH SETUP (SAFE FOR MULTILINE KEYS)
+      # -------------------------------------------------
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          cat << 'EOF' > ~/.ssh/id_ed25519
+          $SSH_KEY
+          EOF
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H $SERVER_HOST >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
+      # -------------------------------------------------
+      # SYNC BACKEND SOURCE
+      # -------------------------------------------------
       - name: Sync backend source
         run: |
           rsync -avz --delete \
@@ -48,6 +77,9 @@ jobs:
             server/ \
             $SERVER_USER@$SERVER_HOST:$API_DIR/
 
+      # -------------------------------------------------
+      # BUILD & RESTART BACKEND
+      # -------------------------------------------------
       - name: Build & restart backend
         run: |
           ssh $SERVER_USER@$SERVER_HOST << 'EOF'
@@ -66,10 +98,10 @@ jobs:
             PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
             if $PM2 list | grep -q "$API_NAME"; then
-              $PM2 restart $API_NAME --update-env
+              $PM2 restart "$API_NAME" --update-env
             else
               $PM2 start dist/main.js \
-                --name $API_NAME \
+                --name "$API_NAME" \
                 --node-args="-r dotenv/config"
             fi
 
