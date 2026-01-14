@@ -29,7 +29,7 @@ export class Address extends Model<Address> {
   @Column({ type: DataType.STRING, allowNull: false })
   fullAddress: string;
 
-  @Column({ type: DataType.STRING(20) })
+  @Column({ type: DataType.STRING(20), allowNull: true })
   pin_code: string;
 
   @Column({ type: DataType.STRING(100), allowNull: false })
