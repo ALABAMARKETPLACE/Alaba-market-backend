@@ -11,29 +11,24 @@ on:
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'Master' && 'production' || 'development' }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set environment
+      - name: Setup environment variables
         run: |
           if [[ "${GITHUB_REF_NAME}" == "Master" ]]; then
             echo "SERVER_HOST=${{ vars.PROD_SERVER_HOST }}" >> $GITHUB_ENV
             echo "SERVER_USER=${{ vars.PROD_SERVER_USER }}" >> $GITHUB_ENV
             echo "API_DIR=/home/${{ vars.PROD_SERVER_USER }}/alaba-marketplace-production/server" >> $GITHUB_ENV
-            echo "API_NAME=alabamarketplace-apis" >> $GITHUB_ENV
-            echo "SSH_KEY<<EOF" >> $GITHUB_ENV
-            echo "${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            echo "API_NAME=alabamarketplace-api" >> $GITHUB_ENV
+            echo "SSH_KEY=${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
           else
             echo "SERVER_HOST=${{ vars.DEV_SERVER_HOST }}" >> $GITHUB_ENV
             echo "SERVER_USER=${{ vars.DEV_SERVER_USER }}" >> $GITHUB_ENV
             echo "API_DIR=/home/${{ vars.DEV_SERVER_USER }}/alaba-marketplace/server" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-backend" >> $GITHUB_ENV
-            echo "SSH_KEY<<EOF" >> $GITHUB_ENV
-            echo "${{ secrets.DEV_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+            echo "SSH_KEY=${{ secrets.DEV_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
           fi
 
       - name: Setup SSH
@@ -43,23 +38,41 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H $SERVER_HOST >> ~/.ssh/known_hosts
 
-      - name: Deploy backend
+      - name: Sync backend source
         run: |
-          ssh $SERVER_USER@$SERVER_HOST << EOF
+          rsync -avz --delete \
+            --exclude node_modules \
+            --exclude dist \
+            --exclude .env \
+            --exclude .git \
+            --exclude .github \
+            server/ \
+            $SERVER_USER@$SERVER_HOST:$API_DIR/
+
+      - name: Build & restart backend
+        run: |
+          ssh $SERVER_USER@$SERVER_HOST << 'EOF'
             set -e
+
+            # ---- Load NVM ----
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            nvm use 20.19.6
+
             cd $API_DIR
 
-            npm install
+            npm install --legacy-peer-deps
             npm run build
 
-            PM2="\$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
+            PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
-            if [[ "${GITHUB_REF_NAME}" == "Master" ]]; then
-              \$PM2 reload dist/main.js --name $API_NAME --node-args="-r dotenv/config"
+            if $PM2 list | grep -q "$API_NAME"; then
+              $PM2 restart $API_NAME --update-env
             else
-              \$PM2 reload ecosystem.config.js --only $API_NAME || \
-              \$PM2 start ecosystem.config.js
+              $PM2 start dist/main.js \
+                --name $API_NAME \
+                --node-args="-r dotenv/config"
             fi
 
-            \$PM2 save
+            $PM2 save
           EOF
