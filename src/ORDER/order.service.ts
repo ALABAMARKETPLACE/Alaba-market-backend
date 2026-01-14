@@ -143,7 +143,7 @@ export class OrderService {
         include: this.includeModals,
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
-      if (!order) if (!order) throw new NotFoundException();
+        if (!order) throw new NotFoundException();
       return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -247,19 +247,23 @@ export class OrderService {
   async findOrderByStore(storeId: number | undefined, pageOptionsDto: OrderSearchStoreDto) {
     const { from, to, status, orderId, offset, limit } = pageOptionsDto;
     try {
+      let dateFilter: any = null;
+      if (from && to) {
+        const startDate = new Date(from);
+        const endDate = new Date(to);
+        endDate.setHours(23, 59, 59, 999);
+        dateFilter = {
+          createdAt: {
+            [Op.and]: [{ [Op.gte]: startDate }, { [Op.lte]: endDate }],
+          },
+        };
+      }
+
       const whereConditions: any = {
         ...(storeId && { storeId }), // Only filter by storeId if provided (seller), otherwise show ALL (admin)
         ...(status && { status }),
         ...(orderId && { order_id: orderId }),
-        ...(from &&
-          to && {
-            createdAt: {
-              [Op.and]: [
-                { [Op.gte]: new Date(from) },
-                { [Op.lte]: new Date(to).setHours(23, 59, 59, 999) },
-              ],
-            },
-          }),
+        ...(dateFilter && dateFilter),
       };
 
       const { rows, count } = await this.OrderRepository.findAndCountAll({
