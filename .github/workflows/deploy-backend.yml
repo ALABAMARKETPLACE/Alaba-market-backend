@@ -9,6 +9,7 @@ on:
 jobs:
   deploy-backend:
     runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'Master' && 'production' || 'development' }}
 
     steps:
       - uses: actions/checkout@v4
