@@ -64,7 +64,7 @@ export class OrderController {
   //DEBUG: Get ALL orders without any filtering (for testing)
   @Get("all-orders-debug")
   async getAllOrdersDebug(@Query() query: any) {
-    console.log("🔍 [DEBUG] Getting ALL orders with query:", query);
+    console.log("[DEBUG] Getting ALL orders with query:", query);
     try {
       const orders = await this.orderService['OrderRepository'].findAll({
         attributes: ['id', 'order_id', 'status', 'storeId', 'userId', 'delivery_company_id', 'grandTotal', 'createdAt'],
@@ -73,7 +73,7 @@ export class OrderController {
         order: [['createdAt', 'DESC']],
       });
       const totalCount = await this.orderService['OrderRepository'].count();
-      console.log(`✅ Found ${totalCount} total orders, returning ${orders.length}`);
+      console.log(`Found ${totalCount} total orders, returning ${orders.length}`);
       return {
         status: true,
         data: orders,
@@ -84,7 +84,7 @@ export class OrderController {
         }
       };
     } catch (err) {
-      console.error("❌ Error:", err);
+      console.error("Error:", err);
       throw err;
     }
   }
@@ -246,10 +246,9 @@ export class OrderController {
   @ApiBearerAuth()
   updateStatus(
     @Param("id", ParseIntPipe) orderId: number,
-    @StoreId() storeId: number,
     @Body() create: UpdateOrderStatus
   ): Promise<DataResponseDto> {
-    return this.orderService.updateOrder(storeId, orderId, create);
+    return this.orderService.updateOrder(orderId, create);
   }
 
   @Roles(Role.Seller, Role.Admin)
