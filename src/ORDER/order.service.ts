@@ -397,18 +397,15 @@ export class OrderService {
   // }
 
   async updateOrder(
-  orderId: number,
+  id: number,
   data: UpdateOrderStatus
   ) {
     try {
       const result = await this.OrderRepository.sequelize.transaction(
         async (transaction: Transaction) => {
 
-          //Find order by BUSINESS order_id (not DB id)
-          const order: any = await this.OrderRepository.findOne({
-            where: {
-              order_id: orderId,
-            },
+          // Find order by DB PRIMARY KEY (id)
+          const order: any = await this.OrderRepository.findByPk(id, {
             transaction,
           });
 
@@ -416,7 +413,7 @@ export class OrderService {
             throw new NotFoundException("Order not found");
           }
 
-          //Block terminal statuses
+          // Block terminal statuses
           const terminalStatuses = [
             "failed",
             "delivered",
@@ -466,7 +463,7 @@ export class OrderService {
               "order",
               `Your order has been delivered. Thank you for shopping with ${process.env.NAME}`,
               "Order Delivered",
-              order.order_id,
+              order.order_id, // business ID is fine for notifications
               order.userId
             );
           }
@@ -510,6 +507,7 @@ export class OrderService {
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
+
 
   async cancelOrder(userId: number, id: number, data: CancelOrderDto) {
     try {

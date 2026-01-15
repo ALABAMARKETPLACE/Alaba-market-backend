@@ -237,18 +237,22 @@ export class OrderController {
   }
 
   //to update order status only for sellers
-  @Roles(Role.Seller, Role.Admin)
+ @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Put("update_status/:id")
   @ApiDataObjectResponse(OrderDto)
-  @ApiParam({ name: "id", required: true })
+  @ApiParam({
+    name: "id",
+    required: true,
+    description: "Database primary key of the order",
+  })
   @HttpCode(201)
   @ApiBearerAuth()
   updateStatus(
-    @Param("id", ParseIntPipe) orderId: number,
+    @Param("id", ParseIntPipe) id: number,
     @Body() create: UpdateOrderStatus
   ): Promise<DataResponseDto> {
-    return this.orderService.updateOrder(orderId, create);
+    return this.orderService.updateOrder(id, create);
   }
 
   @Roles(Role.Seller, Role.Admin)
