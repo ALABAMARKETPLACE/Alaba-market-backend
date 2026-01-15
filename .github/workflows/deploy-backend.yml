@@ -19,14 +19,12 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------
-      # DEBUG WORKSPACE (VERY IMPORTANT)
+      # DEBUG WORKSPACE (SAFE TO REMOVE LATER)
       # -------------------------------------------------
       - name: Debug workspace
         run: |
           pwd
           ls -la
-          echo "---- server directory ----"
-          ls -la ./server || echo "❌ server directory not found"
 
       # -------------------------------------------------
       # SET ENVIRONMENT VARIABLES
