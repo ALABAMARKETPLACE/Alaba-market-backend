@@ -638,35 +638,51 @@ export class OrderService {
     }
   }
 
+  // async getStoreOrders(storeId: number) {
+  //   try {
+  //     const attributes: any[] = [
+  //       "pending",
+  //       "cancelled",
+  //       "shipped",
+  //       "out_for_delivery",
+  //       "packed",
+  //       "delivered",
+  //       "rejected",
+  //       "processing",
+  //       "failed",
+  //     ].map((item) => [
+  //       Sequelize.fn(
+  //         "count",
+  //         Sequelize.literal(`CASE WHEN status = '${item}' THEN 1 ELSE null END`)
+  //       ),
+  //       `${item}Orders`,
+  //     ]);
+  //     const order = await this.OrderRepository.findOne({
+  //       where: {
+  //         storeId,
+  //       },
+  //       attributes: [
+  //         ...attributes,
+  //         [Sequelize.fn("count", "*"), "totalOrders"],
+  //       ],
+  //     });
+  //     return new DataResponseDto(order, true, "Succesfull");
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
   async getStoreOrders(storeId: number) {
     try {
-      const attributes: any[] = [
-        "pending",
-        "cancelled",
-        "shipped",
-        "out_for_delivery",
-        "packed",
-        "delivered",
-        "rejected",
-        "processing",
-        "failed",
-      ].map((item) => [
-        Sequelize.fn(
-          "count",
-          Sequelize.literal(`CASE WHEN status = '${item}' THEN 1 ELSE null END`)
-        ),
-        `${item}Orders`,
-      ]);
-      const order = await this.OrderRepository.findOne({
+      const orders = await this.OrderRepository.findAll({
         where: {
           storeId,
         },
-        attributes: [
-          ...attributes,
-          [Sequelize.fn("count", "*"), "totalOrders"],
-        ],
+        order: [["createdAt", "DESC"]],
       });
-      return new DataResponseDto(order, true, "Succesfull");
+
+      return new DataResponseDto(orders, true, "Successful");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
