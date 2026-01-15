@@ -673,12 +673,9 @@ export class OrderService {
   //   }
   // }
 
-  async getStoreOrders(storeId: number) {
+    async getAllOrders() {
     try {
       const orders = await this.OrderRepository.findAll({
-        where: {
-          storeId,
-        },
         order: [["createdAt", "DESC"]],
       });
 

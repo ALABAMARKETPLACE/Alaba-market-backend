@@ -110,13 +110,24 @@ export class OrderController {
   }
 
   //get all orders grouped by their statsu and count for seller
+  // @Roles(Role.Seller, Role.Admin)
+  // @UseGuards(AuthGuard)
+  // @Get("getall")
+  // @ApiBearerAuth()
+  // @ApiDataObjectResponse([OrderDto])
+  // @HttpCode(200)
+  // getOrders(): Promise<DataResponseDto> {
+  //   return this.orderService.getAllOrders();
+  // }
+
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Get("getall")
-  @ApiDataObjectResponse(OrderDto)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: OrderDto, isArray: true })
   @HttpCode(200)
-  getOrders(@StoreId() storeId: number): Promise<DataResponseDto> {
-    return this.orderService.getStoreOrders(storeId);
+  getOrders(): Promise<DataResponseDto> {
+    return this.orderService.getAllOrders();
   }
 
   //get all orders grouped by their statsu and count for seller
