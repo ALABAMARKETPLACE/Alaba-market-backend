@@ -15,6 +15,7 @@ import { SettlementsQueryDto } from "./dto/queryDto.dto";
 import { Settlements } from "./settlements.entity";
 import { Store } from "../STORE/store.entity";
 import { UserBankAccount } from "../USER_BANK_ACCOUNTS/user_bank_accounts.entity";
+@Injectable()
 export class SettlementsService {
   constructor(
     @Inject("SettlementsRepository")
