@@ -49,11 +49,12 @@ export class SettlementsController {
   @HttpCode(200)
   @UsePipes(new ValidationPipe({ transform: true }))
   getHistory(
-    @StoreId() storeId: number,
-    @Query() pageOptions: SettlementsQueryDto
+    @StoreId() storeId?: number,
+    @Query() pageOptions?: SettlementsQueryDto
   ): Promise<DataResponseDto> {
     return this.settlementsService.findAll(storeId, pageOptions);
   }
+  
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @ApiBearerAuth()

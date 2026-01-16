@@ -24,19 +24,24 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(storeId: number, pageOptions: SettlementsQueryDto) {
+  async findAll(storeId?: number, pageOptions?: SettlementsQueryDto) {
     try {
-      const { offset, limit, settle_status } = pageOptions;
+      const { offset, limit, settle_status } = pageOptions || {};
       const result = await this.SettlementsRepository.sequelize.transaction(
         async (transaction: Transaction) => {
+          const whereClause: any = {
+            ...(settle_status && { status: settle_status }),
+          };
+
+          if (storeId !== undefined && storeId !== null) {
+            whereClause.storeId = storeId;
+          }
+
           const datas = await this.SettlementsRepository.findAndCountAll({
             limit,
             offset,
             order: [["updatedAt", "DESC"]],
-            where: {
-              storeId,
-              ...(settle_status && { status: settle_status }),
-            },
+            where: whereClause,
             include: [
               { model: Store, attributes: ["store_name"] },
               {
