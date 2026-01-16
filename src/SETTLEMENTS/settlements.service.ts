@@ -15,6 +15,7 @@ import { SettlementsQueryDto } from "./dto/queryDto.dto";
 import { Settlements } from "./settlements.entity";
 import { Store } from "../STORE/store.entity";
 import { UserBankAccount } from "../USER_BANK_ACCOUNTS/user_bank_accounts.entity";
+import { Role } from "../shared/enum/role.enum";
 @Injectable()
 export class SettlementsService {
   constructor(
@@ -24,38 +25,39 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(storeId?: number, pageOptions?: SettlementsQueryDto) {
+  async findAll(user: any, pageOptions: SettlementsQueryDto) {
     try {
-      const { offset, limit, settle_status } = pageOptions || {};
-      const result = await this.SettlementsRepository.sequelize.transaction(
-        async (transaction: Transaction) => {
-          const whereClause: any = {
-            ...(settle_status && { status: settle_status }),
-          };
+      const { offset, limit, settle_status } = pageOptions;
 
-          if (storeId !== undefined && storeId !== null) {
-            whereClause.storeId = storeId;
-          }
+      const whereClause: any = {
+        ...(settle_status && { status: settle_status }),
+      };
 
-          const datas = await this.SettlementsRepository.findAndCountAll({
-            limit,
-            offset,
-            order: [["updatedAt", "DESC"]],
-            where: whereClause,
-            include: [
-              { model: Store, attributes: ["store_name"] },
-              {
-                model: UserBankAccount,
-                required: false,
-              },
-            ],
-            transaction,
-          });
-
-          return datas;
+      //Seller → only their store
+      if (user.role === Role.Seller) {
+        if (!user.storeId) {
+          throw new BadRequestException("Seller has no store assigned");
         }
-      );
-      const { rows, count } = result;
+        whereClause.storeId = user.storeId;
+      }
+
+      // 🛠 Admin → no storeId filter (all stores)
+
+      const { rows, count } =
+        await this.SettlementsRepository.findAndCountAll({
+          limit,
+          offset,
+          order: [["updatedAt", "DESC"]],
+          where: whereClause,
+          include: [
+            { model: Store, attributes: ["store_name"] },
+            {
+              model: UserBankAccount,
+              required: false,
+            },
+          ],
+        });
+
       return new DataResponseDto(rows, true, "Success", pageOptions, count);
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -141,92 +143,60 @@ export class SettlementsService {
     }
   }
 
-  // async findSummary(storeId: number) {
-  //   try {
-  //     const result = await this.SettlementsRepository.sequelize.transaction(
-  //       async (transaction: Transaction) => {
-  //         const [totalOrderPrice, totalSettledPrice, settlementPending] =
-  //           await Promise.all([
-  //             (await Order.sum("grandTotal", {
-  //               where: { storeId, status: "delivered" },
-  //               transaction,
-  //             })) ?? 0,
-  //             (await this.SettlementsRepository.sum("paid", {
-  //               where: { storeId, status: "success" },
-  //               transaction,
-  //             })) ?? 0,
-  //             (await this.SettlementsRepository.sum("paid", {
-  //               where: { storeId, status: { [Op.notIn]: ["success"] } },
-  //               transaction,
-  //             })) ?? 0,
-  //           ]);
+  async findSummary(user?: any) {
+  try {
+    const orderWhere: any = { status: "delivered" };
+    const settlementWhereSuccess: any = { status: "success" };
+    const settlementWherePending: any = {
+      status: { [Op.notIn]: ["success"] },
+    };
 
-  //         const amountToSettle = totalOrderPrice - totalSettledPrice;
-  //         return {
-  //           amountToSettle,
-  //           totalOrderPrice,
-  //           totalSettledPrice,
-  //           settlementPending,
-  //         };
-  //       }
-  //     );
-
-  //     return {
-  //       data: {
-  //         ...result,
-  //       },
-  //       message: "",
-  //       status: true,
-  //       statusCode: 200,
-  //     };
-  //   } catch (err) {
-  //     throw new InternalServerErrorException(getErrorMessage(err));
-  //   }
-  // }
-
-  async findSummary() {
-    try {
-      const result = await this.SettlementsRepository.sequelize.transaction(
-        async (transaction: Transaction) => {
-
-          // Total value of all delivered orders (all stores)
-          const totalOrderPrice =
-            (await Order.sum("grandTotal", {
-              where: { status: "delivered" },
-              transaction,
-            })) || 0;
-
-          // Total amount successfully settled (all stores)
-          const totalSettledPrice =
-            (await this.SettlementsRepository.sum("paid", {
-              where: { status: "success" },
-              transaction,
-            })) || 0;
-
-          // Total amount pending settlement (all stores)
-          const settlementPending =
-            (await this.SettlementsRepository.sum("paid", {
-              where: { status: { [Op.notIn]: ["success"] } },
-              transaction,
-            })) || 0;
-
-          const amountToSettle = totalOrderPrice - totalSettledPrice;
-
-          return {
-            amountToSettle,
-            totalOrderPrice,
-            totalSettledPrice,
-            settlementPending,
-          };
-        }
-      );
-
-      return new DataResponseDto(result, true, "Success");
-    } catch (err) {
-      console.error("findSummary error:", err);
-      throw new InternalServerErrorException(getErrorMessage(err));
+    // Seller → restrict to their store
+    if (user && user.role === Role.Seller) {
+      if (!user.storeId) {
+        throw new BadRequestException("Seller has no store assigned");
+      }
+      orderWhere.storeId = user.storeId;
+      settlementWhereSuccess.storeId = user.storeId;
+      settlementWherePending.storeId = user.storeId;
     }
+
+    // 🛠 Admin → no store restriction
+    const result = await this.SettlementsRepository.sequelize.transaction(
+      async (transaction: Transaction) => {
+        const totalOrderPrice =
+          (await Order.sum("grandTotal", {
+            where: orderWhere,
+            transaction,
+          })) || 0;
+
+        const totalSettledPrice =
+          (await this.SettlementsRepository.sum("paid", {
+            where: settlementWhereSuccess,
+            transaction,
+          })) || 0;
+
+        const settlementPending =
+          (await this.SettlementsRepository.sum("paid", {
+            where: settlementWherePending,
+            transaction,
+          })) || 0;
+
+        return {
+          amountToSettle: totalOrderPrice - totalSettledPrice,
+          totalOrderPrice,
+          totalSettledPrice,
+          settlementPending,
+        };
+      }
+    );
+
+    return new DataResponseDto(result, true, "Success");
+  } catch (err) {
+    if (err instanceof HttpException) throw err;
+    throw new InternalServerErrorException(getErrorMessage(err));
   }
+}
 
   async findOne(id: number) {
     try {
