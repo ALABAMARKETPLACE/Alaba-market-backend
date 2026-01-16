@@ -179,26 +179,29 @@ export class SettlementsService {
   //   }
   // }
 
-  async findSummary(storeId: number) {
+  async findSummary() {
     try {
       const result = await this.SettlementsRepository.sequelize.transaction(
         async (transaction: Transaction) => {
 
+          // Total value of all delivered orders (all stores)
           const totalOrderPrice =
             (await Order.sum("grandTotal", {
-              where: { storeId, status: "delivered" },
+              where: { status: "delivered" },
               transaction,
             })) || 0;
 
+          // Total amount successfully settled (all stores)
           const totalSettledPrice =
             (await this.SettlementsRepository.sum("paid", {
-              where: { storeId, status: "success" },
+              where: { status: "success" },
               transaction,
             })) || 0;
 
+          // Total amount pending settlement (all stores)
           const settlementPending =
             (await this.SettlementsRepository.sum("paid", {
-              where: { storeId, status: { [Op.notIn]: ["success"] } },
+              where: { status: { [Op.notIn]: ["success"] } },
               transaction,
             })) || 0;
 

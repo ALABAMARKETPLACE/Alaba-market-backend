@@ -31,14 +31,14 @@ export class SettlementsController {
   constructor(private readonly settlementsService: SettlementsService) {}
 
   //to get settlements summary for a seller
-  @Roles(Role.Seller, Role.Admin)
-  @UseGuards(AuthGuard)
-  @Get("summary")
-  @ApiDataObjectResponse(SettlementsDto)
-  @HttpCode(200)
-  getSummary(@StoreId() storeId: number): Promise<DataResponseDto> {
-    return this.settlementsService.findSummary(storeId);
-  }
+  // @Roles(Role.Seller, Role.Admin)
+  // @UseGuards(AuthGuard)
+  // @Get("summary")
+  // @ApiDataObjectResponse(SettlementsDto)
+  // @HttpCode(200)
+  // getSummary(@StoreId() storeId: number): Promise<DataResponseDto> {
+  //   return this.settlementsService.findSummary(storeId);
+  // }
 
   //to get settlement dtails of a store for admin
   @Roles(Role.Seller, Role.Admin)
@@ -106,16 +106,25 @@ export class SettlementsController {
   }
 
   //to get settlement summary for admin for a seller
+  // @Roles(Role.Admin)
+  // @UseGuards(AuthGuard)
+  // @Get("summary/:id")
+  // @ApiParam({ name: "id", required: true })
+  // @ApiDataObjectResponse(SettlementsDto)
+  // @HttpCode(200)
+  // getSummaryAdmin(
+  //   @Param("id", new ParseIntPipe()) storeId: number
+  // ): Promise<DataResponseDto> {
+  //   return this.settlementsService.findSummary(storeId);
+  // }
   @Roles(Role.Admin)
   @UseGuards(AuthGuard)
-  @Get("summary/:id")
-  @ApiParam({ name: "id", required: true })
+  @Get("summary")
+  @ApiBearerAuth()
   @ApiDataObjectResponse(SettlementsDto)
   @HttpCode(200)
-  getSummaryAdmin(
-    @Param("id", new ParseIntPipe()) storeId: number
-  ): Promise<DataResponseDto> {
-    return this.settlementsService.findSummary(storeId);
+  getSummaryAdmin(): Promise<DataResponseDto> {
+    return this.settlementsService.findSummary();
   }
 
   //to get settlement history of a store for admin
