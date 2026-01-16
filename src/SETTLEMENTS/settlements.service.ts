@@ -136,27 +136,74 @@ export class SettlementsService {
     }
   }
 
+  // async findSummary(storeId: number) {
+  //   try {
+  //     const result = await this.SettlementsRepository.sequelize.transaction(
+  //       async (transaction: Transaction) => {
+  //         const [totalOrderPrice, totalSettledPrice, settlementPending] =
+  //           await Promise.all([
+  //             (await Order.sum("grandTotal", {
+  //               where: { storeId, status: "delivered" },
+  //               transaction,
+  //             })) ?? 0,
+  //             (await this.SettlementsRepository.sum("paid", {
+  //               where: { storeId, status: "success" },
+  //               transaction,
+  //             })) ?? 0,
+  //             (await this.SettlementsRepository.sum("paid", {
+  //               where: { storeId, status: { [Op.notIn]: ["success"] } },
+  //               transaction,
+  //             })) ?? 0,
+  //           ]);
+
+  //         const amountToSettle = totalOrderPrice - totalSettledPrice;
+  //         return {
+  //           amountToSettle,
+  //           totalOrderPrice,
+  //           totalSettledPrice,
+  //           settlementPending,
+  //         };
+  //       }
+  //     );
+
+  //     return {
+  //       data: {
+  //         ...result,
+  //       },
+  //       message: "",
+  //       status: true,
+  //       statusCode: 200,
+  //     };
+  //   } catch (err) {
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
   async findSummary(storeId: number) {
     try {
       const result = await this.SettlementsRepository.sequelize.transaction(
         async (transaction: Transaction) => {
-          const [totalOrderPrice, totalSettledPrice, settlementPending] =
-            await Promise.all([
-              (await Order.sum("grandTotal", {
-                where: { storeId, status: "delivered" },
-                transaction,
-              })) ?? 0,
-              (await this.SettlementsRepository.sum("paid", {
-                where: { storeId, status: "success" },
-                transaction,
-              })) ?? 0,
-              (await this.SettlementsRepository.sum("paid", {
-                where: { storeId, status: { [Op.notIn]: ["success"] } },
-                transaction,
-              })) ?? 0,
-            ]);
+
+          const totalOrderPrice =
+            (await Order.sum("grandTotal", {
+              where: { storeId, status: "delivered" },
+              transaction,
+            })) || 0;
+
+          const totalSettledPrice =
+            (await this.SettlementsRepository.sum("paid", {
+              where: { storeId, status: "success" },
+              transaction,
+            })) || 0;
+
+          const settlementPending =
+            (await this.SettlementsRepository.sum("paid", {
+              where: { storeId, status: { [Op.notIn]: ["success"] } },
+              transaction,
+            })) || 0;
 
           const amountToSettle = totalOrderPrice - totalSettledPrice;
+
           return {
             amountToSettle,
             totalOrderPrice,
@@ -166,15 +213,9 @@ export class SettlementsService {
         }
       );
 
-      return {
-        data: {
-          ...result,
-        },
-        message: "",
-        status: true,
-        statusCode: 200,
-      };
+      return new DataResponseDto(result, true, "Success");
     } catch (err) {
+      console.error("findSummary error:", err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
