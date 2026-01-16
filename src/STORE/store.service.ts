@@ -618,193 +618,125 @@ export class StoreService {
 
   async updateStatus(id: number, data: UpdateStoreStatusDto) {
     try {
-      const result = await this.StoreRepository.sequelize.transaction(
+      /**
+       * FAST, SAFE TRANSACTION (DB ONLY)
+       */
+      const updatedStore = await this.StoreRepository.sequelize.transaction(
         async (transaction: Transaction) => {
           const store = await Store.findByPk(id, { transaction });
-          if (!store)
+          if (!store) {
             throw new HttpException("No ID found", HttpStatus.NOT_FOUND);
+          }
+
           store.status = data.status;
           store.status_remark = data.status_remark;
-          const updated = await store.save({ transaction });
-          const user = await User.findOne({ where: { store_id: id } });
-          if (!user) throw new NotFoundException();
-          if (store.status == "approved") {
-            user.role = Role.Seller;
-            await user.save({ transaction });
-            
-            // Auto-approve Paystack subaccount if exists
-            try {
-              const subaccountRequest = await PaystackSubaccount.findOne({
-                where: { store_id: id, admin_approval_status: 'pending' },
-                transaction
-              });
-              
-              if (subaccountRequest) {
-                console.log('[StoreService.updateStatus] Auto-approving Paystack subaccount for store:', id);
-                await this.paystackSubaccountService.approveSubaccount(
-                  subaccountRequest.id, 
-                  1 // Admin user ID - you may want to get this from the request context
-                );
-                console.log('[StoreService.updateStatus] ✓ Paystack subaccount approved successfully');
-              }
-            } catch (error) {
-              console.error('[StoreService.updateStatus] Error auto-approving subaccount:', error);
-              // Don't throw - continue with seller approval even if subaccount fails
-            }
-          }
-          if (store.status == "rejected") {
-            user.type = Role.User;
-            await user.save({ transaction });
-          }
-          transaction.afterCommit(async () => {
-            let approvalMail = await ToUserApproval(updated);
-            let rejectionMail = await ToUserRejection(updated);
-            if (data.status === "approved") {
-              this.mailService.sellerEmails(approvalMail);
-              // Send seller approval notification with plan detail if available
-              try {
-                console.log(
-                  "[StoreService.updateStatus] Creating approval notification",
-                  {
-                    storeId: updated?.id,
-                    userId: user?._id,
-                    subscription_plan_id: updated?.subscription_plan_id,
-                    subscription_plan_name: updated?.subscription_plan_name,
-                  }
-                );
-                let message = "Your seller account is approved.";
-                let title = "Seller Account Approved";
+          await store.save({ transaction });
 
-                // Try to get plan details from database
-                let planDetails = null;
-                if (updated?.subscription_plan_id) {
-                  // Fetch by ID if available
-                  console.log(
-                    "[StoreService.updateStatus] Fetching plan by ID",
-                    updated?.subscription_plan_id
-                  );
-                  planDetails = await SubscriptionPlan.findByPk(
-                    updated.subscription_plan_id
-                  );
-                  console.log(
-                    "[StoreService.updateStatus] Plan found by ID:",
-                    planDetails
-                  );
-                } else if (updated?.subscription_plan_name) {
-                  // Fallback: Fetch by name if ID is null (for existing stores)
-                  console.log(
-                    "[StoreService.updateStatus] subscription_plan_id is null, fetching plan by name:",
-                    updated?.subscription_plan_name
-                  );
-                  planDetails = await SubscriptionPlan.findOne({
-                    where: {
-                      name: updated.subscription_plan_name,
-                      is_active: true,
-                    },
-                  });
-                  console.log(
-                    "[StoreService.updateStatus] Plan found by name:",
-                    planDetails
-                  );
-
-                  // Update the store with the found subscription_plan_id for future use
-                  if (planDetails) {
-                    console.log(
-                      `[StoreService.updateStatus] Updating store ${updated.id} with subscription_plan_id: ${planDetails.id}`
-                    );
-                    updated.subscription_plan_id = planDetails.id;
-                    await updated.save();
-                  }
-                }
-
-                // Construct enhanced message if plan info is available
-                const planName =
-                  planDetails?.name || updated?.subscription_plan_name;
-                const maxProducts = planDetails?.max_products;
-
-                if (planName) {
-                  console.log(
-                    "[StoreService.updateStatus] Constructing enhanced message",
-                    { planName, maxProducts }
-                  );
-
-                  if (typeof maxProducts === "number" && maxProducts > 0) {
-                    message = `you request is approved! You can use a seller account now.`;
-                  } else {
-                    message = `You're approved! Plan: ${planName}.`;
-                  }
-
-                  // Send a dedicated subscription plan notification if we have plan details
-                  if (planDetails) {
-                    try {
-                      const subNotif =
-                        await this.notificationsService.createNotification(
-                          "subscription_plan",
-                          typeof maxProducts === "number" && maxProducts > 0
-                            ? `You can add up to ${maxProducts} products with your ${planName} plan.`
-                            : `Your selected plan: ${planName}.`,
-                          "Subscription Plan",
-                          updated?.id,
-                          user?._id,
-                          updated?.logo_upload || undefined
-                        );
-                      console.log(
-                        "[StoreService.updateStatus] Subscription notification created",
-                        { notificationId: subNotif?.id }
-                      );
-                    } catch (subErr) {
-                      console.error(
-                        "[StoreService.updateStatus] Subscription notification error",
-                        subErr
-                      );
-                    }
-                  }
-                } else if (updated?.subscription_plan_id) {
-                  console.warn(
-                    "[StoreService.updateStatus] Plan not found for id",
-                    updated?.subscription_plan_id
-                  );
-                }
-
-                console.log(
-                  "[StoreService.updateStatus] Sending notification with message:",
-                  {
-                    title,
-                    message,
-                    userId: user?._id,
-                    storeId: updated?.id,
-                  }
-                );
-
-                const notif =
-                  await this.notificationsService.createNotification(
-                    "seller_approval",
-                    message,
-                    title,
-                    updated?.id,
-                    user?._id,
-                    updated?.logo_upload || undefined
-                  );
-                console.log(
-                  "[StoreService.updateStatus] Notification created successfully",
-                  {
-                    notificationId: notif?.id,
-                  }
-                );
-              } catch (e) {
-                console.error(
-                  "[StoreService.updateStatus] Notification error",
-                  e
-                );
-              }
-            } else if (data.status === "rejected") {
-              this.mailService.sellerEmails(rejectionMail);
-            }
+          const user = await User.findOne({
+            where: { store_id: id },
+            transaction,
           });
-          return updated;
+
+          if (!user) {
+            throw new NotFoundException("User not found for store");
+          }
+
+          if (store.status === "approved") {
+            user.role = Role.Seller;
+          } else if (store.status === "rejected") {
+            user.role = Role.User;
+          }
+
+          await user.save({ transaction });
+
+          return store;
         }
       );
-      return new DataResponseDto(result, true, "Successfully Updated");
+
+      /**
+       * ASYNC SIDE-EFFECTS (DO NOT BLOCK RESPONSE)
+       */
+      setImmediate(async () => {
+        try {
+          /* ===============================
+            PAYSTACK SUBACCOUNT APPROVAL
+          =============================== */
+          if (updatedStore.status === "approved") {
+            try {
+              const subaccountRequest = await PaystackSubaccount.findOne({
+                where: {
+                  store_id: id,
+                  admin_approval_status: "pending",
+                },
+              });
+
+              if (subaccountRequest) {
+                console.log(
+                  "[StoreService.updateStatus] Auto-approving Paystack subaccount for store:",
+                  id
+                );
+
+                await this.paystackSubaccountService.approveSubaccount(
+                  subaccountRequest.id,
+                  1 // TODO: replace with real admin ID from context if needed
+                );
+
+                console.log(
+                  "[StoreService.updateStatus] ✓ Paystack subaccount approved"
+                );
+              }
+            } catch (payErr) {
+              console.error(
+                "[StoreService.updateStatus] Paystack approval failed",
+                payErr
+              );
+            }
+          }
+
+          /* ===============================
+            EMAILS + NOTIFICATIONS
+          =============================== */
+          try {
+            if (data.status === "approved") {
+              const approvalMail = await ToUserApproval(updatedStore);
+              this.mailService.sellerEmails(approvalMail);
+
+              await this.notificationsService.createNotification(
+                "seller_approval",
+                "Your seller account has been approved.",
+                "Seller Account Approved",
+                updatedStore.id,
+                undefined,
+                updatedStore.logo_upload || undefined
+              );
+            }
+
+            if (data.status === "rejected") {
+              const rejectionMail = await ToUserRejection(updatedStore);
+              this.mailService.sellerEmails(rejectionMail);
+            }
+          } catch (notifyErr) {
+            console.error(
+              "[StoreService.updateStatus] Notification/email error",
+              notifyErr
+            );
+          }
+        } catch (asyncErr) {
+          console.error(
+            "[StoreService.updateStatus] Async task failed",
+            asyncErr
+          );
+        }
+      });
+
+      /**
+       * IMMEDIATE RESPONSE
+       */
+      return new DataResponseDto(
+        updatedStore,
+        true,
+        "Successfully Updated"
+      );
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
