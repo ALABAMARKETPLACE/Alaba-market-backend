@@ -40,13 +40,18 @@ export class BannerService {
           },
           limit: pageOptions.take,
           offset: pageOptions.offset,
-          order: [
-            [
-              Sequelize.literal(`CASE WHEN "storeId" = ? THEN 0 ELSE 1 END`),
-              "ASC",
-            ],
-            ["position", "DESC"],
-          ],
+          // If storeId provided, prioritize banners for that store first
+          order: (() => {
+            const ord: any[] = [];
+            if (storeId !== undefined && storeId !== null) {
+              ord.push([
+                Sequelize.literal(`CASE WHEN "storeId" = ${storeId} THEN 0 ELSE 1 END`),
+                "ASC",
+              ]);
+            }
+            ord.push(["position", "DESC"]);
+            return ord;
+          })(),
           include: [
             {
               model: Store,
@@ -54,7 +59,7 @@ export class BannerService {
               attributes: ["store_name"],
             },
           ],
-          replacements: [storeId],
+          // no replacements - literals are built above to avoid unsupported replacement usage
         });
       return new DataResponseDto(rows, true, "Successfull", pageOptions, count);
     } catch (err) {
