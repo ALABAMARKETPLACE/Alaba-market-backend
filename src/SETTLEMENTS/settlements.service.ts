@@ -25,19 +25,32 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(storeId: number, pageOptions: SettlementsQueryDto) {
+  async findAll(user: any, pageOptions: SettlementsQueryDto) {
     try {
       const { offset, limit, settle_status } = pageOptions;
+
+      // Build WHERE dynamically (DO NOT inline storeId)
+      const where: any = {};
+
+      // Seller → restrict to their store
+      if (user?.role === Role.Seller) {
+        if (!user.storeId) {
+          throw new BadRequestException("Seller has no store assigned");
+        }
+        where.storeId = user.storeId;
+      }
+
+      // Optional status filter
+      if (settle_status) {
+        where.status = settle_status;
+      }
 
       const { rows, count } =
         await this.SettlementsRepository.findAndCountAll({
           limit,
           offset,
           order: [["updatedAt", "DESC"]],
-          where: {
-            storeId,
-            ...(settle_status && { status: settle_status }),
-          },
+          where,
           include: [
             { model: Store, attributes: ["store_name"] },
             {
