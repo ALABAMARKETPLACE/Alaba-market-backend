@@ -118,6 +118,16 @@ export class OrderController {
   // @HttpCode(200)
   // getOrders(): Promise<DataResponseDto> {
   //   return this.orderService.getAllOrders();
+
+  // Endpoint to fetch store order stats; if no storeId provided returns global stats (admin)
+  @Roles(Role.Admin)
+  @UseGuards(AuthGuard)
+  @Get("store/stats")
+  @ApiDataObjectResponse(OrderDto)
+  @HttpCode(200)
+  getStoreStats(@StoreId() storeId?: number): Promise<DataResponseDto> {
+    return this.orderService.getStoreOrders(storeId);
+  }
   // }
 
   @Roles(Role.Seller, Role.Admin)

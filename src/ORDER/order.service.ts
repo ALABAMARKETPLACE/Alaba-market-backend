@@ -638,40 +638,40 @@ export class OrderService {
     }
   }
 
-  // async getStoreOrders(storeId: number) {
-  //   try {
-  //     const attributes: any[] = [
-  //       "pending",
-  //       "cancelled",
-  //       "shipped",
-  //       "out_for_delivery",
-  //       "packed",
-  //       "delivered",
-  //       "rejected",
-  //       "processing",
-  //       "failed",
-  //     ].map((item) => [
-  //       Sequelize.fn(
-  //         "count",
-  //         Sequelize.literal(`CASE WHEN status = '${item}' THEN 1 ELSE null END`)
-  //       ),
-  //       `${item}Orders`,
-  //     ]);
-  //     const order = await this.OrderRepository.findOne({
-  //       where: {
-  //         storeId,
-  //       },
-  //       attributes: [
-  //         ...attributes,
-  //         [Sequelize.fn("count", "*"), "totalOrders"],
-  //       ],
-  //     });
-  //     return new DataResponseDto(order, true, "Succesfull");
-  //   } catch (err) {
-  //     if (err instanceof HttpException) throw err;
-  //     throw new InternalServerErrorException(getErrorMessage(err));
-  //   }
-  // }
+  async getStoreOrders(storeId?: number) {
+    try {
+      const attributes: any[] = [
+        "pending",
+        "cancelled",
+        "shipped",
+        "out_for_delivery",
+        "packed",
+        "delivered",
+        "rejected",
+        "processing",
+        "failed",
+      ].map((item) => [
+        Sequelize.fn(
+          "count",
+          Sequelize.literal(`CASE WHEN status = '${item}' THEN 1 ELSE null END`)
+        ),
+        `${item}Orders`,
+      ]);
+      const whereClause: any = {};
+      if (storeId !== undefined && storeId !== null) {
+        whereClause.storeId = storeId;
+      }
+
+      const order = await this.OrderRepository.findOne({
+        where: whereClause,
+        attributes: [...attributes, [Sequelize.fn("count", "*"), "totalOrders"]],
+      });
+      return new DataResponseDto(order, true, "Succesfull");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
 
     async getAllOrders() {
     try {
