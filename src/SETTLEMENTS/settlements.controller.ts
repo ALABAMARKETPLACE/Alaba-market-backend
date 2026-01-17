@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -34,26 +35,26 @@ export class SettlementsController {
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Get("summary")
-  @ApiDataObjectResponse(SettlementsDto)
   @HttpCode(200)
-  getSummary(@StoreId() storeId: number): Promise<DataResponseDto> {
-    return this.settlementsService.findSummary(storeId);
+  getSummary(
+    @Req() req: any
+  ): Promise<DataResponseDto> {
+    return this.settlementsService.findSummary(req.user);
   }
 
   //to get settlement dtails of a store for admin
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
   @Get("history")
-  @ApiDataObjectResponse(SettlementsDto)
   @HttpCode(200)
-  @UsePipes(new ValidationPipe({ transform: true }))
   getHistory(
-    @StoreId() storeId: number,
+    @Req() req: any,
     @Query() pageOptions: SettlementsQueryDto
   ): Promise<DataResponseDto> {
-    return this.settlementsService.findAll(storeId, pageOptions);
+    return this.settlementsService.findAll(req.user, pageOptions);
   }
+  
+  
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @ApiBearerAuth()

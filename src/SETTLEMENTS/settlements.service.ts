@@ -15,6 +15,8 @@ import { SettlementsQueryDto } from "./dto/queryDto.dto";
 import { Settlements } from "./settlements.entity";
 import { Store } from "../STORE/store.entity";
 import { UserBankAccount } from "../USER_BANK_ACCOUNTS/user_bank_accounts.entity";
+import { Role } from "../shared/enum/role.enum";
+@Injectable()
 export class SettlementsService {
   constructor(
     @Inject("SettlementsRepository")
@@ -23,39 +25,49 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(storeId: number, pageOptions: SettlementsQueryDto) {
+  async findAll(user: any, pageOptions: SettlementsQueryDto) {
     try {
       const { offset, limit, settle_status } = pageOptions;
-      const result = await this.SettlementsRepository.sequelize.transaction(
-        async (transaction: Transaction) => {
-          const datas = await this.SettlementsRepository.findAndCountAll({
-            limit,
-            offset,
-            order: [["updatedAt", "DESC"]],
-            where: {
-              storeId,
-              ...(settle_status && { status: settle_status }),
-            },
-            include: [
-              { model: Store, attributes: ["store_name"] },
-              {
-                model: UserBankAccount,
-                required: false,
-              },
-            ],
-            transaction,
-          });
 
-          return datas;
+      // Build WHERE dynamically (DO NOT inline storeId)
+      const where: any = {};
+
+      // Seller → restrict to their store
+      if (user?.role === Role.Seller) {
+        if (!user.storeId) {
+          throw new BadRequestException("Seller has no store assigned");
         }
-      );
-      const { rows, count } = result;
+        where.storeId = user.storeId;
+      }
+
+      // Optional status filter
+      if (settle_status) {
+        where.status = settle_status;
+      }
+
+      const { rows, count } =
+        await this.SettlementsRepository.findAndCountAll({
+          limit,
+          offset,
+          order: [["updatedAt", "DESC"]],
+          where,
+          include: [
+            { model: Store, attributes: ["store_name"] },
+            {
+              model: UserBankAccount,
+              required: false,
+            },
+          ],
+        });
+
       return new DataResponseDto(rows, true, "Success", pageOptions, count);
     } catch (err) {
+      console.error("[SettlementsService.findAll] Error:", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
+
   async findOneById(storeId: number, id: number): Promise<DataResponseDto> {
     try {
       const data = await this.SettlementsRepository.findOne({
@@ -135,45 +147,52 @@ export class SettlementsService {
     }
   }
 
-  async findSummary(storeId: number) {
+  async findSummary(user?: any) {
     try {
-      const result = await this.SettlementsRepository.sequelize.transaction(
-        async (transaction: Transaction) => {
-          const [totalOrderPrice, totalSettledPrice, settlementPending] =
-            await Promise.all([
-              (await Order.sum("grandTotal", {
-                where: { storeId, status: "delivered" },
-                transaction,
-              })) ?? 0,
-              (await this.SettlementsRepository.sum("paid", {
-                where: { storeId, status: "success" },
-                transaction,
-              })) ?? 0,
-              (await this.SettlementsRepository.sum("paid", {
-                where: { storeId, status: { [Op.notIn]: ["success"] } },
-                transaction,
-              })) ?? 0,
-            ]);
-
-          const amountToSettle = totalOrderPrice - totalSettledPrice;
-          return {
-            amountToSettle,
-            totalOrderPrice,
-            totalSettledPrice,
-            settlementPending,
-          };
-        }
-      );
-
-      return {
-        data: {
-          ...result,
-        },
-        message: "",
-        status: true,
-        statusCode: 200,
+      const orderWhere: any = { status: "delivered" };
+      const settlementWhereSuccess: any = { status: "success" };
+      const settlementWherePending: any = {
+        status: { [Op.notIn]: ["success"] },
       };
+
+      // Seller → restrict to their store
+      if (user && user.role === Role.Seller) {
+        if (!user.storeId) {
+          throw new BadRequestException("Seller has no store assigned");
+        }
+        orderWhere.storeId = user.storeId;
+        settlementWhereSuccess.storeId = user.storeId;
+        settlementWherePending.storeId = user.storeId;
+      }
+
+      //NO TRANSACTION — PARALLEL EXECUTION
+      const [
+        totalOrderPrice,
+        totalSettledPrice,
+        settlementPending,
+      ] = await Promise.all([
+        Order.sum("grandTotal", { where: orderWhere }) || 0,
+        this.SettlementsRepository.sum("paid", {
+          where: settlementWhereSuccess,
+        }) || 0,
+        this.SettlementsRepository.sum("paid", {
+          where: settlementWherePending,
+        }) || 0,
+      ]);
+
+      return new DataResponseDto(
+        {
+          amountToSettle: totalOrderPrice - totalSettledPrice,
+          totalOrderPrice,
+          totalSettledPrice,
+          settlementPending,
+        },
+        true,
+        "Success"
+      );
     } catch (err) {
+      console.error("[SettlementsService.findSummary] Error:", err);
+      if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }

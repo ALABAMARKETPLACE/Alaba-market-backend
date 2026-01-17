@@ -64,7 +64,7 @@ export class OrderController {
   //DEBUG: Get ALL orders without any filtering (for testing)
   @Get("all-orders-debug")
   async getAllOrdersDebug(@Query() query: any) {
-    console.log("🔍 [DEBUG] Getting ALL orders with query:", query);
+    console.log("[DEBUG] Getting ALL orders with query:", query);
     try {
       const orders = await this.orderService['OrderRepository'].findAll({
         attributes: ['id', 'order_id', 'status', 'storeId', 'userId', 'delivery_company_id', 'grandTotal', 'createdAt'],
@@ -73,7 +73,7 @@ export class OrderController {
         order: [['createdAt', 'DESC']],
       });
       const totalCount = await this.orderService['OrderRepository'].count();
-      console.log(`✅ Found ${totalCount} total orders, returning ${orders.length}`);
+      console.log(`Found ${totalCount} total orders, returning ${orders.length}`);
       return {
         status: true,
         data: orders,
@@ -84,7 +84,7 @@ export class OrderController {
         }
       };
     } catch (err) {
-      console.error("❌ Error:", err);
+      console.error("Error:", err);
       throw err;
     }
   }
@@ -110,13 +110,34 @@ export class OrderController {
   }
 
   //get all orders grouped by their statsu and count for seller
+  // @Roles(Role.Seller, Role.Admin)
+  // @UseGuards(AuthGuard)
+  // @Get("getall")
+  // @ApiBearerAuth()
+  // @ApiDataObjectResponse([OrderDto])
+  // @HttpCode(200)
+  // getOrders(): Promise<DataResponseDto> {
+  //   return this.orderService.getAllOrders();
+
+  // Endpoint to fetch store order stats; if no storeId provided returns global stats (admin)
+  @Roles(Role.Admin)
+  @UseGuards(AuthGuard)
+  @Get("store/stats")
+  @ApiDataObjectResponse(OrderDto)
+  @HttpCode(200)
+  getStoreStats(@StoreId() storeId?: number): Promise<DataResponseDto> {
+    return this.orderService.getStoreOrders(storeId);
+  }
+  // }
+
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Get("getall")
-  @ApiDataObjectResponse(OrderDto)
+  @ApiBearerAuth()
+  @ApiOkResponse({ type: OrderDto, isArray: true })
   @HttpCode(200)
-  getOrders(@StoreId() storeId: number): Promise<DataResponseDto> {
-    return this.orderService.getStoreOrders(storeId);
+  getOrders(): Promise<DataResponseDto> {
+    return this.orderService.getAllOrders();
   }
 
   //get all orders grouped by their statsu and count for seller
@@ -237,19 +258,22 @@ export class OrderController {
   }
 
   //to update order status only for sellers
-  @Roles(Role.Seller, Role.Admin)
+ @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Put("update_status/:id")
   @ApiDataObjectResponse(OrderDto)
-  @ApiParam({ name: "id", required: true })
+  @ApiParam({
+    name: "id",
+    required: true,
+    description: "Database primary key of the order",
+  })
   @HttpCode(201)
   @ApiBearerAuth()
   updateStatus(
-    @Param("id", ParseIntPipe) orderId: number,
-    @StoreId() storeId: number,
+    @Param("id", ParseIntPipe) id: number,
     @Body() create: UpdateOrderStatus
   ): Promise<DataResponseDto> {
-    return this.orderService.updateOrder(storeId, orderId, create);
+    return this.orderService.updateOrder(id, create);
   }
 
   @Roles(Role.Seller, Role.Admin)

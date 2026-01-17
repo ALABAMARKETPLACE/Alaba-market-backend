@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   HttpException,
   Inject,
   Injectable,
@@ -315,85 +316,199 @@ export class OrderService {
     }
   }
 
+  // async updateOrder(
+  //   storeId: number,
+  //   order_id: number,
+  //   data: UpdateOrderStatus
+  // ) {
+  //   try {
+  //     const result = await this.OrderRepository.sequelize.transaction(
+  //       async (transaction: Transaction) => {
+  //         const order: any = await this.OrderRepository.findOne({
+  //           where: {
+  //             storeId,
+  //             id: order_id,
+  //           },
+  //           transaction,
+  //         });
+  //         if (!order) throw new NotFoundException();
+  //         const terminalStatuses = [
+  //           "failed",
+  //           "delivered",
+  //           "cancelled",
+  //           "rejected",
+  //         ];
+  //         if (terminalStatuses.includes(order?.status)) {
+  //           return new DataResponseDto(
+  //             {},
+  //             true,
+  //             `Cannot update order with '${order?.status}' status`
+  //           );
+  //         }
+  //         order.status = data.status;
+  //         if (data?.delivery_date) {
+  //           order.delivery_date = data?.delivery_date;
+  //         }
+  //         await order.save({ transaction });
+  //         if (order.paymentType == "Pay On Credit") {
+  //           const paymentInfo = await order.getOrderPayment({ transaction });
+  //           if (paymentInfo.status == "pending") {
+  //             await paymentInfo.update({ status: "approved" }, { transaction });
+  //           }
+  //         }
+  //         if (data.status == "delivered") {
+  //           const paymentInfo = await order.getOrderPayment({ transaction });
+  //           await paymentInfo.update({ status: "success" }, { transaction });
+  //           await this.notificationService.createNotification(
+  //             "order",
+  //             `Your Order has been Delivered. Thank your for shopping with ${process.env.NAME}`,
+  //             "Order Delivered",
+  //             order.order_id,
+  //             order.userId
+  //           );
+  //         }
+
+  //         await this.orderStatusService.create(
+  //           order,
+  //           data.remark ?? null,
+  //           transaction
+  //         );
+  //         transaction.afterCommit(async () => {
+  //           const user = await order.getUserDetails();
+  //           const store = await order.getStoreDetails();
+
+  //           let email = await OrderUpdateMail(
+  //             order,
+  //             user,
+  //             store,
+  //             order.products,
+  //             order.address
+  //           );
+  //           this.mailService.sellerEmails(email);
+  //         });
+  //         return order;
+  //       }
+  //     );
+  //     return new DataResponseDto(result, true, "Succcessfully Updated");
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
   async updateOrder(
-    storeId: number,
-    order_id: number,
-    data: UpdateOrderStatus
+  id: number,
+  data: UpdateOrderStatus
   ) {
     try {
       const result = await this.OrderRepository.sequelize.transaction(
         async (transaction: Transaction) => {
-          const order: any = await this.OrderRepository.findOne({
-            where: {
-              storeId,
-              id: order_id,
-            },
+
+          // Find order by DB PRIMARY KEY (id)
+          const order: any = await this.OrderRepository.findByPk(id, {
             transaction,
           });
-          if (!order) throw new NotFoundException();
+
+          if (!order) {
+            throw new NotFoundException("Order not found");
+          }
+
+          // Block terminal statuses
           const terminalStatuses = [
             "failed",
             "delivered",
             "cancelled",
             "rejected",
           ];
-          if (terminalStatuses.includes(order?.status)) {
-            return new DataResponseDto(
-              {},
-              true,
-              `Cannot update order with '${order?.status}' status`
+
+          if (terminalStatuses.includes(order.status)) {
+            throw new BadRequestException(
+              `Cannot update order with '${order.status}' status`
             );
           }
+
+          //Update order fields
           order.status = data.status;
+
           if (data?.delivery_date) {
-            order.delivery_date = data?.delivery_date;
+            order.delivery_date = data.delivery_date;
           }
+
           await order.save({ transaction });
-          if (order.paymentType == "Pay On Credit") {
+
+          //Handle Pay On Credit approval
+          if (order.paymentType === "Pay On Credit") {
             const paymentInfo = await order.getOrderPayment({ transaction });
-            if (paymentInfo.status == "pending") {
-              await paymentInfo.update({ status: "approved" }, { transaction });
+
+            if (paymentInfo && paymentInfo.status === "pending") {
+              await paymentInfo.update(
+                { status: "approved" },
+                { transaction }
+              );
             }
           }
-          if (data.status == "delivered") {
+
+          //Handle delivery success logic
+          if (data.status === "delivered") {
             const paymentInfo = await order.getOrderPayment({ transaction });
-            await paymentInfo.update({ status: "success" }, { transaction });
+
+            if (paymentInfo) {
+              await paymentInfo.update(
+                { status: "success" },
+                { transaction }
+              );
+            }
+
             await this.notificationService.createNotification(
               "order",
-              `Your Order has been Delivered. Thank your for shopping with ${process.env.NAME}`,
+              `Your order has been delivered. Thank you for shopping with ${process.env.NAME}`,
               "Order Delivered",
-              order.order_id,
+              order.order_id, // business ID is fine for notifications
               order.userId
             );
           }
 
+          //Save order status history
           await this.orderStatusService.create(
             order,
             data.remark ?? null,
             transaction
           );
-          transaction.afterCommit(async () => {
-            const user = await order.getUserDetails();
-            const store = await order.getStoreDetails();
 
-            let email = await OrderUpdateMail(
-              order,
-              user,
-              store,
-              order.products,
-              order.address
-            );
-            this.mailService.sellerEmails(email);
+          //Post-commit side effects (email)
+          transaction.afterCommit(async () => {
+            try {
+              const user = await order.getUserDetails();
+              const store = await order.getStoreDetails();
+
+              const email = await OrderUpdateMail(
+                order,
+                user,
+                store,
+                order.products,
+                order.address
+              );
+
+              await this.mailService.sellerEmails(email);
+            } catch (err) {
+              //Never crash the app after commit
+              console.error("Order update email failed:", err);
+            }
           });
+
           return order;
         }
       );
-      return new DataResponseDto(result, true, "Succcessfully Updated");
+
+      return new DataResponseDto(result, true, "Successfully Updated");
+
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
+
+
   async cancelOrder(userId: number, id: number, data: CancelOrderDto) {
     try {
       const result = await this.OrderRepository.sequelize.transaction(
@@ -523,7 +638,7 @@ export class OrderService {
     }
   }
 
-  async getStoreOrders(storeId: number) {
+  async getStoreOrders(storeId?: number) {
     try {
       const attributes: any[] = [
         "pending",
@@ -542,16 +657,29 @@ export class OrderService {
         ),
         `${item}Orders`,
       ]);
+      const whereClause: any = {};
+      if (storeId !== undefined && storeId !== null) {
+        whereClause.storeId = storeId;
+      }
+
       const order = await this.OrderRepository.findOne({
-        where: {
-          storeId,
-        },
-        attributes: [
-          ...attributes,
-          [Sequelize.fn("count", "*"), "totalOrders"],
-        ],
+        where: whereClause,
+        attributes: [...attributes, [Sequelize.fn("count", "*"), "totalOrders"]],
       });
       return new DataResponseDto(order, true, "Succesfull");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+    async getAllOrders() {
+    try {
+      const orders = await this.OrderRepository.findAll({
+        order: [["createdAt", "DESC"]],
+      });
+
+      return new DataResponseDto(orders, true, "Successful");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
