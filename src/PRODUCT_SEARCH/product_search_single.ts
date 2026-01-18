@@ -166,6 +166,8 @@ export class ProductSearchServiceSingle extends ProductAttributes {
             return boostA.priority - boostB.priority;
           }
 
+          // Handle null approvedAt values
+          if (!boostA.approvedAt || !boostB.approvedAt) return 0;
           return boostA.approvedAt.getTime() - boostB.approvedAt.getTime();
         });
       }
