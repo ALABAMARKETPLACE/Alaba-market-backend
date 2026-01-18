@@ -171,7 +171,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
       }
 
       /* ============================
-      * 6️⃣ PAGINATE BOOSTED
+      * PAGINATE BOOSTED
       * ============================ */
       const totalBoosted = boostedProducts.length;
 
@@ -181,7 +181,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
           : [];
 
       /* ============================
-      * 7️⃣ REGULAR PRODUCTS
+      * REGULAR PRODUCTS
       * ============================ */
       const regularProductsNeeded = safeTake - boostedForPage.length;
       const regularProductsSkip = Math.max(0, skip - totalBoosted);
@@ -225,7 +225,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
       }
 
       /* ============================
-      * 8️⃣ FINAL RESPONSE
+      * FINAL RESPONSE
       * ============================ */
       const finalProducts = [...boostedForPage, ...regularProducts];
       const totalCount = totalBoosted + regularCount;
@@ -234,7 +234,10 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         finalProducts,
         true,
         "Successful",
-        pageOptions,
+        {
+          page: safePage,
+          take: safeTake,
+        } as any,
         totalCount
       );
     } catch (err) {
