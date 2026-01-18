@@ -29,7 +29,6 @@ export class ProductSearchServiceSingle extends ProductAttributes {
   > {
     try {
       const activeBoosts = await BoostRequest.findAll({
-
         attributes: ["product_ids", "boost_priority", "approved_at"],
         order: [
           ["boost_priority", "ASC"],
@@ -42,17 +41,31 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         { priority: number; approvedAt: Date }
       >();
 
-      // Build map: productId -> { priority, approvedAt }
-      // If a product appears in multiple boosts, keep the one with lower priority
       activeBoosts.forEach((boost) => {
-        const priority = (boost as any).boost_priority || 100;
-        const approvedAt = boost.approved_at;
+        const priority =
+          typeof (boost as any).boost_priority === "number"
+            ? (boost as any).boost_priority
+            : 100;
 
-        if (boost.product_ids && Array.isArray(boost.product_ids)) {
+        /**
+         * 🔒 CRITICAL FIX:
+         * Normalize approvedAt
+         * - If null → push to bottom by using max date
+         */
+        const approvedAt =
+          boost.approved_at instanceof Date
+            ? boost.approved_at
+            : new Date(8640000000000000); // max JS date
+
+        if (Array.isArray(boost.product_ids)) {
           boost.product_ids.forEach((productId: number) => {
             const existing = boostMap.get(productId);
+
             if (!existing || priority < existing.priority) {
-              boostMap.set(productId, { priority, approvedAt });
+              boostMap.set(productId, {
+                priority,
+                approvedAt,
+              });
             }
           });
         }
@@ -64,6 +77,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
       return new Map();
     }
   }
+
   async fetchProductsSingle(
     pageOptions: ProductSearchSingleDto,
     defaultStore: boolean = false
