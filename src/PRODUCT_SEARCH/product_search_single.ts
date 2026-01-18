@@ -29,7 +29,6 @@ export class ProductSearchServiceSingle extends ProductAttributes {
   > {
     try {
       const activeBoosts = await BoostRequest.findAll({
-
         attributes: ["product_ids", "boost_priority", "approved_at"],
         order: [
           ["boost_priority", "ASC"],
@@ -42,17 +41,31 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         { priority: number; approvedAt: Date }
       >();
 
-      // Build map: productId -> { priority, approvedAt }
-      // If a product appears in multiple boosts, keep the one with lower priority
       activeBoosts.forEach((boost) => {
-        const priority = (boost as any).boost_priority || 100;
-        const approvedAt = boost.approved_at;
+        const priority =
+          typeof (boost as any).boost_priority === "number"
+            ? (boost as any).boost_priority
+            : 100;
 
-        if (boost.product_ids && Array.isArray(boost.product_ids)) {
+        /**
+         * 🔒 CRITICAL FIX:
+         * Normalize approvedAt
+         * - If null → push to bottom by using max date
+         */
+        const approvedAt =
+          boost.approved_at instanceof Date
+            ? boost.approved_at
+            : new Date(8640000000000000); // max JS date
+
+        if (Array.isArray(boost.product_ids)) {
           boost.product_ids.forEach((productId: number) => {
             const existing = boostMap.get(productId);
+
             if (!existing || priority < existing.priority) {
-              boostMap.set(productId, { priority, approvedAt });
+              boostMap.set(productId, {
+                priority,
+                approvedAt,
+              });
             }
           });
         }
@@ -64,51 +77,77 @@ export class ProductSearchServiceSingle extends ProductAttributes {
       return new Map();
     }
   }
+
   async fetchProductsSingle(
     pageOptions: ProductSearchSingleDto,
     defaultStore: boolean = false
   ) {
-    const {
-      storeId,
-      page,
-      take,
-      order,
-      category,
-      subCategory,
-      query,
-      price,
-      tag,
-      exclude,
-      instock,
-      status,
-    } = pageOptions;
-    const skip = (page - 1) * take;
     try {
-      // Step 1: Get active boosted products
+      /* ============================
+      * SAFE PAGINATION DEFAULTS
+      * ============================ */
+      const safePage =
+        Number(pageOptions.page) && Number(pageOptions.page) > 0
+          ? Number(pageOptions.page)
+          : 1;
+
+      const safeTake =
+        Number(pageOptions.take) && Number(pageOptions.take) > 0
+          ? Number(pageOptions.take)
+          : 10;
+
+      const skip = (safePage - 1) * safeTake;
+
+      /* ============================
+      * DESTRUCTURE WITH SAFETY
+      * ============================ */
+      const {
+        storeId,
+        order,
+        category,
+        subCategory,
+        query,
+        price,
+        tag,
+        exclude,
+        instock,
+        status,
+      } = pageOptions;
+
+      /* ============================
+      * BOOSTED PRODUCTS
+      * ============================ */
       const boostMap = await this.getActiveBoostedProducts();
       const boostedProductIds = Array.from(boostMap.keys());
 
-      // Step 2: Build common where clause for product filters
+      /* ============================
+      * COMMON WHERE CLAUSE
+      * ============================ */
       const commonProductWhere: any = {
         ...(storeId ? {} : { status: true }),
+
         ...(query && {
           [Op.or]: [
             { slug: { [Op.like]: `%${this.slugify(query)}%` } },
             ...(storeId ? [{ bar_code: { [Op.eq]: query } }] : []),
           ],
         }),
+
         ...(category && { category }),
         ...(subCategory && { subCategory }),
         ...(storeId && { store_id: storeId }),
         ...(exclude && { _id: { [Op.notIn]: [exclude] } }),
-        ...((instock || status == "instock") && { unit: { [Op.gt]: 0 } }),
-        ...(status == "out_of_stock" && { unit: 0 }),
-        ...(status == "active" && { status: true }),
-        ...(status == "inactive" && { status: false }),
+        ...((instock || status === "instock") && { unit: { [Op.gt]: 0 } }),
+        ...(status === "out_of_stock" && { unit: 0 }),
+        ...(status === "active" && { status: true }),
+        ...(status === "inactive" && { status: false }),
       };
 
-      // Step 3: Fetch boosted products
+      /* ============================
+      * FETCH BOOSTED PRODUCTS
+      * ============================ */
       let boostedProducts: Products[] = [];
+
       if (boostedProductIds.length > 0) {
         boostedProducts = await Products.findAll({
           where: {
@@ -121,9 +160,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
               model: Store,
               required: true,
               attributes: [],
-              where: {
-                status: "approved",
-              },
+              where: { status: "approved" },
             },
             {
               model: ProductVariant,
@@ -133,40 +170,38 @@ export class ProductSearchServiceSingle extends ProductAttributes {
           ],
         });
 
-        // Sort boosted products by priority, then by approved_at
+        // sort boosted products
         boostedProducts.sort((a, b) => {
           const boostA = boostMap.get(a._id);
           const boostB = boostMap.get(b._id);
           if (!boostA || !boostB) return 0;
 
-          // First sort by priority (lower is better)
           if (boostA.priority !== boostB.priority) {
             return boostA.priority - boostB.priority;
           }
 
-          // Then by approved_at (earlier is better)
+          // Handle null approvedAt values
+          if (!boostA.approvedAt || !boostB.approvedAt) return 0;
           return boostA.approvedAt.getTime() - boostB.approvedAt.getTime();
         });
       }
 
-      // Step 4: Calculate pagination for boosted products
+      /* ============================
+      * PAGINATE BOOSTED
+      * ============================ */
       const totalBoosted = boostedProducts.length;
-      const boostedOnCurrentPage =
-        page === 1
-          ? Math.min(totalBoosted, take)
-          : Math.max(0, Math.min(totalBoosted - skip, take));
 
-      // Get the boosted products for current page
       const boostedForPage =
-        boostedOnCurrentPage > 0
-          ? boostedProducts.slice(skip, skip + take)
+        totalBoosted > 0
+          ? boostedProducts.slice(skip, skip + safeTake)
           : [];
 
-      // Step 5: Calculate how many regular products we need
-      const regularProductsNeeded = take - boostedForPage.length;
+      /* ============================
+      * REGULAR PRODUCTS
+      * ============================ */
+      const regularProductsNeeded = safeTake - boostedForPage.length;
       const regularProductsSkip = Math.max(0, skip - totalBoosted);
 
-      // Step 6: Fetch regular products (exclude boosted)
       let regularProducts: Products[] = [];
       let regularCount = 0;
 
@@ -174,20 +209,24 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         const { rows, count } = await Products.findAndCountAll({
           where: {
             ...commonProductWhere,
-            _id: { [Op.notIn]: boostedProductIds }, // Exclude boosted products
+            ...(boostedProductIds.length > 0 && {
+              _id: { [Op.notIn]: boostedProductIds },
+            }),
           },
           limit: regularProductsNeeded,
-          order: this.productOrder(order, price, tag),
           offset: regularProductsSkip,
+          order: this.productOrder(
+            order ?? null,
+            price ?? null,
+            tag ?? null
+          ),
           attributes: [...this.productAttributes],
           include: [
             {
               model: Store,
               required: true,
               attributes: [],
-              where: {
-                status: "approved",
-              },
+              where: { status: "approved" },
             },
             {
               model: ProductVariant,
@@ -201,18 +240,24 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         regularCount = count;
       }
 
-      // Step 7: Combine boosted and regular products
+      /* ============================
+      * FINAL RESPONSE
+      * ============================ */
       const finalProducts = [...boostedForPage, ...regularProducts];
       const totalCount = totalBoosted + regularCount;
 
       return new DataResponseDto(
         finalProducts,
         true,
-        "Successfull",
-        pageOptions,
+        "Successful",
+        {
+          page: safePage,
+          take: safeTake,
+        } as any,
         totalCount
       );
     } catch (err) {
+      console.error("fetchProductsSingle error:", err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
