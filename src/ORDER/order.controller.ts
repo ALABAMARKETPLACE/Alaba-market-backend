@@ -136,8 +136,11 @@ export class OrderController {
   @ApiBearerAuth()
   @ApiOkResponse({ type: OrderDto, isArray: true })
   @HttpCode(200)
-  getOrders(): Promise<DataResponseDto> {
-    return this.orderService.getAllOrders();
+  getOrders(
+    @RRole() role: string,
+    @StoreId() storeId?: number
+  ): Promise<DataResponseDto> {
+    return this.orderService.getAllOrders(role, storeId);
   }
 
   //get all orders grouped by their statsu and count for seller
