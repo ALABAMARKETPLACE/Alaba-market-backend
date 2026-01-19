@@ -19,7 +19,7 @@ import { SettingsModule } from "../SETTINGS/settings.module";
             pass: process.env.MAILER_PASSWORD,
           },
         },
-        defaults: {
+        defaults: { // default sender address
           from: process.env.MAILER_DEFAULT_FROM || process.env.MAILER_USER,
         },
         template: {
