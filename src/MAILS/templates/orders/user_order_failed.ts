@@ -67,7 +67,7 @@ const ToUserOrderFailed = async ({
             </div>
             <br />
             <div style="color: #262941; font-weight: bold; font-size: 20px">
-              Your Order is Failed!!
+              Your Order Has Failed!!
             </div>
             <div>Order # ${newOrder?.order_id}</div>
             <br />
@@ -76,7 +76,7 @@ const ToUserOrderFailed = async ({
           <div style="text-align: justify; padding: 0 30px">
             <p>Hello ${user?.name},</p>
             <p>
-              We're regret to inform you that Your recent order has been failed.
+              We regret to inform you that your recent order was unsuccessful.
               <br/>
                 <span style="color: red;">Reason: ${remark}.</span>
                 <br/>

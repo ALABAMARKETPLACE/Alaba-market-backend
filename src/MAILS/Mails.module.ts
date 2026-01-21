@@ -10,14 +10,17 @@ import { SettingsModule } from "../SETTINGS/settings.module";
       useFactory: async () => ({
         transport: {
           host: process.env.MAILER_HOST,
-          secure: false,
+          port: process.env.MAILER_PORT ? Number(process.env.MAILER_PORT) : 587,
+          secure:
+            process.env.MAILER_SECURE === "true" ||
+            (process.env.MAILER_PORT && Number(process.env.MAILER_PORT) === 465),
           auth: {
             user: process.env.MAILER_USER,
             pass: process.env.MAILER_PASSWORD,
           },
         },
-        defaults: {
-          from: process.env.MAILER_USER,
+        defaults: { // default sender address
+          from: process.env.MAILER_DEFAULT_FROM || process.env.MAILER_USER,
         },
         template: {
           options: {

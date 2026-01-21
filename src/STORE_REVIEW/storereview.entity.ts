@@ -33,8 +33,8 @@ export class StoreReview extends Model<StoreReview> {
   orderId: number;
 
   @ForeignKey(() => Print)
-  @Column({ type: DataType.INTEGER, allowNull: false, unique: true })
-  printId: number;
+  @Column({ type: DataType.INTEGER, allowNull: true })
+  printId: number | null;
 
   @Column({
     type: DataType.INTEGER,

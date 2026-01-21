@@ -673,9 +673,20 @@ export class OrderService {
     }
   }
 
-    async getAllOrders() {
+  async getAllOrders(role?: string, storeId?: number) {
     try {
+      const whereClause: any = {};
+
+      // If caller is a seller, restrict to their store
+      if (role === Role.Seller) {
+        if (!storeId) {
+          throw new BadRequestException("Store ID is required for sellers");
+        }
+        whereClause.storeId = storeId;
+      }
+
       const orders = await this.OrderRepository.findAll({
+        where: whereClause,
         order: [["createdAt", "DESC"]],
       });
 
