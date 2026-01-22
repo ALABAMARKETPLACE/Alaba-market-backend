@@ -56,6 +56,7 @@ import { DeliveryCompany } from "../DELIVERY_COMPANY/delivery_company.entity";
 import { Driver } from "../DELIVERY_COMPANY/driver.entity";
 import { DriverInvitation } from "../DELIVERY_COMPANY/driver_invitation.entity";
 import { DriverOrder } from "../DELIVERY_COMPANY/driver_order.entity";
+import { PaymentSplit } from "../PAYMENT_SPLITS/payment-split.entity";
 export const databaseProviders = [
   {
     provide: "SEQUELIZE",
@@ -118,6 +119,7 @@ export const databaseProviders = [
         Driver,
         DriverInvitation,
         DriverOrder,
+        PaymentSplit,
       ]);
       // WARNING: force: true will drop all tables and recreate them!
       // Only use in development. Comment out after first run.
