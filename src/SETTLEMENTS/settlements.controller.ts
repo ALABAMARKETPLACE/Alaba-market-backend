@@ -36,10 +36,10 @@ export class SettlementsController {
   @UseGuards(AuthGuard)
   @Get("summary")
   @HttpCode(200)
-  getSummary(
-    @Req() req: any
-  ): Promise<DataResponseDto> {
-    return this.settlementsService.findSummary(req.user);
+  getSummary(@Req() req: any) {
+    return this.settlementsService.findSummary({
+      storeId: req.user.storeId,
+    });
   }
 
   //to get settlement history for a seller
@@ -115,7 +115,7 @@ export class SettlementsController {
   getSummaryAdmin(
     @Param("id", new ParseIntPipe()) storeId: number
   ): Promise<DataResponseDto> {
-    return this.settlementsService.findSummary(storeId);
+    return this.settlementsService.findSummary({ storeId });
   }
 
   //to get settlement history of a store for admin
