@@ -25,26 +25,19 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(userOrStoreId: any, pageOptions: SettlementsQueryDto) {
+  async findAll(user: any, pageOptions: SettlementsQueryDto) {
     try {
       const { offset, limit, settle_status } = pageOptions;
 
-      // Build WHERE dynamically (DO NOT inline storeId)
+      // Build WHERE dynamically
       const where: any = {};
 
-      // Handle both user object and storeId number
-      if (typeof userOrStoreId === "object" && userOrStoreId?.role) {
-        // Called from seller endpoint with user object
-        if (userOrStoreId.role === Role.Seller) {
-          if (!userOrStoreId.storeId) {
-            throw new BadRequestException("Seller has no store assigned");
-          }
-          where.storeId = userOrStoreId.storeId;
+      // Seller → restrict to their store
+      if (user?.role === Role.Seller) {
+        if (!user.storeId) {
+          throw new BadRequestException("Seller has no store assigned");
         }
-        // Admin: no filter, return all settlements
-      } else if (typeof userOrStoreId === "number") {
-        // Called from admin endpoint with storeId number
-        where.storeId = userOrStoreId;
+        where.storeId = user.storeId;
       }
 
       // Optional status filter
@@ -75,11 +68,10 @@ export class SettlementsService {
     }
   }
 
-  async findOneById(storeId: number, id: number): Promise<DataResponseDto> {
+  async findOneById(id: number): Promise<DataResponseDto> {
     try {
       const data = await this.SettlementsRepository.findOne({
         where: {
-          storeId,
           id,
         },
         order: [["updatedAt", "DESC"]],
@@ -154,7 +146,7 @@ export class SettlementsService {
     }
   }
 
-  async findSummary(userOrStoreId?: any) {
+  async findSummary(user?: any) {
     try {
       const orderWhere: any = { status: "delivered" };
       const settlementWhereSuccess: any = { status: "success" };
@@ -162,23 +154,14 @@ export class SettlementsService {
         status: { [Op.notIn]: ["success"] },
       };
 
-      // Handle both user object and storeId number
-      if (typeof userOrStoreId === "object" && userOrStoreId?.role) {
-        // Called from seller endpoint with user object
-        if (userOrStoreId.role === Role.Seller) {
-          if (!userOrStoreId.storeId) {
-            throw new BadRequestException("Seller has no store assigned");
-          }
-          orderWhere.storeId = userOrStoreId.storeId;
-          settlementWhereSuccess.storeId = userOrStoreId.storeId;
-          settlementWherePending.storeId = userOrStoreId.storeId;
+      // Seller → restrict to their store
+      if (user && user.role === Role.Seller) {
+        if (!user.storeId) {
+          throw new BadRequestException("Seller has no store assigned");
         }
-        // Admin: no filter, return all settlements
-      } else if (typeof userOrStoreId === "number") {
-        // Called from admin endpoint with storeId number
-        orderWhere.storeId = userOrStoreId;
-        settlementWhereSuccess.storeId = userOrStoreId;
-        settlementWherePending.storeId = userOrStoreId;
+        orderWhere.storeId = user.storeId;
+        settlementWhereSuccess.storeId = user.storeId;
+        settlementWherePending.storeId = user.storeId;
       }
 
       //NO TRANSACTION — PARALLEL EXECUTION

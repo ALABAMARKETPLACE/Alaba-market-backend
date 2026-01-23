@@ -32,7 +32,7 @@ export class SettlementsController {
   constructor(private readonly settlementsService: SettlementsService) {}
 
   //to get settlements summary for a seller
-  @Roles(Role.Seller, Role.Admin)
+  @Roles(Role.Seller)
   @UseGuards(AuthGuard)
   @Get("summary")
   @HttpCode(200)
@@ -42,8 +42,8 @@ export class SettlementsController {
     return this.settlementsService.findSummary(req.user);
   }
 
-  //to get settlement dtails of a store for admin
-  @Roles(Role.Seller, Role.Admin)
+  //to get settlement history for a seller
+  @Roles(Role.Seller)
   @UseGuards(AuthGuard)
   @Get("history")
   @HttpCode(200)
@@ -55,7 +55,7 @@ export class SettlementsController {
   }
   
   
-  @Roles(Role.Seller, Role.Admin)
+  @Roles(Role.Admin)
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @Get("historyById/:id")
@@ -64,10 +64,9 @@ export class SettlementsController {
   @HttpCode(200)
   @UsePipes(new ValidationPipe({ transform: true }))
   getHistoryById(
-    @StoreId() storeId: number,
-    @Param("id") id: number
+    @Param("id", ParseIntPipe) id: number
   ): Promise<DataResponseDto> {
-    return this.settlementsService.findOneById(storeId, id);
+    return this.settlementsService.findOneById(id);
   }
 
   @Roles(Role.Seller, Role.Admin)
