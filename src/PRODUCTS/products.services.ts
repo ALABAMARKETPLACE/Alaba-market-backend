@@ -262,14 +262,12 @@ export class ProductsService {
   modalsToInclude = [
     {
       model: Category,
-      as: "categoryName",
-      required: false,
+      required: true,
       attributes: ["name"],
     },
     {
       model: SubCategory,
-      as: "subCategoryName",
-      required: false,
+      required: true,
       attributes: ["name"],
     },
     {
@@ -282,12 +280,7 @@ export class ProductsService {
       required: false,
       attributes: pVariantAttributes,
     },
-    { 
-      model: Store, 
-      as: "storeDetails",
-      required: false, 
-      attributes: ["store_name"] 
-    },
+    { model: Store, required: true, attributes: ["store_name"] },
   ];
 
   async findOne(pid: UUID) {
@@ -414,26 +407,6 @@ export class ProductsService {
     }
   }
 
-  // async findOneForSeller(storeId: number, id: number) {
-  //   try {
-  //     const data = await this.ProductsRepository.findOne<Products>({
-  //       where: {
-  //         _id: id,
-  //         store_id: storeId,
-  //       },
-  //       include: this.modalsToInclude,
-  //       order: [[Sequelize.col("productImages.id"), "ASC"]],
-  //     });
-  //     if (!data) {
-  //       throw new Error("No Product found@@");
-  //     }
-  //     return new DataResponseDto(data, true, "Success");
-  //   } catch (err) {
-  //     if (err instanceof HttpException) throw err;
-  //     throw new InternalServerErrorException(getErrorMessage(err));
-  //   }
-  // }
-
   async findOneForSeller(storeId: number, id: number) {
     try {
       const data = await this.ProductsRepository.findOne<Products>({
@@ -442,15 +415,13 @@ export class ProductsService {
           store_id: storeId,
         },
         include: this.modalsToInclude,
+        order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
-
       if (!data) {
-        throw new NotFoundException("Product not found");
+        throw new Error("No Product found@@");
       }
-
       return new DataResponseDto(data, true, "Success");
     } catch (err) {
-      console.error("Error in findOneForSeller:", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }

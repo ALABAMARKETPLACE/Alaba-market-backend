@@ -25,19 +25,26 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(user: any, pageOptions: SettlementsQueryDto) {
+  async findAll(userOrStoreId: any, pageOptions: SettlementsQueryDto) {
     try {
       const { offset, limit, settle_status } = pageOptions;
 
       // Build WHERE dynamically (DO NOT inline storeId)
       const where: any = {};
 
-      // Seller → restrict to their store
-      if (user?.role === Role.Seller) {
-        if (!user.storeId) {
-          throw new BadRequestException("Seller has no store assigned");
+      // Handle both user object and storeId number
+      if (typeof userOrStoreId === "object" && userOrStoreId?.role) {
+        // Called from seller endpoint with user object
+        if (userOrStoreId.role === Role.Seller) {
+          if (!userOrStoreId.storeId) {
+            throw new BadRequestException("Seller has no store assigned");
+          }
+          where.storeId = userOrStoreId.storeId;
         }
-        where.storeId = user.storeId;
+        // Admin: no filter, return all settlements
+      } else if (typeof userOrStoreId === "number") {
+        // Called from admin endpoint with storeId number
+        where.storeId = userOrStoreId;
       }
 
       // Optional status filter
@@ -147,7 +154,7 @@ export class SettlementsService {
     }
   }
 
-  async findSummary(user?: any) {
+  async findSummary(userOrStoreId?: any) {
     try {
       const orderWhere: any = { status: "delivered" };
       const settlementWhereSuccess: any = { status: "success" };
@@ -155,14 +162,23 @@ export class SettlementsService {
         status: { [Op.notIn]: ["success"] },
       };
 
-      // Seller → restrict to their store
-      if (user && user.role === Role.Seller) {
-        if (!user.storeId) {
-          throw new BadRequestException("Seller has no store assigned");
+      // Handle both user object and storeId number
+      if (typeof userOrStoreId === "object" && userOrStoreId?.role) {
+        // Called from seller endpoint with user object
+        if (userOrStoreId.role === Role.Seller) {
+          if (!userOrStoreId.storeId) {
+            throw new BadRequestException("Seller has no store assigned");
+          }
+          orderWhere.storeId = userOrStoreId.storeId;
+          settlementWhereSuccess.storeId = userOrStoreId.storeId;
+          settlementWherePending.storeId = userOrStoreId.storeId;
         }
-        orderWhere.storeId = user.storeId;
-        settlementWhereSuccess.storeId = user.storeId;
-        settlementWherePending.storeId = user.storeId;
+        // Admin: no filter, return all settlements
+      } else if (typeof userOrStoreId === "number") {
+        // Called from admin endpoint with storeId number
+        orderWhere.storeId = userOrStoreId;
+        settlementWhereSuccess.storeId = userOrStoreId;
+        settlementWherePending.storeId = userOrStoreId;
       }
 
       //NO TRANSACTION — PARALLEL EXECUTION
