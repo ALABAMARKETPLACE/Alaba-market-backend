@@ -262,12 +262,14 @@ export class ProductsService {
   modalsToInclude = [
     {
       model: Category,
-      required: true,
+      as: "categoryName",
+      required: false,
       attributes: ["name"],
     },
     {
       model: SubCategory,
-      required: true,
+      as: "subCategoryName",
+      required: false,
       attributes: ["name"],
     },
     {
@@ -280,7 +282,12 @@ export class ProductsService {
       required: false,
       attributes: pVariantAttributes,
     },
-    { model: Store, required: true, attributes: ["store_name"] },
+    { 
+      model: Store, 
+      as: "storeDetails",
+      required: false, 
+      attributes: ["store_name"] 
+    },
   ];
 
   async findOne(pid: UUID) {
@@ -443,6 +450,7 @@ export class ProductsService {
 
       return new DataResponseDto(data, true, "Success");
     } catch (err) {
+      console.error("Error in findOneForSeller:", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
