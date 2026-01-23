@@ -407,6 +407,26 @@ export class ProductsService {
     }
   }
 
+  // async findOneForSeller(storeId: number, id: number) {
+  //   try {
+  //     const data = await this.ProductsRepository.findOne<Products>({
+  //       where: {
+  //         _id: id,
+  //         store_id: storeId,
+  //       },
+  //       include: this.modalsToInclude,
+  //       order: [[Sequelize.col("productImages.id"), "ASC"]],
+  //     });
+  //     if (!data) {
+  //       throw new Error("No Product found@@");
+  //     }
+  //     return new DataResponseDto(data, true, "Success");
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
   async findOneForSeller(storeId: number, id: number) {
     try {
       const data = await this.ProductsRepository.findOne<Products>({
@@ -415,11 +435,12 @@ export class ProductsService {
           store_id: storeId,
         },
         include: this.modalsToInclude,
-        order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
+
       if (!data) {
-        throw new Error("No Product found@@");
+        throw new NotFoundException("Product not found");
       }
+
       return new DataResponseDto(data, true, "Success");
     } catch (err) {
       if (err instanceof HttpException) throw err;
