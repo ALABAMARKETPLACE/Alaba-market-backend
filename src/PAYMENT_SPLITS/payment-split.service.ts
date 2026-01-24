@@ -14,6 +14,7 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { Transaction } from "sequelize";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
+import { InjectModel } from "@nestjs/sequelize";
 
 @Injectable()
 export class PaymentSplitService {
@@ -22,11 +23,12 @@ export class PaymentSplitService {
   private readonly adminSubaccountCode = process.env.ADMIN_PAYSTACK_SUBACCOUNT; // Your main account
 
   constructor(
-    @Inject("PaymentSplitRepository")
+    // @Inject("PaymentSplitRepository")
+    @InjectModel(PaymentSplit)
     private readonly paymentSplitRepository: typeof PaymentSplit,
-    @Inject("StoreRepository")
+    @InjectModel(Store)
     private readonly storeRepository: typeof Store,
-    @Inject("OrderRepository")
+    @InjectModel(Order)
     private readonly orderRepository: typeof Order,
     private readonly httpService: HttpService
   ) {}
