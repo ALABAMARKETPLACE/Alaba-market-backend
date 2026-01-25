@@ -1,5 +1,6 @@
 import { PaymentSplit } from "./payment-split.entity";
 import { Order } from "../ORDER/order.entity";
+import { Store } from "../STORE/store.entity";
 
 export const paymentSplitProviders = [
   {
@@ -9,5 +10,9 @@ export const paymentSplitProviders = [
   {
     provide: "OrderRepository",
     useValue: Order,
+  },
+  {
+    provide: "StoreRepository",
+    useValue: Store,
   },
 ];

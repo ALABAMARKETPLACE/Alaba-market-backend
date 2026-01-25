@@ -122,7 +122,7 @@ export class ProductsController {
   @ApiDataObjectResponse(ProductsDto)
   findProductSeller(
     @StoreId() storeId: number,
-    @Param("id") id: number
+    @Param("id", ParseIntPipe) id: number
   ): Promise<DataResponseDto> {
     return this.ProductsService.findOneForSeller(storeId, id);
   }
