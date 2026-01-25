@@ -32,10 +32,10 @@ export class SettlementsController {
   constructor(private readonly settlementsService: SettlementsService) {}
 
   //to get settlements summary for a seller
+  @ApiBearerAuth()
   @Roles(Role.Seller)
   @UseGuards(AuthGuard)
   @Get("summary")
-  @HttpCode(200)
   getSummary(@Req() req: any) {
     return this.settlementsService.findSummary({
       storeId: req.user.storeId,
