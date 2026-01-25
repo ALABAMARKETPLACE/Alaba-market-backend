@@ -32,14 +32,20 @@ export class SettlementsController {
   constructor(private readonly settlementsService: SettlementsService) {}
 
   //to get settlements summary for a seller
-  @ApiBearerAuth()
-  @Roles(Role.Seller)
-  @UseGuards(AuthGuard)
+  // @ApiBearerAuth()
+  // @Roles(Role.Seller)
+  // @UseGuards(AuthGuard)
+  // @Get("summary")
+  // getSummary(@Req() req: any) {
+  //   return this.settlementsService.findSummary({
+  //     storeId: req.user.storeId,
+  //   });
+  // }
+
   @Get("summary")
-  getSummary(@Req() req: any) {
-    return this.settlementsService.findSummary({
-      storeId: req.user.storeId,
-    });
+  @Roles(Role.Admin)
+  getGlobalSummary() {
+    return this.settlementsService.findSummary({});
   }
 
   //to get settlement history for a seller
