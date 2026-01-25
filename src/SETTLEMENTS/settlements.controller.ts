@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -42,10 +44,29 @@ export class SettlementsController {
   //   });
   // }
 
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin, Role.Seller)
   @Get("summary")
-  @Roles(Role.Admin)
-  getGlobalSummary() {
-    return this.settlementsService.findSummary({});
+  getSummary(
+    @Req() req: any,
+    @StoreId() storeId?: number
+  ) {
+    // Seller → store-scoped summary
+    if (req.user?.role === Role.Seller) {
+      if (!storeId) {
+        throw new BadRequestException("Seller has no store assigned");
+      }
+
+      return this.settlementsService.findSummary({ storeId });
+    }
+
+    // Admin → global summary
+    if (req.user?.role === Role.Admin) {
+      return this.settlementsService.findSummary({});
+    }
+
+    throw new ForbiddenException("Unauthorized role");
   }
 
   //to get settlement history for a seller
