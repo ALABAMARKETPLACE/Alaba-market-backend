@@ -11,6 +11,7 @@ import {
   Put,
   Query,
   Req,
+  UnauthorizedException,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -48,12 +49,15 @@ export class SettlementsController {
   @UseGuards(AuthGuard)
   @Roles(Role.Admin, Role.Seller)
   @Get("summary")
-  getSummary(
-    @Req() req: any,
-    @StoreId() storeId?: number
-  ) {
+  getSummary(@Req() req: any) {
+    if (!req.user) {
+      throw new UnauthorizedException("User not authenticated");
+    }
+
     // Seller → store-scoped summary
-    if (req.user?.role === Role.Seller) {
+    if (req.user.role === Role.Seller) {
+      const storeId = Number(req.user.storeId);
+
       if (!storeId) {
         throw new BadRequestException("Seller has no store assigned");
       }
@@ -62,12 +66,13 @@ export class SettlementsController {
     }
 
     // Admin → global summary
-    if (req.user?.role === Role.Admin) {
+    if (req.user.role === Role.Admin) {
       return this.settlementsService.findSummary({});
     }
 
     throw new ForbiddenException("Unauthorized role");
   }
+
 
   //to get settlement history for a seller
   @Roles(Role.Seller)
