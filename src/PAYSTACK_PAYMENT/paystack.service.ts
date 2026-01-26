@@ -27,6 +27,7 @@ import { PaymentSplitService } from "../PAYMENT_SPLITS/payment-split.service";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 import { Order } from "../ORDER/order.entity";
+import { DataResponseDto } from "src/shared/dto/data-response-dto";
 
 @Injectable()
 export class PaystackService {
@@ -270,6 +271,48 @@ export class PaystackService {
     });
   }
 
+
+  /* ----------------------------------------------------
+   GET TRANSACTION DETAILS
+---------------------------------------------------- */
+async getTransactionDetails(reference: string): Promise<DataResponseDto> {
+    const response = await lastValueFrom(
+      this.httpService
+        .get(`${this.baseUrl}/transaction/verify/${reference}`, {
+          headers: this.getHeaders(),
+        })
+        .pipe(map(r => r.data))
+    );
+
+    return new DataResponseDto(
+      response.data,
+      true,
+      "Transaction details retrieved"
+    );
+  }
+
+/* ----------------------------------------------------
+   LIST TRANSACTIONS
+---------------------------------------------------- */
+async listTransactions(
+    page = 1,
+    perPage = 50
+  ): Promise<DataResponseDto> {
+    const response = await lastValueFrom(
+      this.httpService
+        .get(
+          `${this.baseUrl}/transaction?page=${page}&perPage=${perPage}`,
+          { headers: this.getHeaders() }
+        )
+        .pipe(map(r => r.data))
+    );
+
+    return new DataResponseDto(
+      response.data,
+      true,
+      "Transactions fetched successfully"
+    );
+  }
   /* ----------------------------------
      REFUND
   ---------------------------------- */
@@ -306,3 +349,5 @@ export class PaystackService {
     return this.verifyPayment({ reference });
   }
 }
+
+
