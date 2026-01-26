@@ -3,6 +3,8 @@ import {
   HttpException,
   HttpStatus,
   InternalServerErrorException,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { Transaction } from "sequelize";
@@ -10,6 +12,7 @@ import { Transaction } from "sequelize";
 import { PaymentSplit } from "./payment-split.entity";
 import { Store } from "../STORE/store.entity";
 import { Order } from "../ORDER/order.entity";
+
 import computeSplit from "../shared/helpers/computeSplit";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -28,58 +31,57 @@ export class PaymentSplitService {
     @InjectModel(Order)
     private readonly orderRepository: typeof Order,
 
-    // 🔑 SINGLE PaystackService (from paystack_payment)
+    // 🔁 FIX: circular dependency
+    @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService
   ) {}
 
+  /* ============================================
+     SELLER: own payment splits
+  ============================================ */
+  async getStorePaymentSplits(
+    storeId: number,
+    page = 1,
+    limit = 20
+  ): Promise<DataResponseDto> {
+    try {
+      const offset = (page - 1) * limit;
 
+      const { rows, count } =
+        await this.paymentSplitRepository.findAndCountAll({
+          where: { store_id: storeId },
+          include: [
+            {
+              model: Order,
+              attributes: ["id", "order_id", "status", "total"],
+            },
+          ],
+          order: [["createdAt", "DESC"]],
+          limit,
+          offset,
+        });
 
-  // ===============================
-// Seller: get own payment splits
-// ===============================
-async getStorePaymentSplits(
-  storeId: number,
-  page = 1,
-  limit = 20
-): Promise<DataResponseDto> {
-  try {
-    const offset = (page - 1) * limit;
-
-    const { rows, count } =
-      await this.paymentSplitRepository.findAndCountAll({
-        where: { store_id: storeId },
-        include: [
-          {
-            model: Order,
-            attributes: ["id", "order_id", "status", "total"],
-          },
-        ],
-        order: [["createdAt", "DESC"]],
-        limit,
-        offset,
+      const pageOptions = Object.assign(new PageOptionsDto(), {
+        page,
+        take: limit,
       });
 
-    const pageOptions = Object.assign(new PageOptionsDto(), {
-      page,
-      take: limit,
-    });
-
-    return new DataResponseDto(
-      rows,
-      true,
-      "Payment splits fetched successfully",
-      pageOptions,
-      count
-    );
-  } catch (err) {
-    throw new InternalServerErrorException(getErrorMessage(err));
+      return new DataResponseDto(
+        rows,
+        true,
+        "Payment splits fetched successfully",
+        pageOptions,
+        count
+      );
+    } catch (err) {
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
   }
-}
 
-// ===============================
-// Admin: get all payment splits
-// ===============================
-async getAdminPaymentSplits(
+  /* ============================================
+     ADMIN: all payment splits
+  ============================================ */
+  async getAdminPaymentSplits(
     page = 1,
     limit = 50
   ): Promise<DataResponseDto> {
@@ -89,14 +91,8 @@ async getAdminPaymentSplits(
       const { rows, count } =
         await this.paymentSplitRepository.findAndCountAll({
           include: [
-            {
-              model: Store,
-              attributes: ["id", "store_name"],
-            },
-            {
-              model: Order,
-              attributes: ["id", "order_id", "status", "total"],
-            },
+            { model: Store, attributes: ["id", "store_name"] },
+            { model: Order, attributes: ["id", "order_id", "status", "total"] },
           ],
           order: [["createdAt", "DESC"]],
           limit,
@@ -137,9 +133,9 @@ async getAdminPaymentSplits(
     }
   }
 
-  /**
-   * Create payment split when order is placed
-   */
+  /* ============================================
+     CREATE SPLIT (order creation)
+  ============================================ */
   async createPaymentSplit(orderId: number, totalAmount: number) {
     try {
       return await this.paymentSplitRepository.sequelize.transaction(
@@ -185,9 +181,9 @@ async getAdminPaymentSplits(
     }
   }
 
-  /**
-   * Initialize Paystack payment with split
-   */
+  /* ============================================
+     INITIALIZE PAYSTACK SPLIT PAYMENT
+  ============================================ */
   async processPaymentWithSplit(orderId: number, paymentData: any) {
     try {
       return await this.paymentSplitRepository.sequelize.transaction(
@@ -215,36 +211,33 @@ async getAdminPaymentSplits(
           const initData = {
             email: paymentData.email,
             amount: Math.round(paymentSplit.total_amount * 100),
-            reference: paymentData.reference,
             callback_url: paymentData.callback_url,
-            subaccount: paymentSplit.store.paystack_subaccount_code,
-            bearer: "account",
-            metadata: {
-              order_id: paymentSplit.order_id,
-              store_id: paymentSplit.store_id,
-              split_payment: true,
-            },
+            reference: paymentData.reference,
+            store_id: paymentSplit.store_id,
+            order_id: paymentSplit.order_id,
+            split_payment: true,
           };
 
-          //Uses paystack_payment service
-          const paystackResponse =
-          await this.paystackService.initializePayment(initData);
+          // ⬅ returns DataResponseDto
+          const response: DataResponseDto =
+            await this.paystackService.initializePayment(initData);
 
-        const reference = paystackResponse.data.reference;
+          const paystackData = response.data;
+          const reference = paystackData.reference;
 
-        await paymentSplit.update(
-          {
-            paystack_transaction_id: reference,
-            paystack_split_response: paystackResponse.data as unknown as any,
-            split_status: "pending",
-          },
-          { transaction }
-        );
+          await paymentSplit.update(
+            {
+              paystack_transaction_id: reference,
+              paystack_split_response: { ...paystackData }, // ✅ plain JSON
+              split_status: "pending",
+            },
+            { transaction }
+          );
 
-        return {
-          paymentSplit,
-          paystackResponse,
-        };
+          return {
+            paymentSplit,
+            paystack: paystackData,
+          };
         }
       );
     } catch (err) {
@@ -252,17 +245,15 @@ async getAdminPaymentSplits(
     }
   }
 
-  /**
-   * Verify payment (used by webhook or manual fallback)
-   */
+  /* ============================================
+     VERIFY PAYMENT
+  ============================================ */
   async verifyPayment(reference: string) {
     try {
-      //paystack_payment API
       const verification =
         await this.paystackService.verifyPaymentByReference(reference);
 
-      const transactionData =
-        verification?.data ?? verification;
+      const transactionData = verification?.data ?? verification;
 
       await this.updatePaymentSplitStatus(reference, transactionData);
 
@@ -278,9 +269,9 @@ async getAdminPaymentSplits(
     }
   }
 
-  /**
-   * Update split status after verification
-   */
+  /* ============================================
+     UPDATE SPLIT STATUS
+  ============================================ */
   private async updatePaymentSplitStatus(reference: string, data: any) {
     const paymentSplit = await this.paymentSplitRepository.findOne({
       where: { paystack_transaction_id: reference },
@@ -296,7 +287,7 @@ async getAdminPaymentSplits(
       seller_settled: success,
       admin_settled_at: success ? new Date() : null,
       seller_settled_at: success ? new Date() : null,
-      paystack_split_response: data,
+      paystack_split_response: { ...data },
     });
   }
 }
