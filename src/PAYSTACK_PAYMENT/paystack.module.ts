@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { HttpModule } from "@nestjs/axios";
 import { PaystackController } from "./paystack.controller";
 import { PaystackService } from "./paystack.service";
@@ -12,7 +12,7 @@ import { PaymentSplitModule } from "../PAYMENT_SPLITS/payment-split.module";
       maxRedirects: 5,
     }),
     StoreModule,
-    PaymentSplitModule,
+    forwardRef(() => PaymentSplitModule),
   ],
   controllers: [PaystackController],
   providers: [PaystackService],

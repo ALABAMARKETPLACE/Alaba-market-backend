@@ -8,6 +8,8 @@ import {
 import { PaymentSplit } from "./payment-split.entity";
 import { Store } from "../STORE/store.entity";
 import { Order } from "../ORDER/order.entity";
+import computeSplit from "../shared/helpers/computeSplit";
+import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
@@ -31,6 +33,8 @@ export class PaymentSplitService {
     @InjectModel(Order)
     private readonly orderRepository: typeof Order,
     private readonly httpService: HttpService
+    ,
+    private readonly paystackService: PaystackService
   ) {}
 
   // Create payment split when order is placed
@@ -56,22 +60,20 @@ export class PaymentSplitService {
             );
           }
 
-          // Calculate split amounts (Admin 5%, Seller 95%)
-          const adminPercentage = 5.0;
-          const sellerPercentage = 95.0;
-          const adminAmount = (totalAmount * adminPercentage) / 100;
-          const sellerAmount = totalAmount - adminAmount;
+          // Compute split using kobo-safe utility
+          const product_total_kobo = Math.round(totalAmount * 100);
+          const split = computeSplit({ product_total_kobo });
 
-          // Create payment split record
+          // Create payment split record (store amounts in Naira as decimals)
           const paymentSplit = await this.paymentSplitRepository.create(
             {
               order_id: orderId,
               store_id: store.id,
-              total_amount: totalAmount,
-              admin_amount: Math.round(adminAmount * 100) / 100,
-              seller_amount: Math.round(sellerAmount * 100) / 100,
-              admin_percentage: adminPercentage,
-              seller_percentage: sellerPercentage,
+              total_amount: Number((product_total_kobo / 100).toFixed(2)),
+              admin_amount: Number((split.admin_amount_kobo / 100).toFixed(2)),
+              seller_amount: Number((split.seller_amount_kobo / 100).toFixed(2)),
+              admin_percentage: split.admin_percentage,
+              seller_percentage: split.seller_percentage,
               split_status: "pending",
             },
             { transaction }
@@ -121,18 +123,50 @@ export class PaymentSplitService {
             );
           }
 
-          // Prepare split payment data for Paystack
-          const splitData = this.prepareSplitPayment(paymentSplit, paymentData);
+          // Prepare split payment data
+          const reference = paymentData.reference || this.generateReference();
+          const amount_kobo = Math.round(paymentSplit.total_amount * 100);
+          const splitPayload = {
+            email: paymentData.email,
+            amount: amount_kobo,
+            reference,
+            currency: "NGN",
+            callback_url: paymentData.callback_url,
+            subaccount: paymentSplit.store.paystack_subaccount_code,
+            bearer: "account",
+            metadata: {
+              order_id: paymentSplit.order_id,
+              store_id: paymentSplit.store_id,
+              split: {
+                admin_amount_kobo: Math.round(paymentSplit.admin_amount * 100),
+                seller_amount_kobo: Math.round(paymentSplit.seller_amount * 100),
+                admin_percentage: paymentSplit.admin_percentage,
+                seller_percentage: paymentSplit.seller_percentage,
+              },
+            },
+          };
 
-          // Process payment with Paystack
-          const paystackResponse = await this.processPaystackSplitPayment(splitData);
+          // Initialize transaction via existing PaystackService (returns DataResponseDto)
+          const initData = Object.assign({}, splitPayload, {
+            amount: splitPayload.amount,
+            split_payment: true,
+            store_id: paymentSplit.store_id,
+            order_id: paymentSplit.order_id,
+          });
 
-          // Update payment split with transaction details
+          const paystackResponse = await this.paystackService.initializePayment(
+            initData as any
+          );
+
+          // paystackResponse.data may be either the Paystack wrapper or the inner data.
+          const apiResp = paystackResponse.data as any;
+          const paystackRef = apiResp?.data?.reference ?? apiResp?.reference;
+
           await paymentSplit.update(
             {
-              paystack_transaction_id: paystackResponse.data.reference,
-              paystack_split_response: paystackResponse.data,
-              split_status: paystackResponse.data.status === "success" ? "completed" : "failed",
+              paystack_transaction_id: paystackRef,
+              paystack_split_response: apiResp as any,
+              split_status: apiResp?.status ? "pending" : "failed",
             },
             { transaction }
           );
@@ -156,17 +190,17 @@ export class PaymentSplitService {
       amount: Math.round(paymentSplit.total_amount * 100), // Paystack expects kobo/cents
       reference: paymentData.reference || this.generateReference(),
       subaccount: paymentSplit.store.paystack_subaccount_code,
-      transaction_charge: Math.round(paymentSplit.admin_amount * 100), // Admin's 5% in kobo/cents
-      bearer: "account", // Main account bears the transaction fee
+      transaction_charge: Math.round(paymentSplit.admin_amount * 100), // Admin's cut in kobo
+      bearer: "account",
       callback_url: paymentData.callback_url,
       metadata: {
         order_id: paymentSplit.order_id,
         store_id: paymentSplit.store_id,
         admin_amount: paymentSplit.admin_amount,
-            seller_amount: paymentSplit.seller_amount,
-            split_type: "automatic",
-          },
-        };
+        seller_amount: paymentSplit.seller_amount,
+        split_type: "automatic",
+      },
+    };
       }
 
   // Generate unique payment reference
@@ -178,30 +212,8 @@ export class PaymentSplitService {
 
   // Process split payment through Paystack API
   private async processPaystackSplitPayment(splitData: any) {
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.paystackBaseUrl}/transaction/initialize`,
-          splitData,
-          {
-            headers: {
-              Authorization: `Bearer ${this.paystackSecretKey}`,
-              "Content-Type": "application/json",
-            },
-          }
-        )
-      );
-
-      if (!response.data.status) {
-        throw new Error(`Paystack API Error: ${response.data.message}`);
-      }
-
-      return response.data;
-    } catch (error) {
-      throw new InternalServerErrorException(
-        `Failed to process split payment: ${error.response?.data?.message || error.message}`
-      );
-    }
+    // Deprecated in favour of PaystackService wrapper
+    return this.paystackService.initializePayment(splitData as any);
   }
 
   // Verify split payment
@@ -254,7 +266,7 @@ export class PaymentSplitService {
         seller_settled: isSuccess,
         admin_settled_at: isSuccess ? new Date() : null,
         seller_settled_at: isSuccess ? new Date() : null,
-        paystack_split_response: transactionData,
+        paystack_split_response: transactionData as any,
       });
     }
   }
