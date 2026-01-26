@@ -27,7 +27,7 @@ import { PaymentSplitService } from "../PAYMENT_SPLITS/payment-split.service";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 import { Order } from "../ORDER/order.entity";
-import { DataResponseDto } from "src/shared/dto/data-response-dto";
+import { DataResponseDto } from "../shared/dto/data-response-dto";
 
 @Injectable()
 export class PaystackService {
