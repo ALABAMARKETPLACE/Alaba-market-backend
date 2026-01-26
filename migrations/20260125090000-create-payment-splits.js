@@ -74,9 +74,24 @@ module.exports = {
       },
     });
 
-    await queryInterface.addIndex("PAYMENT_SPLITS", ["order_id"]);
-    await queryInterface.addIndex("PAYMENT_SPLITS", ["store_id"]);
-    await queryInterface.addIndex("PAYMENT_SPLITS", ["split_status"]);
+    //Explicit, stable index names
+    await queryInterface.addIndex(
+      "PAYMENT_SPLITS",
+      ["order_id"],
+      { name: "idx_payment_splits_order_id" }
+    );
+
+    await queryInterface.addIndex(
+      "PAYMENT_SPLITS",
+      ["store_id"],
+      { name: "idx_payment_splits_store_id" }
+    );
+
+    await queryInterface.addIndex(
+      "PAYMENT_SPLITS",
+      ["split_status"],
+      { name: "idx_payment_splits_split_status" }
+    );
   },
 
   async down(queryInterface, Sequelize) {

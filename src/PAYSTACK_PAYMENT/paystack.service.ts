@@ -100,8 +100,16 @@ export class PaystackService {
         )
     );
 
-    return new DataResponseDto(response, true, "Payment initialized");
-  }
+    return {
+      status: true,
+      message: "Payment initialized",
+      data: {
+        authorization_url: response.data.authorization_url,
+        access_code: response.data.access_code,
+        reference: response.data.reference,
+      },
+    };
+}
 
   /* ----------------------------------------------------
      SPLIT PAYMENT
@@ -146,7 +154,15 @@ export class PaystackService {
         .pipe(map((r) => r.data))
     );
 
-    return new DataResponseDto(response, true, "Split payment initialized");
+    return {
+      status: true,
+      message: "Split payment initialized",
+      data: {
+        authorization_url: response.data.authorization_url,
+        access_code: response.data.access_code,
+        reference: response.data.reference,
+      },
+    };
   }
 
   /* ----------------------------------------------------
@@ -163,7 +179,11 @@ export class PaystackService {
         .pipe(map((r) => r.data))
     );
 
-    return new DataResponseDto(response, true, "Verification completed");
+    return {
+      status: true,
+      message: "Verification completed",
+      data: response.data,
+    };
   }
 
   /* ----------------------------------------------------
@@ -286,55 +306,39 @@ export class PaystackService {
   async createRefund(
     refundData: PaystackRefundDto
   ): Promise<PaystackRefundResponseDto> {
-    try {
-      const payload = {
-        transaction: refundData.transaction,
-        amount: refundData.amount,
-        currency: refundData.currency || "NGN",
-        customer_note: refundData.reason || "Refund requested",
-        merchant_note: refundData.reason || "Refund processed",
-      };
+    const payload = {
+      transaction: refundData.transaction,
+      amount: refundData.amount,
+      currency: refundData.currency || "NGN",
+      customer_note: refundData.reason || "Refund requested",
+      merchant_note: refundData.reason || "Refund processed",
+    };
 
-      // Remove undefined fields
-      Object.keys(payload).forEach(
-        (key) => payload[key] === undefined && delete payload[key]
-      );
+    Object.keys(payload).forEach(
+      (k) => payload[k] === undefined && delete payload[k]
+    );
 
-      const response = await lastValueFrom(
-        this.httpService
-          .post(`${this.baseUrl}/refund`, payload, {
-            headers: this.getHeaders(),
+    const response = await lastValueFrom(
+      this.httpService
+        .post(`${this.baseUrl}/refund`, payload, {
+          headers: this.getHeaders(),
+        })
+        .pipe(
+          map((r) => r.data),
+          catchError((err) => {
+            throw new HttpException(
+              err.response?.data?.message || "Refund failed",
+              err.response?.status || HttpStatus.BAD_REQUEST
+            );
           })
-          .pipe(
-            map((resp) => resp.data),
-            catchError((error) => {
-              console.error(
-                "Paystack refund error:",
-                error.response?.data || error.message
-              );
-              throw new HttpException(
-                error.response?.data?.message || "Refund request failed",
-                error.response?.status || HttpStatus.BAD_REQUEST
-              );
-            })
-          )
-      );
+        )
+    );
 
-      return new DataResponseDto(
-        response,
-        true,
-        "Refund processed successfully"
-      );
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      console.error("Create refund error:", error);
-      throw new HttpException(
-        "Failed to process refund",
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
+    return {
+      status: true,
+      message: "Refund processed successfully",
+      data: response.data,
+    };
   }
     /* ----------------------------------------------------
       HELPERS
