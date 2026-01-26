@@ -218,17 +218,36 @@ export class PaymentSplitService {
             split_payment: true,
           };
 
-          // ⬅ returns DataResponseDto
-          const response: DataResponseDto =
+          //RAW Paystack response (CORRECT)
+          // const paystackData =
+          //   await this.paystackService.initializePayment(initData);
+
+          // const reference = paystackData.reference;
+
+          // await paymentSplit.update(
+          //   {
+          //     paystack_transaction_id: reference,
+          //     paystack_split_response: JSON.parse(
+          //       JSON.stringify(paystackData)
+          //     ) as any,
+          //     split_status: "pending",
+          //   },
+          //   { transaction }
+          // );
+
+          const paystackResponse =
             await this.paystackService.initializePayment(initData);
 
-          const paystackData = response.data;
+          // PaystackService still returns DataResponseDto
+          const paystackData = paystackResponse.data;
           const reference = paystackData.reference;
 
           await paymentSplit.update(
             {
               paystack_transaction_id: reference,
-              paystack_split_response: { ...paystackData }, // ✅ plain JSON
+              paystack_split_response: JSON.parse(
+                JSON.stringify(paystackData)
+              ),
               split_status: "pending",
             },
             { transaction }
@@ -287,7 +306,9 @@ export class PaymentSplitService {
       seller_settled: success,
       admin_settled_at: success ? new Date() : null,
       seller_settled_at: success ? new Date() : null,
-      paystack_split_response: { ...data },
+            paystack_split_response: JSON.parse(
+              JSON.stringify(data)
+            ) as any,
     });
   }
 }
