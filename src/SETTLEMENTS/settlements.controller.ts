@@ -75,18 +75,43 @@ export class SettlementsController {
 
 
   //to get settlement history for a seller
-  @Roles(Role.Seller)
+  // @Roles(Role.Seller)
+  // @UseGuards(AuthGuard)
+  // @Get("history")
+  // @HttpCode(200)
+  // getHistory(
+  //   @Req() req: any,
+  //   @Query() pageOptions: SettlementsQueryDto
+  // ): Promise<DataResponseDto> {
+  //   return this.settlementsService.findAll(req.user, pageOptions);
+  // }
+  
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
+  @Roles(Role.Admin, Role.Seller)
   @Get("history")
-  @HttpCode(200)
   getHistory(
     @Req() req: any,
     @Query() pageOptions: SettlementsQueryDto
   ): Promise<DataResponseDto> {
-    return this.settlementsService.findAll(req.user, pageOptions);
+
+    // Seller → scoped history
+    if (req.user.role === Role.Seller) {
+      return this.settlementsService.findAll(
+        req.user,
+        pageOptions,
+        false
+      );
+    }
+
+    // Admin → global history
+    return this.settlementsService.findAll(
+      req.user,
+      pageOptions,
+      true
+    );
   }
-  
-  
+
   @Roles(Role.Admin)
   @UseGuards(AuthGuard)
   @ApiBearerAuth()

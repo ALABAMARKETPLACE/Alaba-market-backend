@@ -25,7 +25,10 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(user: any, pageOptions: SettlementsQueryDto) {
+  async findAll(user: any, 
+    pageOptions: SettlementsQueryDto,
+    isAdmin = false
+  ) {
     try {
       const { offset, limit, settle_status } = pageOptions;
 
@@ -33,12 +36,14 @@ export class SettlementsService {
       const where: any = {};
 
       // Seller → restrict to their store
-      if (user?.role === Role.Seller) {
+      if (!isAdmin && user?.role === Role.Seller) {
         if (!user.storeId) {
           throw new BadRequestException("Seller has no store assigned");
         }
         where.storeId = user.storeId;
       }
+
+// Admin → NO store filter (global history)
 
       // Optional status filter
       if (settle_status) {
