@@ -25,7 +25,10 @@ export class SettlementsService {
     private readonly ProductsRepository: typeof Products
   ) {}
 
-  async findAll(user: any, pageOptions: SettlementsQueryDto) {
+  async findAll(user: any, 
+    pageOptions: SettlementsQueryDto,
+    isAdmin = false
+  ) {
     try {
       const { offset, limit, settle_status } = pageOptions;
 
@@ -33,12 +36,14 @@ export class SettlementsService {
       const where: any = {};
 
       // Seller → restrict to their store
-      if (user?.role === Role.Seller) {
+      if (!isAdmin && user?.role === Role.Seller) {
         if (!user.storeId) {
           throw new BadRequestException("Seller has no store assigned");
         }
         where.storeId = user.storeId;
       }
+
+// Admin → NO store filter (global history)
 
       // Optional status filter
       if (settle_status) {
@@ -146,6 +151,50 @@ export class SettlementsService {
     }
   }
 
+  // async findSummary(params: { storeId?: number }) {
+  //   try {
+  //     const orderWhere: any = { status: "delivered" };
+  //     const settlementWhereSuccess: any = { status: "success" };
+  //     const settlementWherePending: any = {
+  //       status: { [Op.notIn]: ["success"] },
+  //     };
+
+  //     if (params.storeId) {
+  //       orderWhere.storeId = params.storeId;
+  //       settlementWhereSuccess.storeId = params.storeId;
+  //       settlementWherePending.storeId = params.storeId;
+  //     }
+
+  //     const [
+  //       totalOrderPrice = 0,
+  //       totalSettledPrice = 0,
+  //       settlementPending = 0,
+  //     ] = await Promise.all([
+  //       Order.sum("grandTotal", { where: orderWhere }),
+  //       this.SettlementsRepository.sum("paid", {
+  //         where: settlementWhereSuccess,
+  //       }),
+  //       this.SettlementsRepository.sum("paid", {
+  //         where: settlementWherePending,
+  //       }),
+  //     ]);
+
+  //     return new DataResponseDto(
+  //       {
+  //         amountToSettle: totalOrderPrice - totalSettledPrice,
+  //         totalOrderPrice,
+  //         totalSettledPrice,
+  //         settlementPending,
+  //       },
+  //       true,
+  //       "Success"
+  //     );
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
   async findSummary(params: { storeId?: number }) {
     try {
       const orderWhere: any = { status: "delivered" };
@@ -154,7 +203,8 @@ export class SettlementsService {
         status: { [Op.notIn]: ["success"] },
       };
 
-      if (params.storeId) {
+      // 🔐 Apply store filter ONLY when explicitly provided
+      if (params.storeId !== undefined) {
         orderWhere.storeId = params.storeId;
         settlementWhereSuccess.storeId = params.storeId;
         settlementWherePending.storeId = params.storeId;
@@ -165,13 +215,13 @@ export class SettlementsService {
         totalSettledPrice = 0,
         settlementPending = 0,
       ] = await Promise.all([
-        Order.sum("grandTotal", { where: orderWhere }),
+        Order.sum("grandTotal", { where: orderWhere }) ?? 0,
         this.SettlementsRepository.sum("paid", {
           where: settlementWhereSuccess,
-        }),
+        }) ?? 0,
         this.SettlementsRepository.sum("paid", {
           where: settlementWherePending,
-        }),
+        }) ?? 0,
       ]);
 
       return new DataResponseDto(

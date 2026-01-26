@@ -7,16 +7,14 @@ import { InjectModel } from "@nestjs/sequelize";
 import { HttpService } from "@nestjs/axios";
 import { catchError, lastValueFrom, map } from "rxjs";
 import * as crypto from "crypto";
-import { Sequelize, Transaction } from "sequelize";
+import { Transaction } from "sequelize";
 
-import { DataResponseDto } from "../shared/dto/data-response-dto";
 import {
   PaystackInitializeDto,
   PaystackInitializeResponseDto,
 } from "./dto/paystack-initialize.dto";
 import {
   PaystackVerifyDto,
-  PaystackVerificationResponseDto,
 } from "./dto/paystack-verify.dto";
 import {
   PaystackRefundDto,
@@ -29,6 +27,7 @@ import { PaymentSplitService } from "../PAYMENT_SPLITS/payment-split.service";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 import { Order } from "../ORDER/order.entity";
+import { DataResponseDto } from "../shared/dto/data-response-dto";
 
 @Injectable()
 export class PaystackService {
@@ -43,19 +42,19 @@ export class PaystackService {
     private readonly paymentSplitService: PaymentSplitService
   ) {}
 
-  /* ----------------------------------------------------
+  /* ----------------------------------
      HEADERS
-  ---------------------------------------------------- */
-  private getHeaders(): { [key: string]: string } {
+  ---------------------------------- */
+  private getHeaders() {
     return {
       Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
       "Content-Type": "application/json",
     };
   }
 
-  /* ----------------------------------------------------
+  /* ----------------------------------
      INITIALIZE PAYMENT
-  ---------------------------------------------------- */
+  ---------------------------------- */
   async initializePayment(
     initData: PaystackInitializeDto
   ): Promise<PaystackInitializeResponseDto> {
@@ -100,18 +99,21 @@ export class PaystackService {
         )
     );
 
-    return new DataResponseDto(response, true, "Payment initialized");
+    return response.data;
   }
 
-  /* ----------------------------------------------------
+  /* ----------------------------------
      SPLIT PAYMENT
-  ---------------------------------------------------- */
+  ---------------------------------- */
   private async initializeWithSplit(
     initData: PaystackInitializeDto
   ): Promise<PaystackInitializeResponseDto> {
     const store = await this.storeRepository.findByPk(initData.store_id);
     if (!store || !store.paystack_subaccount_code) {
-      throw new HttpException("Invalid store subaccount", HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        "Invalid store subaccount",
+        HttpStatus.BAD_REQUEST
+      );
     }
 
     const amountInKobo = Number(initData.amount);
@@ -146,15 +148,13 @@ export class PaystackService {
         .pipe(map((r) => r.data))
     );
 
-    return new DataResponseDto(response, true, "Split payment initialized");
+    return response.data;
   }
 
-  /* ----------------------------------------------------
-     VERIFY PAYMENT (MANUAL)
-  ---------------------------------------------------- */
-  async verifyPayment(
-    verifyData: PaystackVerifyDto
-  ): Promise<PaystackVerificationResponseDto> {
+  /* ----------------------------------
+     VERIFY PAYMENT
+  ---------------------------------- */
+  async verifyPayment(verifyData: PaystackVerifyDto): Promise<any> {
     const response = await lastValueFrom(
       this.httpService
         .get(`${this.baseUrl}/transaction/verify/${verifyData.reference}`, {
@@ -163,12 +163,12 @@ export class PaystackService {
         .pipe(map((r) => r.data))
     );
 
-    return new DataResponseDto(response, true, "Verification completed");
+    return response.data;
   }
 
-  /* ----------------------------------------------------
+  /* ----------------------------------
      WEBHOOK SIGNATURE
-  ---------------------------------------------------- */
+  ---------------------------------- */
   verifyWebhookSignature(payload: string, signature: string): boolean {
     const hash = crypto
       .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
@@ -178,38 +178,33 @@ export class PaystackService {
     return hash === signature;
   }
 
-  /* ----------------------------------------------------
+  /* ----------------------------------
      WEBHOOK ENTRY
-  ---------------------------------------------------- */
+  ---------------------------------- */
   async processWebhook(
     webhookData: PaystackWebhookDto,
     signature: string,
     rawPayload: string
-  ): Promise<any> {
+  ): Promise<void> {
     if (!this.verifyWebhookSignature(rawPayload, signature)) {
-      throw new HttpException("Invalid webhook signature", HttpStatus.UNAUTHORIZED);
+      throw new HttpException(
+        "Invalid webhook signature",
+        HttpStatus.UNAUTHORIZED
+      );
     }
 
-    switch (webhookData.event) {
-      case "charge.success":
-        await this.handleSuccessfulPayment(webhookData.data);
-        break;
-
-      case "charge.failed":
-        await this.handleFailedPayment(webhookData.data);
-        break;
+    if (webhookData.event === "charge.success") {
+      await this.handleSuccessfulPayment(webhookData.data);
     }
 
-    return new DataResponseDto(
-      { event: webhookData.event },
-      true,
-      "Webhook processed"
-    );
+    if (webhookData.event === "charge.failed") {
+      await this.handleFailedPayment(webhookData.data);
+    }
   }
 
-  /* ----------------------------------------------------
-     SUCCESS HANDLER (ATOMIC)
-  ---------------------------------------------------- */
+  /* ----------------------------------
+     SUCCESS HANDLER
+  ---------------------------------- */
   private async handleSuccessfulPayment(paymentData: any): Promise<void> {
     await OrderPayments.sequelize.transaction(async (t: Transaction) => {
       const payment = await OrderPayments.findOne({
@@ -219,11 +214,6 @@ export class PaystackService {
       });
 
       if (!payment || payment.status === "success") return;
-
-      // Amount validation
-      if (paymentData.amount !== payment.amount) {
-        throw new Error("Amount mismatch detected");
-      }
 
       await payment.update(
         {
@@ -250,9 +240,9 @@ export class PaystackService {
     });
   }
 
-  /* ----------------------------------------------------
-     FAILED HANDLER (ATOMIC)
-  ---------------------------------------------------- */
+  /* ----------------------------------
+     FAILED HANDLER
+  ---------------------------------- */
   private async handleFailedPayment(paymentData: any): Promise<void> {
     await OrderPayments.sequelize.transaction(async (t: Transaction) => {
       const payment = await OrderPayments.findOne({
@@ -280,87 +270,84 @@ export class PaystackService {
       );
     });
   }
-/**
-   * Create refund for Paystack transaction
-   */
+
+
+  /* ----------------------------------------------------
+   GET TRANSACTION DETAILS
+---------------------------------------------------- */
+async getTransactionDetails(reference: string): Promise<DataResponseDto> {
+    const response = await lastValueFrom(
+      this.httpService
+        .get(`${this.baseUrl}/transaction/verify/${reference}`, {
+          headers: this.getHeaders(),
+        })
+        .pipe(map(r => r.data))
+    );
+
+    return new DataResponseDto(
+      response.data,
+      true,
+      "Transaction details retrieved"
+    );
+  }
+
+/* ----------------------------------------------------
+   LIST TRANSACTIONS
+---------------------------------------------------- */
+async listTransactions(
+    page = 1,
+    perPage = 50
+  ): Promise<DataResponseDto> {
+    const response = await lastValueFrom(
+      this.httpService
+        .get(
+          `${this.baseUrl}/transaction?page=${page}&perPage=${perPage}`,
+          { headers: this.getHeaders() }
+        )
+        .pipe(map(r => r.data))
+    );
+
+    return new DataResponseDto(
+      response.data,
+      true,
+      "Transactions fetched successfully"
+    );
+  }
+  /* ----------------------------------
+     REFUND
+  ---------------------------------- */
   async createRefund(
     refundData: PaystackRefundDto
   ): Promise<PaystackRefundResponseDto> {
-    try {
-      const payload = {
-        transaction: refundData.transaction,
-        amount: refundData.amount,
-        currency: refundData.currency || "NGN",
-        customer_note: refundData.reason || "Refund requested",
-        merchant_note: refundData.reason || "Refund processed",
-      };
+    const payload = {
+      transaction: refundData.transaction,
+      amount: refundData.amount,
+      currency: refundData.currency || "NGN",
+      customer_note: refundData.reason,
+      merchant_note: refundData.reason,
+    };
 
-      // Remove undefined fields
-      Object.keys(payload).forEach(
-        (key) => payload[key] === undefined && delete payload[key]
-      );
-
-      const response = await lastValueFrom(
-        this.httpService
-          .post(`${this.baseUrl}/refund`, payload, {
-            headers: this.getHeaders(),
-          })
-          .pipe(
-            map((resp) => resp.data),
-            catchError((error) => {
-              console.error(
-                "Paystack refund error:",
-                error.response?.data || error.message
-              );
-              throw new HttpException(
-                error.response?.data?.message || "Refund request failed",
-                error.response?.status || HttpStatus.BAD_REQUEST
-              );
-            })
-          )
-      );
-
-      return new DataResponseDto(
-        response,
-        true,
-        "Refund processed successfully"
-      );
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      console.error("Create refund error:", error);
-      throw new HttpException(
-        "Failed to process refund",
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
-    }
-  }
-    /* ----------------------------------------------------
-      HELPERS
-    ---------------------------------------------------- */
-    private generateReference(): string {
-      return `alaba_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    }
-
-    async verifyPaymentByReference(reference: string): Promise<any> {
-    const result = await this.verifyPayment({ reference });
-    return result.data;
-  }
-
-  async getTransactionDetails(reference: string): Promise<any> {
-    return this.verifyPayment({ reference });
-  }
-
-  async listTransactions(page = 1, perPage = 50): Promise<any> {
     const response = await lastValueFrom(
-      this.httpService.get(
-        `${this.baseUrl}/transaction?page=${page}&perPage=${perPage}`,
-        { headers: this.getHeaders() }
-      ).pipe(map(r => r.data))
+      this.httpService
+        .post(`${this.baseUrl}/refund`, payload, {
+          headers: this.getHeaders(),
+        })
+        .pipe(map((r) => r.data))
     );
 
-    return new DataResponseDto(response.data, true);
+    return response.data;
   }
 
+  /* ----------------------------------
+     HELPERS
+  ---------------------------------- */
+  private generateReference(): string {
+    return `alaba_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  async verifyPaymentByReference(reference: string) {
+    return this.verifyPayment({ reference });
+  }
 }
+
+

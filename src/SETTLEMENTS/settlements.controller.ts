@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -9,6 +11,7 @@ import {
   Put,
   Query,
   Req,
+  UnauthorizedException,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -32,29 +35,83 @@ export class SettlementsController {
   constructor(private readonly settlementsService: SettlementsService) {}
 
   //to get settlements summary for a seller
-  @Roles(Role.Seller)
+  // @ApiBearerAuth()
+  // @Roles(Role.Seller)
+  // @UseGuards(AuthGuard)
+  // @Get("summary")
+  // getSummary(@Req() req: any) {
+  //   return this.settlementsService.findSummary({
+  //     storeId: req.user.storeId,
+  //   });
+  // }
+
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
+  @Roles(Role.Admin, Role.Seller)
   @Get("summary")
-  @HttpCode(200)
   getSummary(@Req() req: any) {
-    return this.settlementsService.findSummary({
-      storeId: req.user.storeId,
-    });
+    if (!req.user) {
+      throw new UnauthorizedException("User not authenticated");
+    }
+
+    // Seller → store-scoped summary
+    if (req.user.role === Role.Seller) {
+      const storeId = Number(req.user.storeId);
+
+      if (!storeId) {
+        throw new BadRequestException("Seller has no store assigned");
+      }
+
+      return this.settlementsService.findSummary({ storeId });
+    }
+
+    // Admin → global summary
+    if (req.user.role === Role.Admin) {
+      return this.settlementsService.findSummary({});
+    }
+
+    throw new ForbiddenException("Unauthorized role");
   }
 
+
   //to get settlement history for a seller
-  @Roles(Role.Seller)
+  // @Roles(Role.Seller)
+  // @UseGuards(AuthGuard)
+  // @Get("history")
+  // @HttpCode(200)
+  // getHistory(
+  //   @Req() req: any,
+  //   @Query() pageOptions: SettlementsQueryDto
+  // ): Promise<DataResponseDto> {
+  //   return this.settlementsService.findAll(req.user, pageOptions);
+  // }
+  
+  @ApiBearerAuth()
   @UseGuards(AuthGuard)
+  @Roles(Role.Admin, Role.Seller)
   @Get("history")
-  @HttpCode(200)
   getHistory(
     @Req() req: any,
     @Query() pageOptions: SettlementsQueryDto
   ): Promise<DataResponseDto> {
-    return this.settlementsService.findAll(req.user, pageOptions);
+
+    // Seller → scoped history
+    if (req.user.role === Role.Seller) {
+      return this.settlementsService.findAll(
+        req.user,
+        pageOptions,
+        false
+      );
+    }
+
+    // Admin → global history
+    return this.settlementsService.findAll(
+      req.user,
+      pageOptions,
+      true
+    );
   }
-  
-  
+
   @Roles(Role.Admin)
   @UseGuards(AuthGuard)
   @ApiBearerAuth()

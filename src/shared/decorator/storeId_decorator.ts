@@ -1,8 +1,8 @@
 import { createParamDecorator, ExecutionContext } from "@nestjs/common";
-//to get storeId from the request object
+
 export const StoreId = createParamDecorator(
-  (data: unknown, ctx: ExecutionContext) => {
+  (_: unknown, ctx: ExecutionContext): number | undefined => {
     const request = ctx.switchToHttp().getRequest();
-    return request.storeId ?? undefined;
+    return request.user?.storeId;
   }
 );
