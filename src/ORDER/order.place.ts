@@ -159,23 +159,36 @@ export class OrderPlaceService {
       throw err;
     }
   }
+
   async basicCheck(data: CreateOrderDto) {
     try {
       console.log("🔍 [basicCheck] Starting order validation...");
 
-      if (Array.isArray(data.cart) == false || data?.cart?.length == 0)
-        throw new BadRequestException("No Products Selected");
+      // 🚫 BLOCK CASH ON DELIVERY (FIX)
+      const paymentType =
+        data?.payment?.type?.toString().toLowerCase()?.trim();
+
+      if (paymentType === "cash on delivery" || paymentType === "cash-on-delivery") {
+        throw new BadRequestException(
+          "Cash on delivery is not available"
+        );
+      }
 
       //===================
+      if (!Array.isArray(data.cart) || data.cart.length === 0) {
+        throw new BadRequestException("No Products Selected");
+      }
+
       console.log("🔍 [basicCheck] Decoding delivery charge token...");
-      const verified = this.jwtService.decode(data?.charges?.token);
+      const verified: any = this.jwtService.decode(data?.charges?.token);
       console.log("✅ [basicCheck] Decoded token:", verified);
 
-      if (!verified || isNaN(verified?.data?.amount))
+      if (!verified || isNaN(Number(verified?.data?.amount))) {
         throw new BadRequestException("Failed to Calculate Delivery charge.");
+      }
 
       //=====================
-      console.log("🔍 [basicCheck] Comparing address IDs:");
+      console.log("[basicCheck] Comparing address IDs:");
       console.log(
         "   - Token addressId:",
         verified?.data?.addressId,
@@ -191,7 +204,6 @@ export class OrderPlaceService {
         ")"
       );
 
-      // Convert both to numbers for comparison
       const tokenAddressId = Number(verified?.data?.addressId);
       const requestAddressId = Number(data?.address?.id);
 
@@ -202,8 +214,9 @@ export class OrderPlaceService {
         requestAddressId
       );
 
-      if (tokenAddressId !== requestAddressId)
+      if (tokenAddressId !== requestAddressId) {
         throw new ServiceUnavailableException("Invalid Address Found.");
+      }
 
       console.log("✅ [basicCheck] Address validation passed!");
       return verified;
@@ -212,6 +225,7 @@ export class OrderPlaceService {
       throw err;
     }
   }
+
   // async placeOrder(
   //   userId: number,
   //   data: CreateOrderDto,
