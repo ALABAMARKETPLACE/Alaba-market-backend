@@ -37,7 +37,6 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
-      // Allow extra properties (e.g., nested image objects) to pass through
       whitelist: false,
       forbidNonWhitelisted: false,
     }),
@@ -49,12 +48,30 @@ async function bootstrap() {
   app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
   // ==================================================
 
-  // ================= CORS ===========================
+  // ================= CORS (FIXED) ===================
+  const allowedOrigins =
+    process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || [
+      'https://alabamarketplace.ng',
+      'https://development.alabamarketplace.ng',
+    ];
+
   app.enableCors({
-    origin: true,
+    origin: (origin, callback) => {
+      // Allow server-to-server, curl, Postman
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error(`CORS blocked for origin: ${origin}`),
+        false,
+      );
+    },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
   // ==================================================
 
@@ -86,9 +103,7 @@ async function bootstrap() {
   const PORT = Number(process.env.PORT) || 8000;
 
   await app.listen(PORT, '0.0.0.0', () => {
-    logger.log(
-      `Server running on port ${PORT} | ENV: ${NODE_ENV}`,
-    );
+    logger.log(`Server running on port ${PORT} | ENV: ${NODE_ENV}`);
   });
 }
 
