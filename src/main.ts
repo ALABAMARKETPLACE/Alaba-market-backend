@@ -31,7 +31,7 @@ async function bootstrap() {
 
   // ================= GLOBAL FILTERS =================
   app.useGlobalFilters(new AllExceptionsFilter());
-  // ==================================================
+  // ===================================================
 
   // ================= GLOBAL PIPES ===================
   app.useGlobalPipes(
