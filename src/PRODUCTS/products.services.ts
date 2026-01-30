@@ -245,20 +245,86 @@ export class ProductsService {
     }
   }
 
-  async delete(storeId: number, id: number) {
+  // async delete(storeId: number, id: number) {
+  //   try {
+  //     const product = await this.ProductsRepository.findOne({
+  //       where: { _id: id, store_id: storeId },
+  //     });
+  //     if (!product) throw new Error("No Product available@@");
+  //     await product.destroy();
+  //     return new DataResponseDto(product, true, "Successfully Deleted");
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
+  async delete(storeId: number, id: number): Promise<DataResponseDto> {
     try {
       const product = await this.ProductsRepository.findOne({
         where: { _id: id, store_id: storeId },
       });
-      if (!product) throw new Error("No Product available@@");
+
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+
+      //Check references
+      const [
+        cartCount,
+        wishlistCount,
+        reviewCount,
+        variantCount,
+        historyCount,
+      ] = await Promise.all([
+        CartTable.count({ where: { productId: id } }),
+        Wishlist.count({ where: { productId: id } }),
+        ProductReviews.count({ where: { product_id: id } }),
+        ProductVariant.count({ where: { productId: id } }),
+        UserHistory.count({ where: { productId: id } }),
+      ]);
+
+      const hasReferences =
+        cartCount +
+          wishlistCount +
+          reviewCount +
+          variantCount +
+          historyCount >
+        0;
+
+      //If referenced → SOFT DELETE
+      if (hasReferences) {
+        product.status = false;
+        await product.save();
+
+        return new DataResponseDto(
+          null,
+          true,
+          "Product has existing references and was disabled instead of deleted"
+        );
+      }
+
+      //Safe hard delete
       await product.destroy();
-      return new DataResponseDto(product, true, "Successfully Deleted");
+
+      return new DataResponseDto(
+        null,
+        true,
+        "Product deleted successfully"
+      );
     } catch (err) {
       if (err instanceof HttpException) throw err;
+
+      if (err?.name === "SequelizeForeignKeyConstraintError") {
+        throw new BadRequestException(
+          "This product cannot be deleted because it is referenced by other records"
+        );
+      }
+
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
-
+  
   modalsToInclude = [
     {
       model: Category,
