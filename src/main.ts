@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as bodyParser from 'body-parser';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 
-// Catch crashes OUTSIDE Nest (very important for PM2)
+// Catch crashes OUTSIDE Nest (very important for PM2) w
 process.on('unhandledRejection', (reason: any) => {
   console.error('UNHANDLED REJECTION:', reason);
 });
