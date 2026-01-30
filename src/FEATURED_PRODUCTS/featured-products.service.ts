@@ -654,7 +654,6 @@ export class FeaturedProductsService {
         category,
         subCategory,
         store_id,
-        status,
         min_price,
         max_price,
         stock_status,
@@ -663,11 +662,15 @@ export class FeaturedProductsService {
       // Build where clause
       const whereClause: any = {};
 
+      // ✅ FORCE only active products
+      whereClause.status = true;
+
       // Filter by category
       if (category) {
         whereClause.category = category;
       }
 
+      // Filter by stock status
       if (stock_status === "instock") {
         whereClause.unit = { [Op.gt]: 0 };
       } else if (stock_status === "out_of_stock") {
@@ -681,26 +684,12 @@ export class FeaturedProductsService {
 
       // Filter by store/seller
       if (store_id) {
-        console.log(
-          "[FeaturedProducts.getAllProducts] Processing store_id:",
-          store_id,
-          "Type:",
-          typeof store_id
-        );
         const normalizedStoreId = Number(store_id);
         const storeFilter = Number.isNaN(normalizedStoreId)
           ? null
           : normalizedStoreId;
 
-        console.log(
-          "[FeaturedProducts.getAllProducts] Normalized store_id:",
-          storeFilter
-        );
-
         if (!storeFilter) {
-          console.log(
-            "[FeaturedProducts.getAllProducts] Invalid store_id, returning empty result"
-          );
           return new DataResponseDto([], true, "Successfull", query, 0);
         }
 
@@ -708,29 +697,12 @@ export class FeaturedProductsService {
           attributes: ["id", "store_name", "status"],
         });
 
-        if (!storeRecord) {
-          console.warn(
-            "[FeaturedProducts.getAllProducts] No store found for id",
-            storeFilter
-          );
+        // ❌ Store not found or disabled
+        if (!storeRecord || storeRecord.status !== "true") {
           return new DataResponseDto([], true, "Successfull", query, 0);
         }
 
-        console.log(
-          "[FeaturedProducts.getAllProducts] Store record:",
-          JSON.stringify(storeRecord.toJSON(), null, 2)
-        );
-
         whereClause.store_id = storeFilter;
-        console.log(
-          "[FeaturedProducts.getAllProducts] Added store_id to whereClause:",
-          whereClause.store_id
-        );
-      }
-
-      // Filter by status
-      if (status !== undefined) {
-        whereClause.status = status;
       }
 
       // Filter by price range
@@ -747,28 +719,11 @@ export class FeaturedProductsService {
       // Search by name, sku, or brand
       if (search) {
         whereClause[Op.or] = [
-          {
-            name: {
-              [Op.like]: `%${search}%`,
-            },
-          },
-          {
-            sku: {
-              [Op.like]: `%${search}%`,
-            },
-          },
-          {
-            brand: {
-              [Op.like]: `%${search}%`,
-            },
-          },
+          { name: { [Op.like]: `%${search}%` } },
+          { sku: { [Op.like]: `%${search}%` } },
+          { brand: { [Op.like]: `%${search}%` } },
         ];
       }
-
-      console.log(
-        "[FeaturedProducts.getAllProducts] Final whereClause:",
-        JSON.stringify(whereClause, null, 2)
-      );
 
       const findOptions: any = {
         where: whereClause,
@@ -779,6 +734,17 @@ export class FeaturedProductsService {
             required: false,
             attributes: ["price", "id", "image"],
           },
+          {
+            // ✅ ALWAYS enforce active store
+            model: Store,
+            as: "storeDetails",
+            required: true,
+            attributes: ["id", "name", "slug", "status"],
+            where: {
+              status: true,
+              ...(store_id ? { id: Number(store_id) } : {}),
+            },
+          },
         ],
         order: [["createdAt", "DESC"]],
         limit: query.limit,
@@ -786,73 +752,15 @@ export class FeaturedProductsService {
         distinct: true,
       };
 
-      if (store_id) {
-        const storeInclude = {
-          model: Store,
-          as: "storeDetails",
-          required: true,
-          attributes: ["id", "name", "slug", "status"],
-          where: {
-            id: Number(store_id),
-          },
-        };
-        findOptions.include.push(storeInclude);
-        console.log(
-          "[FeaturedProducts.getAllProducts] Added Store include with filter:",
-          JSON.stringify(storeInclude.where, null, 2)
-        );
-      }
-
-      console.log(
-        "[FeaturedProducts.getAllProducts] Executing query with options:",
-        JSON.stringify(
-          {
-            where: findOptions.where,
-            includeCount: findOptions.include.length,
-            limit: findOptions.limit,
-            offset: findOptions.offset,
-          },
-          null,
-          2
-        )
-      );
-
       const { count, rows } = await this.productsRepository.findAndCountAll(
         findOptions
       );
 
-      console.log(
-        "[FeaturedProducts.getAllProducts] Query results - Count:",
-        count,
-        "Rows:",
-        rows.length
-      );
-      if (rows.length > 0) {
-        console.log(
-          "[FeaturedProducts.getAllProducts] First product sample:",
-          JSON.stringify(
-            {
-              _id: rows[0]?._id,
-              name: rows[0]?.name,
-              store_id: rows[0]?.store_id,
-              status: rows[0]?.status,
-            },
-            null,
-            2
-          )
-        );
-      }
-
-      // Return raw products with meta pagination (like product_search_single)
       return new DataResponseDto(rows, true, "Successfull", query, count);
     } catch (err) {
       console.error(
         "[FeaturedProducts.getAllProducts] Error occurred:",
         err?.message || err
-      );
-      console.error(
-        "[FeaturedProducts.getAllProducts] Error stack:",
-        err?.stack
       );
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
