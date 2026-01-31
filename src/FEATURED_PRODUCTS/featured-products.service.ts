@@ -15,7 +15,6 @@ import { GetAllProductsDto } from "./dto/get-all-products.dto";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 import { FeaturedRotationState } from "./featured-rotation-state.entity";
 import { GetPositionProductsDto } from "./dto/get-position-products.dto";
-import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 
 interface RotationContext {
   planName: string | null;
@@ -40,16 +39,12 @@ export class FeaturedProductsService {
   constructor(
     @Inject("BoostRequestRepository")
     private readonly boostRequestRepository: typeof BoostRequest,
-
     @Inject("SubscriptionPlanRepository")
     private readonly subscriptionPlanRepository: typeof SubscriptionPlan,
-
     @Inject("ProductsRepository")
     private readonly productsRepository: typeof Products,
-
     @Inject("StoreRepository")
     private readonly storeRepository: typeof Store,
-
     @Inject("FeaturedRotationStateRepository")
     private readonly rotationStateRepository: typeof FeaturedRotationState
   ) {}
@@ -122,507 +117,349 @@ export class FeaturedProductsService {
     }
   }
 
-  // async getAllProductsForPosition(
-  //   position: number,
-  //   query: GetPositionProductsDto
-  // ): Promise<DataResponseDto> {
-  //   try {
-  //     const queueInfo = await this.buildQueueForPosition(position);
-  //     const state = await this.getOrCreateRotationState(position);
-  //     const queue = queueInfo.queueProductIds ?? [];
+  async getAllProductsForPosition(
+    position: number,
+    query: GetPositionProductsDto
+  ): Promise<DataResponseDto> {
+    try {
+      const queueInfo = await this.buildQueueForPosition(position);
+      const state = await this.getOrCreateRotationState(position);
+      const queue = queueInfo.queueProductIds ?? [];
 
-  //     if (!queue.length) {
-  //       const emptyPageOptions: any = {
-  //         page: query.page ?? 1,
-  //         take: query.take ?? 20,
-  //       };
-  //       const payload = {
-  //         position,
-  //         planName: queueInfo.planName,
-  //         total: 0,
-  //         products: [],
-  //         lastRotationAt: state.last_rotation_at,
-  //         nextRotationAt: state.next_rotation_at,
-  //       };
-  //       return new DataResponseDto(
-  //         payload,
-  //         true,
-  //         "No featured products available",
-  //         emptyPageOptions,
-  //         0
-  //       );
-  //     }
-
-  //     const page = query.page ?? 1;
-  //     const take = query.take ?? 20;
-
-  //     const products = await this.productsRepository.findAll({
-  //       where: {
-  //         _id: {
-  //           [Op.in]: queue,
-  //         },
-  //       },
-  //       include: [
-  //         {
-  //           model: ProductVariant,
-  //           as: "productVariant",
-  //           required: false,
-  //           attributes: ["price", "id", "image"],
-  //         },
-  //         {
-  //           model: Store,
-  //           as: "storeDetails",
-  //           required: false,
-  //           attributes: ["id", "name"],
-  //         },
-  //       ],
-  //     });
-
-  //     const orderMap = new Map<number, number>();
-  //     queue.forEach((id, index) => orderMap.set(id, index));
-
-  //     const filteredProducts = products
-  //       .filter((product: any) => {
-  //         if (!product) return false;
-
-  //         if (
-  //           query.store_id &&
-  //           Number(product.store_id) !== Number(query.store_id)
-  //         ) {
-  //           return false;
-  //         }
-
-  //         if (query.status !== undefined) {
-  //           const statusBool = Number(query.status) === 1;
-  //           if (Boolean(product.status) !== statusBool) {
-  //             return false;
-  //           }
-  //         }
-
-  //         if (
-  //           query.min_price !== undefined &&
-  //           Number(product.price ?? 0) < Number(query.min_price)
-  //         ) {
-  //           return false;
-  //         }
-
-  //         if (
-  //           query.max_price !== undefined &&
-  //           Number(product.price ?? 0) > Number(query.max_price)
-  //         ) {
-  //           return false;
-  //         }
-
-  //         if (query.search) {
-  //           const term = query.search.toLowerCase();
-  //           const matchesName = product.name?.toLowerCase().includes(term);
-  //           const matchesSku = product.sku?.toLowerCase().includes(term);
-  //           const matchesBrand = product.brand?.toLowerCase().includes(term);
-  //           if (!matchesName && !matchesSku && !matchesBrand) {
-  //             return false;
-  //           }
-  //         }
-
-  //         return true;
-  //       })
-  //       .sort((a: any, b: any) => {
-  //         const indexA = orderMap.get(a._id) ?? Number.MAX_SAFE_INTEGER;
-  //         const indexB = orderMap.get(b._id) ?? Number.MAX_SAFE_INTEGER;
-  //         return indexA - indexB;
-  //       });
-
-  //     const totalFiltered = filteredProducts.length;
-  //     const start = (page - 1) * take;
-  //     const paginatedProducts = filteredProducts.slice(start, start + take);
-
-  //     let fallbackProducts: any[] = [];
-
-  //     if (position !== 1 && page === 1 && paginatedProducts.length < take) {
-  //       const excludeIds = new Set<number>(queue);
-  //       paginatedProducts.forEach((product: any) => {
-  //         if (product?._id) {
-  //           excludeIds.add(product._id);
-  //         }
-  //       });
-
-  //       const fallbackIds = await this.fetchRecentFallbackIds(
-  //         excludeIds,
-  //         take - paginatedProducts.length
-  //       );
-
-  //       if (fallbackIds.length) {
-  //         const fallbackDetails = await this.fetchProductsByIds(fallbackIds);
-  //         fallbackProducts = fallbackDetails.filter((product: any) => {
-  //           if (!product?._id) return false;
-
-  //           if (
-  //             query.store_id &&
-  //             Number(product.store_id) !== Number(query.store_id)
-  //           ) {
-  //             return false;
-  //           }
-
-  //           if (query.status !== undefined) {
-  //             const statusBool = Number(query.status) === 1;
-  //             if (Boolean(product.status) !== statusBool) {
-  //               return false;
-  //             }
-  //           }
-
-  //           if (
-  //             query.min_price !== undefined &&
-  //             Number(product.price ?? 0) < Number(query.min_price)
-  //           ) {
-  //             return false;
-  //           }
-
-  //           if (
-  //             query.max_price !== undefined &&
-  //             Number(product.price ?? 0) > Number(query.max_price)
-  //           ) {
-  //             return false;
-  //           }
-
-  //           if (query.search) {
-  //             const term = query.search.toLowerCase();
-  //             const matchesName = product.name?.toLowerCase().includes(term);
-  //             const matchesSku = product.sku?.toLowerCase().includes(term);
-  //             const matchesBrand = product.brand?.toLowerCase().includes(term);
-  //             if (!matchesName && !matchesSku && !matchesBrand) {
-  //               return false;
-  //             }
-  //           }
-
-  //           return true;
-  //         });
-  //       }
-  //     }
-
-  //     const payload = {
-  //       position,
-  //       planName: queueInfo.planName,
-  //       total: totalFiltered + fallbackProducts.length,
-  //       products: [...paginatedProducts, ...fallbackProducts],
-  //       lastRotationAt: state.last_rotation_at,
-  //       nextRotationAt: state.next_rotation_at,
-  //     };
-
-  //     const pageOptions: any = {
-  //       page,
-  //       take,
-  //     };
-
-  //     return new DataResponseDto(
-  //       payload,
-  //       true,
-  //       "Successfull",
-  //       pageOptions,
-  //       totalFiltered + fallbackProducts.length
-  //     );
-  //   } catch (err) {
-  //     if (err instanceof HttpException) throw err;
-  //     throw new InternalServerErrorException(getErrorMessage(err));
-  //   }
-  // }
-
-async getAllProductsForPosition(
-  position: number,
-  query: GetPositionProductsDto
-): Promise<DataResponseDto> {
-  try {
-    const queueInfo = await this.buildQueueForPosition(position);
-    const state = await this.getOrCreateRotationState(position);
-    const originalQueue = queueInfo.queueProductIds ?? [];
-
-    const page = query.page ?? 1;
-    const take = query.take ?? 20;
-
-    if (!originalQueue.length) {
-      return new DataResponseDto(
-        {
+      if (!queue.length) {
+        const emptyPageOptions: any = {
+          page: query.page ?? 1,
+          take: query.take ?? 20,
+        };
+        const payload = {
           position,
           planName: queueInfo.planName,
           total: 0,
           products: [],
           lastRotationAt: state.last_rotation_at,
           nextRotationAt: state.next_rotation_at,
-        },
-        true,
-        "No featured products available",
-        query, // ✅ FIX
-        0
-      );
-    }
+        };
+        return new DataResponseDto(
+          payload,
+          true,
+          "No featured products available",
+          emptyPageOptions,
+          0
+        );
+      }
 
-    const products = await this.productsRepository.findAll({
-      where: {
-        _id: { [Op.in]: originalQueue },
-        status: true,
-      },
-      include: [
-        {
-          model: ProductVariant,
-          as: "productVariant",
-          required: false,
-          attributes: ["price", "id", "image"],
-        },
-        {
-          model: Store,
-          as: "storeDetails",
-          required: true,
-          attributes: ["id", "name", "status"],
-          where: { status: true },
-        },
-      ],
-    });
+      const page = query.page ?? 1;
+      const take = query.take ?? 20;
 
-    const foundIdSet = new Set(products.map((p: any) => p._id));
-    const validQueue = originalQueue.filter((id) => foundIdSet.has(id));
-
-    if (!validQueue.length) {
-      return new DataResponseDto(
-        {
-          position,
-          planName: queueInfo.planName,
-          total: 0,
-          products: [],
-          lastRotationAt: state.last_rotation_at,
-          nextRotationAt: state.next_rotation_at,
-        },
-        true,
-        "No active featured products",
-        query, // ✅ FIX
-        0
-      );
-    }
-
-    const orderMap = new Map<number, number>();
-    validQueue.forEach((id, index) => orderMap.set(id, index));
-
-    let filteredProducts = products
-      .filter((product: any) => {
-        if (!product) return false;
-
-        if (
-          query.store_id &&
-          Number(product.store_id) !== Number(query.store_id)
-        ) {
-          return false;
-        }
-
-        if (
-          query.min_price !== undefined &&
-          Number(product.price ?? 0) < Number(query.min_price)
-        ) {
-          return false;
-        }
-
-        if (
-          query.max_price !== undefined &&
-          Number(product.price ?? 0) > Number(query.max_price)
-        ) {
-          return false;
-        }
-
-        if (query.search) {
-          const term = query.search.toLowerCase();
-          if (
-            !product.name?.toLowerCase().includes(term) &&
-            !product.sku?.toLowerCase().includes(term) &&
-            !product.brand?.toLowerCase().includes(term)
-          ) {
-            return false;
-          }
-        }
-
-        return true;
-      })
-      .sort(
-        (a: any, b: any) =>
-          (orderMap.get(a._id) ?? Number.MAX_SAFE_INTEGER) -
-          (orderMap.get(b._id) ?? Number.MAX_SAFE_INTEGER)
-      );
-
-    filteredProducts = filteredProducts
-      .map((p) => ({ p, r: Math.random() }))
-      .sort((a, b) => a.r - b.r)
-      .map(({ p }) => p);
-
-    const totalFiltered = filteredProducts.length;
-    const start = (page - 1) * take;
-    const paginatedProducts = filteredProducts.slice(start, start + take);
-
-    let fallbackProducts: any[] = [];
-
-    if (page === 1 && paginatedProducts.length < take) {
-      const excludeIds = new Set<number>(
-        paginatedProducts.map((p: any) => p._id)
-      );
-
-      const seed = Date.now() % 100000;
-
-      const fallbackCandidates = await this.productsRepository.findAll({
+      const products = await this.productsRepository.findAll({
         where: {
-          status: true,
-          _id: { [Op.notIn]: Array.from(excludeIds) },
+          _id: {
+            [Op.in]: queue,
+          },
         },
-        order: this.productsRepository.sequelize!.literal(
-          `MOD("_id" + ${seed}, 100000)`
-        ),
-        limit: take * 3,
         include: [
+          {
+            model: ProductVariant,
+            as: "productVariant",
+            required: false,
+            attributes: ["price", "id", "image"],
+          },
           {
             model: Store,
             as: "storeDetails",
-            required: true,
-            where: { status: true },
+            required: false,
+            attributes: ["id", "name"],
           },
         ],
       });
 
-      fallbackProducts = fallbackCandidates.slice(
-        0,
-        take - paginatedProducts.length
-      );
-    }
+      const orderMap = new Map<number, number>();
+      queue.forEach((id, index) => orderMap.set(id, index));
 
-    const finalProducts = [...paginatedProducts, ...fallbackProducts];
-    const total = totalFiltered + fallbackProducts.length;
+      const filteredProducts = products
+        .filter((product: any) => {
+          if (!product) return false;
 
-    return new DataResponseDto(
-      {
+          if (
+            query.store_id &&
+            Number(product.store_id) !== Number(query.store_id)
+          ) {
+            return false;
+          }
+
+          if (query.status !== undefined) {
+            const statusBool = Number(query.status) === 1;
+            if (Boolean(product.status) !== statusBool) {
+              return false;
+            }
+          }
+
+          if (
+            query.min_price !== undefined &&
+            Number(product.price ?? 0) < Number(query.min_price)
+          ) {
+            return false;
+          }
+
+          if (
+            query.max_price !== undefined &&
+            Number(product.price ?? 0) > Number(query.max_price)
+          ) {
+            return false;
+          }
+
+          if (query.search) {
+            const term = query.search.toLowerCase();
+            const matchesName = product.name?.toLowerCase().includes(term);
+            const matchesSku = product.sku?.toLowerCase().includes(term);
+            const matchesBrand = product.brand?.toLowerCase().includes(term);
+            if (!matchesName && !matchesSku && !matchesBrand) {
+              return false;
+            }
+          }
+
+          return true;
+        })
+        .sort((a: any, b: any) => {
+          const indexA = orderMap.get(a._id) ?? Number.MAX_SAFE_INTEGER;
+          const indexB = orderMap.get(b._id) ?? Number.MAX_SAFE_INTEGER;
+          return indexA - indexB;
+        });
+
+      const totalFiltered = filteredProducts.length;
+      const start = (page - 1) * take;
+      const paginatedProducts = filteredProducts.slice(start, start + take);
+
+      let fallbackProducts: any[] = [];
+
+      if (position !== 1 && page === 1 && paginatedProducts.length < take) {
+        const excludeIds = new Set<number>(queue);
+        paginatedProducts.forEach((product: any) => {
+          if (product?._id) {
+            excludeIds.add(product._id);
+          }
+        });
+
+        const fallbackIds = await this.fetchRecentFallbackIds(
+          excludeIds,
+          take - paginatedProducts.length
+        );
+
+        if (fallbackIds.length) {
+          const fallbackDetails = await this.fetchProductsByIds(fallbackIds);
+          fallbackProducts = fallbackDetails.filter((product: any) => {
+            if (!product?._id) return false;
+
+            if (
+              query.store_id &&
+              Number(product.store_id) !== Number(query.store_id)
+            ) {
+              return false;
+            }
+
+            if (query.status !== undefined) {
+              const statusBool = Number(query.status) === 1;
+              if (Boolean(product.status) !== statusBool) {
+                return false;
+              }
+            }
+
+            if (
+              query.min_price !== undefined &&
+              Number(product.price ?? 0) < Number(query.min_price)
+            ) {
+              return false;
+            }
+
+            if (
+              query.max_price !== undefined &&
+              Number(product.price ?? 0) > Number(query.max_price)
+            ) {
+              return false;
+            }
+
+            if (query.search) {
+              const term = query.search.toLowerCase();
+              const matchesName = product.name?.toLowerCase().includes(term);
+              const matchesSku = product.sku?.toLowerCase().includes(term);
+              const matchesBrand = product.brand?.toLowerCase().includes(term);
+              if (!matchesName && !matchesSku && !matchesBrand) {
+                return false;
+              }
+            }
+
+            return true;
+          });
+        }
+      }
+
+      const payload = {
         position,
         planName: queueInfo.planName,
-        total,
-        products: finalProducts,
+        total: totalFiltered + fallbackProducts.length,
+        products: [...paginatedProducts, ...fallbackProducts],
         lastRotationAt: state.last_rotation_at,
         nextRotationAt: state.next_rotation_at,
-      },
-      true,
-      "Successfull",
-      query, // ✅ FIX
-      total
-    );
-  } catch (err) {
-    if (err instanceof HttpException) throw err;
-    throw new InternalServerErrorException(getErrorMessage(err));
-  }
-}
+      };
 
+      const pageOptions: any = {
+        page,
+        take,
+      };
+
+      return new DataResponseDto(
+        payload,
+        true,
+        "Successfull",
+        pageOptions,
+        totalFiltered + fallbackProducts.length
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
 
   async rotatePositionIfDue(
-  position: number,
-  options: RotateOptions = {}
-): Promise<{
-  rotated: boolean;
-  state: FeaturedRotationState;
-  context: RotationContext;
-}> {
-  const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
-  const rotationMinutes = options.rotationMinutes ?? ROTATION_MINUTES;
-  const force = options.force ?? false;
-  const now = new Date();
+    position: number,
+    options: RotateOptions = {}
+  ): Promise<{
+    rotated: boolean;
+    state: FeaturedRotationState;
+    context: RotationContext;
+  }> {
+    const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
+    const rotationMinutes = options.rotationMinutes ?? ROTATION_MINUTES;
+    const force = options.force ?? false;
+    const now = new Date();
 
-  const state = await this.getOrCreateRotationState(position);
-  const queueInfo = await this.buildQueueForPosition(position);
-  let queue = queueInfo.queueProductIds ?? [];
-
-  /**
-   * 🔀 FIX 1: Shuffle queue ONCE per rotation window
-   */
-  const shouldShuffle =
-    force ||
-    !state.queue_refreshed_at ||
-    state.queue_refreshed_at <= new Date(
-      now.getTime() - rotationMinutes * 60 * 1000
+    const state = await this.getOrCreateRotationState(position);
+    const queueInfo = await this.buildQueueForPosition(position);
+    const queue = queueInfo.queueProductIds;
+    const queueChanged = !this.isSameQueue(
+      queue,
+      state.queue_product_ids ?? []
     );
 
-  if (shouldShuffle && queue.length > 1) {
-    queue = queue
-      .map((id) => ({ id, r: Math.random() }))
-      .sort((a, b) => a.r - b.r)
-      .map(({ id }) => id);
-  }
+    const batchSizeChanged =
+      (state.active_product_ids?.length ?? 0) !== batchSize;
 
-  const queueChanged = !this.isSameQueue(
-    queue,
-    state.queue_product_ids ?? []
-  );
+    const shouldRotate =
+      force ||
+      queueChanged ||
+      batchSizeChanged ||
+      !state.next_rotation_at ||
+      state.next_rotation_at <= now;
 
-  const batchSizeChanged =
-    (state.active_product_ids?.length ?? 0) !== batchSize;
+    const totalBatchesForContext = queue.length
+      ? Math.max(1, Math.ceil(queue.length / batchSize))
+      : 0;
 
-  const shouldRotate =
-    force ||
-    queueChanged ||
-    batchSizeChanged ||
-    !state.next_rotation_at ||
-    state.next_rotation_at <= now;
+    if (!shouldRotate) {
+      return {
+        rotated: false,
+        state,
+        context: {
+          planName: queueInfo.planName,
+          totalBatches: totalBatchesForContext,
+          queueLength: queue.length,
+          batchIndex: state.current_batch_index ?? 0,
+        },
+      };
+    }
 
-  const totalBatches = queue.length
-    ? Math.max(1, Math.ceil(queue.length / batchSize))
-    : 0;
+    console.log(
+      "[FeaturedProducts] Rotation start=======================",
+      JSON.stringify({
+        context: options.logContext ?? "[Service]",
+        position,
+        queueLength: queue.length,
+        planName: queueInfo.planName,
+        queueProductIds: queue,
+        timestamp: now.toISOString(),
+      }),
+      "everythign is end and you can "
+    );
 
-  if (!shouldRotate) {
+    let activeIds: number[] = [];
+    let fallbackIds: number[] = [];
+    let totalBatches = totalBatchesForContext;
+    let nextBatchIndex = 0;
+
+    if (queue.length > 0) {
+      totalBatches = Math.max(1, Math.ceil(queue.length / batchSize));
+      nextBatchIndex = queueChanged
+        ? 0
+        : (state.current_batch_index + 1) % totalBatches;
+
+      const baseIds = this.buildBatch(queue, batchSize, nextBatchIndex);
+      const exclude = new Set(baseIds);
+
+      if (position !== 1 && baseIds.length < batchSize) {
+        fallbackIds = await this.fetchRecentFallbackIds(
+          exclude,
+          batchSize - baseIds.length
+        );
+      }
+
+      activeIds = [...baseIds, ...fallbackIds].slice(0, batchSize);
+    } else {
+      if (position !== 1) {
+        fallbackIds = await this.fetchRecentFallbackIds(
+          new Set<number>(),
+          batchSize
+        );
+        activeIds = fallbackIds.slice(0, batchSize);
+      } else {
+        activeIds = [];
+      }
+      totalBatches = 0;
+      nextBatchIndex = 0;
+    }
+
+    state.queue_product_ids = queue;
+    state.total_products = queue.length;
+    state.current_batch_index = nextBatchIndex;
+    state.active_product_ids = activeIds;
+    state.fallback_product_ids = fallbackIds;
+    state.last_rotation_at = now;
+    state.next_rotation_at = new Date(
+      now.getTime() + rotationMinutes * 60 * 1000
+    );
+    if (queueChanged || !state.queue_refreshed_at) {
+      state.queue_refreshed_at = now;
+    }
+
+    await state.save();
+
+    console.log(
+      "[FeaturedProducts] Rotation complete",
+      JSON.stringify({
+        context: options.logContext ?? "[Service]",
+        position,
+        queueLength: queue.length,
+        totalBatches,
+        batchIndex: nextBatchIndex,
+        activeIds,
+        fallbackIds,
+        queueProductIds: queue,
+        nextRotationAt: state.next_rotation_at?.toISOString() ?? null,
+        timestamp: new Date().toISOString(),
+      }),
+      "=============================end========================"
+    );
+
     return {
-      rotated: false,
+      rotated: true,
       state,
       context: {
         planName: queueInfo.planName,
         totalBatches,
         queueLength: queue.length,
-        batchIndex: state.current_batch_index ?? 0,
+        batchIndex: nextBatchIndex,
       },
     };
   }
-
-  /**
-   * 🔁 FIX 2: Rotate batch fairly
-   */
-  const nextBatchIndex =
-    totalBatches > 0
-      ? (state.current_batch_index + 1) % totalBatches
-      : 0;
-
-  const baseIds = this.buildBatch(queue, batchSize, nextBatchIndex);
-
-  /**
-   * 🎯 FIX 3: Random fallback (NOT newest-first)
-   */
-  let fallbackIds: number[] = [];
-  if (position !== 1 && baseIds.length < batchSize) {
-    fallbackIds = await this.fetchRandomFallbackIds(
-      new Set(baseIds),
-      batchSize - baseIds.length
-    );
-  }
-
-  const activeIds = [...baseIds, ...fallbackIds].slice(0, batchSize);
-
-  state.queue_product_ids = queue;
-  state.total_products = queue.length;
-  state.current_batch_index = nextBatchIndex;
-  state.active_product_ids = activeIds;
-  state.fallback_product_ids = fallbackIds;
-  state.last_rotation_at = now;
-  state.next_rotation_at = new Date(
-    now.getTime() + rotationMinutes * 60 * 1000
-  );
-  state.queue_refreshed_at = now;
-
-  await state.save();
-
-  return {
-    rotated: true,
-    state,
-    context: {
-      planName: queueInfo.planName,
-      totalBatches,
-      queueLength: queue.length,
-      batchIndex: nextBatchIndex,
-    },
-  };
-}
 
   private async getOrCreateRotationState(
     position: number
@@ -765,29 +602,6 @@ async getAllProductsForPosition(
     return fallbackIds;
   }
 
-  private async fetchRandomFallbackIds(
-  excludeIds: Set<number>,
-  limit: number
-): Promise<number[]> {
-  if (limit <= 0) return [];
-
-  const seed = Date.now() % 100000;
-
-  const products = await this.productsRepository.findAll({
-    where: {
-      status: true,
-      _id: { [Op.notIn]: Array.from(excludeIds) },
-    },
-    order: this.productsRepository.sequelize!.literal(
-      `MOD("_id" + ${seed}, 100000)`
-    ),
-    limit: limit * 3,
-    attributes: ["_id"],
-  });
-
-  return products.slice(0, limit).map((p: any) => p._id);
-}
-
   private async fetchProductsByIds(ids: number[]) {
     if (!ids.length) {
       return [];
@@ -828,181 +642,220 @@ async getAllProductsForPosition(
   }
 
   // Get all products with pagination and filters
-//   async getAllProducts(query: GetAllProductsDto): Promise<DataResponseDto> {
-//   try {
-//     const {
-//       search,
-//       category,
-//       subCategory,
-//       store_id,
-//       min_price,
-//       max_price,
-//       stock_status,
-//     } = query;
+  async getAllProducts(query: GetAllProductsDto): Promise<DataResponseDto> {
+    try {
+      console.log(
+        "[FeaturedProducts.getAllProducts] Incoming query:",
+        JSON.stringify(query, null, 2)
+      );
 
-//     const whereClause: any = {
-//       status: true, // ✅ only active products
-//     };
+      const {
+        search,
+        category,
+        subCategory,
+        store_id,
+        status,
+        min_price,
+        max_price,
+        stock_status,
+      } = query;
 
-//     if (category) whereClause.category = category;
-//     if (subCategory) whereClause.subCategory = subCategory;
+      // Build where clause
+      const whereClause: any = {};
 
-//     if (stock_status === "instock") {
-//       whereClause.unit = { [Op.gt]: 0 };
-//     } else if (stock_status === "out_of_stock") {
-//       whereClause.unit = { [Op.lte]: 0 };
-//     }
+      // Filter by category
+      if (category) {
+        whereClause.category = category;
+      }
 
-//     if (store_id) {
-//       whereClause.store_id = Number(store_id);
-//     }
+      if (stock_status === "instock") {
+        whereClause.unit = { [Op.gt]: 0 };
+      } else if (stock_status === "out_of_stock") {
+        whereClause.unit = { [Op.lte]: 0 };
+      }
 
-//     if (min_price !== undefined || max_price !== undefined) {
-//       whereClause.price = {};
-//       if (min_price !== undefined) whereClause.price[Op.gte] = min_price;
-//       if (max_price !== undefined) whereClause.price[Op.lte] = max_price;
-//     }
+      // Filter by subcategory
+      if (subCategory) {
+        whereClause.subCategory = subCategory;
+      }
 
-//     if (search) {
-//       whereClause[Op.or] = [
-//         { name: { [Op.like]: `%${search}%` } },
-//         { sku: { [Op.like]: `%${search}%` } },
-//         { brand: { [Op.like]: `%${search}%` } },
-//       ];
-//     }
+      // Filter by store/seller
+      if (store_id) {
+        console.log(
+          "[FeaturedProducts.getAllProducts] Processing store_id:",
+          store_id,
+          "Type:",
+          typeof store_id
+        );
+        const normalizedStoreId = Number(store_id);
+        const storeFilter = Number.isNaN(normalizedStoreId)
+          ? null
+          : normalizedStoreId;
 
-//     // ✅ SEEDED RANDOM (stable but shuffled)
-//     const seed = Math.floor(Math.random() * 100000);
+        console.log(
+          "[FeaturedProducts.getAllProducts] Normalized store_id:",
+          storeFilter
+        );
 
-//     const findOptions: any = {
-//       where: whereClause,
-//       include: [
-//         {
-//           model: ProductVariant,
-//           as: "productVariant",
-//           required: false,
-//           attributes: ["price", "id", "image"],
-//         },
-//         {
-//           model: Store,
-//           as: "storeDetails",
-//           required: true,
-//           attributes: ["id", "name", "slug", "status"],
-//           where: { status: true },
-//         },
-//       ],
+        if (!storeFilter) {
+          console.log(
+            "[FeaturedProducts.getAllProducts] Invalid store_id, returning empty result"
+          );
+          return new DataResponseDto([], true, "Successfull", query, 0);
+        }
 
-//       // RANDOM MIX (OLD + NEW products)
-//       order: this.productsRepository.sequelize!.literal(
-//         `MOD("Products"."_id" + ${seed}, 100000)`
-//       ),
+        const storeRecord = await this.storeRepository.findByPk(storeFilter, {
+          attributes: ["id", "store_name", "status"],
+        });
 
-//       limit: query.limit,
-//       offset: query.offset,
-//       distinct: true,
-//     };
+        if (!storeRecord) {
+          console.warn(
+            "[FeaturedProducts.getAllProducts] No store found for id",
+            storeFilter
+          );
+          return new DataResponseDto([], true, "Successfull", query, 0);
+        }
 
-//     const { count, rows } =
-//       await this.productsRepository.findAndCountAll(findOptions);
+        console.log(
+          "[FeaturedProducts.getAllProducts] Store record:",
+          JSON.stringify(storeRecord.toJSON(), null, 2)
+        );
 
-//     return new DataResponseDto(rows, true, "Successfull", query, count);
-//   } catch (err) {
-//     if (err instanceof HttpException) throw err;
-//     throw new InternalServerErrorException(getErrorMessage(err));
-//   }
-// }
+        whereClause.store_id = storeFilter;
+        console.log(
+          "[FeaturedProducts.getAllProducts] Added store_id to whereClause:",
+          whereClause.store_id
+        );
+      }
 
-async getAllProducts(query: GetAllProductsDto): Promise<DataResponseDto> {
-  try {
-    const {
-      search,
-      category,
-      subCategory,
-      store_id,
-      min_price,
-      max_price,
-      stock_status,
-    } = query;
+      // Filter by status
+      if (status !== undefined) {
+        whereClause.status = status;
+      }
 
-    // 👇 SAFE escape hatch (does NOT affect DTO validation)
-    const rawPrice = (query as any)?.price;
-
-    const whereClause: any = {
-      status: true, // ✅ only active products
-    };
-
-    if (category) whereClause.category = category;
-    if (subCategory) whereClause.subCategory = subCategory;
-
-    if (stock_status === "instock") {
-      whereClause.unit = { [Op.gt]: 0 };
-    } else if (stock_status === "out_of_stock") {
-      whereClause.unit = { [Op.lte]: 0 };
-    }
-
-    if (store_id) {
-      whereClause.store_id = Number(store_id);
-    }
-
-    // ✅ Apply price range ONLY if NOT random
-    if (rawPrice !== "RAND") {
+      // Filter by price range
       if (min_price !== undefined || max_price !== undefined) {
         whereClause.price = {};
-        if (min_price !== undefined) whereClause.price[Op.gte] = min_price;
-        if (max_price !== undefined) whereClause.price[Op.lte] = max_price;
+        if (min_price !== undefined) {
+          whereClause.price[Op.gte] = min_price;
+        }
+        if (max_price !== undefined) {
+          whereClause.price[Op.lte] = max_price;
+        }
       }
-    }
 
-    if (search) {
-      whereClause[Op.or] = [
-        { name: { [Op.like]: `%${search}%` } },
-        { sku: { [Op.like]: `%${search}%` } },
-        { brand: { [Op.like]: `%${search}%` } },
-      ];
-    }
+      // Search by name, sku, or brand
+      if (search) {
+        whereClause[Op.or] = [
+          {
+            name: {
+              [Op.like]: `%${search}%`,
+            },
+          },
+          {
+            sku: {
+              [Op.like]: `%${search}%`,
+            },
+          },
+          {
+            brand: {
+              [Op.like]: `%${search}%`,
+            },
+          },
+        ];
+      }
 
-    const seed = Math.floor(Math.random() * 100000);
+      console.log(
+        "[FeaturedProducts.getAllProducts] Final whereClause:",
+        JSON.stringify(whereClause, null, 2)
+      );
 
-    const findOptions: any = {
-      where: whereClause,
-      include: [
-        {
-          model: ProductVariant,
-          as: "productVariant",
-          required: false,
-          attributes: ["price", "id", "image"],
-        },
-        {
+      const findOptions: any = {
+        where: whereClause,
+        include: [
+          {
+            model: ProductVariant,
+            as: "productVariant",
+            required: false,
+            attributes: ["price", "id", "image"],
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        limit: query.limit,
+        offset: query.offset,
+        distinct: true,
+      };
+
+      if (store_id) {
+        const storeInclude = {
           model: Store,
           as: "storeDetails",
           required: true,
           attributes: ["id", "name", "slug", "status"],
-          where: { status: true },
-        },
-      ],
-      limit: query.limit,
-      offset: query.offset,
-      distinct: true,
-    };
-
-    // 🔥 RANDOM ONLY WHEN price=RAND
-    if (rawPrice === "RAND") {
-      findOptions.order =
-        this.productsRepository.sequelize!.literal(
-          `MOD("Products"."_id" + ${seed}, 100000)`
+          where: {
+            id: Number(store_id),
+          },
+        };
+        findOptions.include.push(storeInclude);
+        console.log(
+          "[FeaturedProducts.getAllProducts] Added Store include with filter:",
+          JSON.stringify(storeInclude.where, null, 2)
         );
-    } else {
-      findOptions.order = [["createdAt", "DESC"]];
+      }
+
+      console.log(
+        "[FeaturedProducts.getAllProducts] Executing query with options:",
+        JSON.stringify(
+          {
+            where: findOptions.where,
+            includeCount: findOptions.include.length,
+            limit: findOptions.limit,
+            offset: findOptions.offset,
+          },
+          null,
+          2
+        )
+      );
+
+      const { count, rows } = await this.productsRepository.findAndCountAll(
+        findOptions
+      );
+
+      console.log(
+        "[FeaturedProducts.getAllProducts] Query results - Count:",
+        count,
+        "Rows:",
+        rows.length
+      );
+      if (rows.length > 0) {
+        console.log(
+          "[FeaturedProducts.getAllProducts] First product sample:",
+          JSON.stringify(
+            {
+              _id: rows[0]?._id,
+              name: rows[0]?.name,
+              store_id: rows[0]?.store_id,
+              status: rows[0]?.status,
+            },
+            null,
+            2
+          )
+        );
+      }
+
+      // Return raw products with meta pagination (like product_search_single)
+      return new DataResponseDto(rows, true, "Successfull", query, count);
+    } catch (err) {
+      console.error(
+        "[FeaturedProducts.getAllProducts] Error occurred:",
+        err?.message || err
+      );
+      console.error(
+        "[FeaturedProducts.getAllProducts] Error stack:",
+        err?.stack
+      );
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
     }
-
-    const { count, rows } =
-      await this.productsRepository.findAndCountAll(findOptions);
-
-    return new DataResponseDto(rows, true, "Successfull", query, count);
-  } catch (err) {
-    if (err instanceof HttpException) throw err;
-    throw new InternalServerErrorException(getErrorMessage(err));
   }
-}
-
 }
