@@ -828,7 +828,91 @@ async getAllProductsForPosition(
   }
 
   // Get all products with pagination and filters
-  async getAllProducts(query: GetAllProductsDto): Promise<DataResponseDto> {
+//   async getAllProducts(query: GetAllProductsDto): Promise<DataResponseDto> {
+//   try {
+//     const {
+//       search,
+//       category,
+//       subCategory,
+//       store_id,
+//       min_price,
+//       max_price,
+//       stock_status,
+//     } = query;
+
+//     const whereClause: any = {
+//       status: true, // ✅ only active products
+//     };
+
+//     if (category) whereClause.category = category;
+//     if (subCategory) whereClause.subCategory = subCategory;
+
+//     if (stock_status === "instock") {
+//       whereClause.unit = { [Op.gt]: 0 };
+//     } else if (stock_status === "out_of_stock") {
+//       whereClause.unit = { [Op.lte]: 0 };
+//     }
+
+//     if (store_id) {
+//       whereClause.store_id = Number(store_id);
+//     }
+
+//     if (min_price !== undefined || max_price !== undefined) {
+//       whereClause.price = {};
+//       if (min_price !== undefined) whereClause.price[Op.gte] = min_price;
+//       if (max_price !== undefined) whereClause.price[Op.lte] = max_price;
+//     }
+
+//     if (search) {
+//       whereClause[Op.or] = [
+//         { name: { [Op.like]: `%${search}%` } },
+//         { sku: { [Op.like]: `%${search}%` } },
+//         { brand: { [Op.like]: `%${search}%` } },
+//       ];
+//     }
+
+//     // ✅ SEEDED RANDOM (stable but shuffled)
+//     const seed = Math.floor(Math.random() * 100000);
+
+//     const findOptions: any = {
+//       where: whereClause,
+//       include: [
+//         {
+//           model: ProductVariant,
+//           as: "productVariant",
+//           required: false,
+//           attributes: ["price", "id", "image"],
+//         },
+//         {
+//           model: Store,
+//           as: "storeDetails",
+//           required: true,
+//           attributes: ["id", "name", "slug", "status"],
+//           where: { status: true },
+//         },
+//       ],
+
+//       // RANDOM MIX (OLD + NEW products)
+//       order: this.productsRepository.sequelize!.literal(
+//         `MOD("Products"."_id" + ${seed}, 100000)`
+//       ),
+
+//       limit: query.limit,
+//       offset: query.offset,
+//       distinct: true,
+//     };
+
+//     const { count, rows } =
+//       await this.productsRepository.findAndCountAll(findOptions);
+
+//     return new DataResponseDto(rows, true, "Successfull", query, count);
+//   } catch (err) {
+//     if (err instanceof HttpException) throw err;
+//     throw new InternalServerErrorException(getErrorMessage(err));
+//   }
+// }
+
+async getAllProducts(query: GetAllProductsDto): Promise<DataResponseDto> {
   try {
     const {
       search,
@@ -839,6 +923,9 @@ async getAllProductsForPosition(
       max_price,
       stock_status,
     } = query;
+
+    // 👇 SAFE escape hatch (does NOT affect DTO validation)
+    const rawPrice = (query as any)?.price;
 
     const whereClause: any = {
       status: true, // ✅ only active products
@@ -857,10 +944,13 @@ async getAllProductsForPosition(
       whereClause.store_id = Number(store_id);
     }
 
-    if (min_price !== undefined || max_price !== undefined) {
-      whereClause.price = {};
-      if (min_price !== undefined) whereClause.price[Op.gte] = min_price;
-      if (max_price !== undefined) whereClause.price[Op.lte] = max_price;
+    // ✅ Apply price range ONLY if NOT random
+    if (rawPrice !== "RAND") {
+      if (min_price !== undefined || max_price !== undefined) {
+        whereClause.price = {};
+        if (min_price !== undefined) whereClause.price[Op.gte] = min_price;
+        if (max_price !== undefined) whereClause.price[Op.lte] = max_price;
+      }
     }
 
     if (search) {
@@ -871,7 +961,6 @@ async getAllProductsForPosition(
       ];
     }
 
-    // ✅ SEEDED RANDOM (stable but shuffled)
     const seed = Math.floor(Math.random() * 100000);
 
     const findOptions: any = {
@@ -891,16 +980,20 @@ async getAllProductsForPosition(
           where: { status: true },
         },
       ],
-
-      // 🔥 RANDOM MIX (OLD + NEW products)
-      order: this.productsRepository.sequelize!.literal(
-        `MOD("Products"."_id" + ${seed}, 100000)`
-      ),
-
       limit: query.limit,
       offset: query.offset,
       distinct: true,
     };
+
+    // 🔥 RANDOM ONLY WHEN price=RAND
+    if (rawPrice === "RAND") {
+      findOptions.order =
+        this.productsRepository.sequelize!.literal(
+          `MOD("Products"."_id" + ${seed}, 100000)`
+        );
+    } else {
+      findOptions.order = [["createdAt", "DESC"]];
+    }
 
     const { count, rows } =
       await this.productsRepository.findAndCountAll(findOptions);
