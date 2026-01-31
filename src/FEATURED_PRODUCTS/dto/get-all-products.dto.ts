@@ -46,8 +46,13 @@ export class GetAllProductsDto extends PageOptionsDto {
   @Type(() => Number)
   readonly store_id?: number;
 
+  /**
+   * ⚠️ NOTE:
+   * Product status is FORCE-FILTERED in the service (status = true).
+   * This field exists only for backward compatibility.
+   */
   @ApiPropertyOptional({
-    description: "Filter by status (true=available, false=unavailable)",
+    description: "Product status (ignored – only active products are returned)",
     example: true,
   })
   @IsOptional()
@@ -56,7 +61,7 @@ export class GetAllProductsDto extends PageOptionsDto {
   readonly status?: boolean;
 
   @ApiPropertyOptional({
-    description: "Minimum price",
+    description: "Minimum product price",
     example: 1000,
   })
   @IsOptional()
@@ -64,7 +69,7 @@ export class GetAllProductsDto extends PageOptionsDto {
   readonly min_price?: number;
 
   @ApiPropertyOptional({
-    description: "Maximum price",
+    description: "Maximum product price",
     example: 50000,
   })
   @IsOptional()
@@ -72,12 +77,11 @@ export class GetAllProductsDto extends PageOptionsDto {
   readonly max_price?: number;
 
   @ApiPropertyOptional({
-    description: "Filter by stock status",
-    example: "instock",
+    description: "Stock availability filter",
     enum: ["instock", "out_of_stock"],
+    example: "instock",
   })
   @IsOptional()
-  @IsString()
   @IsIn(["instock", "out_of_stock"])
   readonly stock_status?: "instock" | "out_of_stock";
 }
