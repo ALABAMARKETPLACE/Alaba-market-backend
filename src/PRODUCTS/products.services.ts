@@ -30,7 +30,7 @@ import { CartTable } from "../CART/cart.entity";
 import { Wishlist } from "../WISHLIST/wishlist.entity";
 import { ProductReviews } from "../PRODUCT_REVIEWS/prod_rev.entity";
 import { UserHistory } from "../USER_HISTORY/userhistory.entity";
-import { Role } from "src/shared/enum/role.enum";
+import { Role } from "../shared/enum/role.enum";
 
 const pVariantAttributes = [
   "image",
