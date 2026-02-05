@@ -15,7 +15,8 @@ import { ProductImageService } from "../PRODUCT_IMAGE/productimage.service";
 import { ProductVariantService } from "../PRODUCT_VARIANTS/productvariant.service";
 import { ProductImage } from "../PRODUCT_IMAGE/productimage.entity";
 import { ProductsByStoreDto } from "./dto/productsByStore.dto";
-import { Op, Sequelize, Transaction } from "sequelize";
+import { Op, Transaction } from "sequelize";
+import { Sequelize } from "sequelize-typescript";
 import { UpdateProductsDto } from "./dto/updateProduct.dto";
 import { UpdateProductImagePayloadDto } from "./dto/updateProductImage.dto";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
@@ -29,6 +30,10 @@ import { CartTable } from "../CART/cart.entity";
 import { Wishlist } from "../WISHLIST/wishlist.entity";
 import { ProductReviews } from "../PRODUCT_REVIEWS/prod_rev.entity";
 import { UserHistory } from "../USER_HISTORY/userhistory.entity";
+import { Role } from "../shared/enum/role.enum";
+import { OrderItems } from '../ORDER_ITEMS/order_items.entity';
+import { OfferProducts } from "../OFFER_PRODUCTS/offer_products.entity";
+import { SubstituteProducts } from "../ORDER_SUBSTITUTION/substitute.products.entity";
 
 const pVariantAttributes = [
   "image",
@@ -46,9 +51,14 @@ export class ProductsService {
   constructor(
     @Inject("ProductsRepository")
     private readonly ProductsRepository: typeof Products,
+
     private readonly productsImageService: ProductImageService,
     private readonly productVariantsService: ProductVariantService,
-    @Inject("Slugify") private readonly slugify: (slug: string) => string
+
+    private readonly sequelize: Sequelize,
+
+    @Inject("Slugify")
+    private readonly slugify: (slug: string) => string
   ) {}
 
   async create(
@@ -259,17 +269,58 @@ export class ProductsService {
   //   }
   // }
 
-  async delete(storeId: number, id: number): Promise<DataResponseDto> {
+  async delete(
+    storeId: number,
+    id: number,
+    role: Role
+  ): Promise<DataResponseDto> {
     try {
-      const product = await this.ProductsRepository.findOne({
-        where: { _id: id, store_id: storeId },
-      });
+      const where =
+        role === Role.Admin
+          ? { _id: id }
+          : { _id: id, store_id: storeId };
+
+      const product = await this.ProductsRepository
+        .unscoped()
+        .findOne({ where });
 
       if (!product) {
         throw new NotFoundException("Product not found");
       }
 
-      //Check references
+      /* =========================
+        ADMIN → HARD DELETE
+      ========================== */
+      if (role === Role.Admin) {
+        return await this.sequelize.transaction(async (transaction) => {
+          await Promise.all([
+            CartTable.destroy({ where: { productId: id }, transaction }),
+            Wishlist.destroy({ where: { productId: id }, transaction }),
+            ProductReviews.destroy({ where: { product_id: id }, transaction }),
+            ProductVariant.destroy({ where: { productId: id }, transaction }),
+            UserHistory.destroy({ where: { productId: id }, transaction }),
+
+            // 🔥 MISSING TABLES (CRITICAL)
+            OrderItems.destroy({ where: { productId: id }, transaction }),
+            ProductImage.destroy({ where: { productId: id }, transaction }),
+            OfferProducts.destroy({ where: { productId: id }, transaction }),
+            SubstituteProducts.destroy({ where: { productId: id }, transaction }),
+          ]);
+
+          // finally delete product
+          await product.destroy({ transaction });
+
+          return new DataResponseDto(
+            null,
+            true,
+            "Product and all related records deleted permanently"
+          );
+        });
+      }
+
+      /* =========================
+        SELLER → SAFE DELETE
+      ========================== */
       const [
         cartCount,
         wishlistCount,
@@ -292,7 +343,6 @@ export class ProductsService {
           historyCount >
         0;
 
-      //If referenced → SOFT DELETE
       if (hasReferences) {
         product.status = false;
         await product.save();
@@ -300,24 +350,19 @@ export class ProductsService {
         return new DataResponseDto(
           null,
           true,
-          "Product has existing references and was disabled instead of deleted"
+          "Product has references and was disabled instead"
         );
       }
 
-      //Safe hard delete
       await product.destroy();
+      return new DataResponseDto(null, true, "Product deleted successfully");
 
-      return new DataResponseDto(
-        null,
-        true,
-        "Product deleted successfully"
-      );
     } catch (err) {
       if (err instanceof HttpException) throw err;
 
       if (err?.name === "SequelizeForeignKeyConstraintError") {
         throw new BadRequestException(
-          "This product cannot be deleted because it is referenced by other records"
+          "Product cannot be deleted because it is referenced"
         );
       }
 

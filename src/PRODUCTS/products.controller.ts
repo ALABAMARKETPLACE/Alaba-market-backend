@@ -282,15 +282,19 @@ export class ProductsController {
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Delete("delete/:id")
-  @ApiParam({ name: "id", required: true })
-  @ApiBearerAuth()
-  @ApiDataObjectResponse(ProductsDto)
-  @HttpCode(200)
   delete(
-    @StoreId() storeId: number,
-    @Param("id", new ParseIntPipe()) id: number
+    @Req() req: any,
+    @Param("id", ParseIntPipe) id: number,
+    @Body("storeId") storeIdFromBody?: number
   ): Promise<DataResponseDto> {
-    return this.ProductsService.delete(storeId, id);
+    const user = req.user;
+
+    const storeId =
+      user.role === Role.Admin
+        ? storeIdFromBody // admin may specify
+        : user.storeId;   // seller forced to their own store
+
+    return this.ProductsService.delete(storeId, id, user.role);
   }
 
   @Roles(Role.Seller, Role.Admin)
