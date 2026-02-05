@@ -31,6 +31,9 @@ import { Wishlist } from "../WISHLIST/wishlist.entity";
 import { ProductReviews } from "../PRODUCT_REVIEWS/prod_rev.entity";
 import { UserHistory } from "../USER_HISTORY/userhistory.entity";
 import { Role } from "../shared/enum/role.enum";
+import { OrderItems } from "src/ORDER_ITEMS/order_items.entity";
+import { OfferProducts } from "src/OFFER_PRODUCTS/offer_products.entity";
+import { SubstituteProducts } from "src/ORDER_SUBSTITUTION/substitute.products.entity";
 
 const pVariantAttributes = [
   "image",
@@ -285,7 +288,9 @@ export class ProductsService {
         throw new NotFoundException("Product not found");
       }
 
-      // ADMIN: hard delete everything
+      /* =========================
+        ADMIN → HARD DELETE
+      ========================== */
       if (role === Role.Admin) {
         return await this.sequelize.transaction(async (transaction) => {
           await Promise.all([
@@ -294,19 +299,28 @@ export class ProductsService {
             ProductReviews.destroy({ where: { product_id: id }, transaction }),
             ProductVariant.destroy({ where: { productId: id }, transaction }),
             UserHistory.destroy({ where: { productId: id }, transaction }),
+
+            // 🔥 MISSING TABLES (CRITICAL)
+            OrderItems.destroy({ where: { productId: id }, transaction }),
+            ProductImage.destroy({ where: { productId: id }, transaction }),
+            OfferProducts.destroy({ where: { productId: id }, transaction }),
+            SubstituteProducts.destroy({ where: { productId: id }, transaction }),
           ]);
 
+          // finally delete product
           await product.destroy({ transaction });
 
           return new DataResponseDto(
             null,
             true,
-            "Product and all related records deleted successfully"
+            "Product and all related records deleted permanently"
           );
         });
       }
 
-      // SELLER: safe delete
+      /* =========================
+        SELLER → SAFE DELETE
+      ========================== */
       const [
         cartCount,
         wishlistCount,
@@ -341,8 +355,8 @@ export class ProductsService {
       }
 
       await product.destroy();
-
       return new DataResponseDto(null, true, "Product deleted successfully");
+
     } catch (err) {
       if (err instanceof HttpException) throw err;
 
