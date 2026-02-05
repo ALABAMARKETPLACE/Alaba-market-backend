@@ -31,9 +31,9 @@ import { Wishlist } from "../WISHLIST/wishlist.entity";
 import { ProductReviews } from "../PRODUCT_REVIEWS/prod_rev.entity";
 import { UserHistory } from "../USER_HISTORY/userhistory.entity";
 import { Role } from "../shared/enum/role.enum";
-import { OrderItems } from "src/ORDER_ITEMS/order_items.entity";
-import { OfferProducts } from "src/OFFER_PRODUCTS/offer_products.entity";
-import { SubstituteProducts } from "src/ORDER_SUBSTITUTION/substitute.products.entity";
+import { OrderItems } from '../ORDER_ITEMS/order_items.entity';
+import { OfferProducts } from "../OFFER_PRODUCTS/offer_products.entity";
+import { SubstituteProducts } from "../ORDER_SUBSTITUTION/substitute.products.entity";
 
 const pVariantAttributes = [
   "image",
