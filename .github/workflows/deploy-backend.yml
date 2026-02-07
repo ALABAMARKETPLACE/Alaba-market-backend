@@ -8,7 +8,7 @@ on:
 
 jobs:
   # =================================================
-  # PRODUCTION DEPLOY (Master)
+  # PRODUCTION DEPLOY
   # =================================================
   deploy-prod:
     if: github.ref_name == 'Master'
@@ -16,9 +16,22 @@ jobs:
     environment: production
 
     steps:
+      # -----------------------------
+      # Checkout
+      # -----------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # -----------------------------
+      # Verify backend exists
+      # -----------------------------
+      - name: Verify backend source
+        run: |
+          test -f server/package.json || (echo "❌ Backend not found in server/ directory" && exit 1)
+
+      # -----------------------------
+      # Set environment variables
+      # -----------------------------
       - name: Setup environment variables (prod)
         run: |
           echo "SERVER_HOST=${{ vars.PROD_SERVER_HOST }}" >> $GITHUB_ENV
@@ -30,6 +43,9 @@ jobs:
           echo "${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
+      # -----------------------------
+      # Setup SSH
+      # -----------------------------
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -37,6 +53,9 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
+      # -----------------------------
+      # Sync backend source (FIXED)
+      # -----------------------------
       - name: Sync backend source
         run: |
           rsync -avz --delete \
@@ -45,33 +64,46 @@ jobs:
             --exclude .env \
             --exclude .git \
             --exclude .github \
-            ./ \
+            server/ \
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
+      # -----------------------------
+      # Build & restart backend
+      # -----------------------------
       - name: Build & restart backend (prod)
         run: |
           ssh "$SERVER_USER@$SERVER_HOST" << EOF
             set -e
 
+            # Load NVM
             export NVM_DIR="\$HOME/.nvm"
             [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
             nvm use 20.19.6
 
             cd "$API_DIR"
 
+            # Ensure env exists
+            if [ ! -f .env ]; then
+              echo ".env file missing in $API_DIR"
+              exit 1
+            fi
+
             npm ci --legacy-peer-deps || npm install --legacy-peer-deps
             npm run build
 
             PM2="\$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
+            # Safe PM2 reload/start
             set +e
             \$PM2 describe "$API_NAME" > /dev/null 2>&1
             EXISTS=\$?
             set -e
 
             if [ "\$EXISTS" -eq 0 ]; then
+              echo "Reloading backend..."
               \$PM2 reload "$API_NAME" --update-env
             else
+              echo "Starting backend..."
               \$PM2 start dist/main.js \
                 --name "$API_NAME" \
                 --cwd "$API_DIR" \
@@ -82,7 +114,7 @@ jobs:
           EOF
 
   # =================================================
-  # DEVELOPMENT DEPLOY (dev)
+  # DEVELOPMENT DEPLOY
   # =================================================
   deploy-dev:
     if: github.ref_name == 'dev'
@@ -92,6 +124,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify backend source
+        run: |
+          test -f server/package.json || (echo "❌ Backend not found in server/ directory" && exit 1)
 
       - name: Setup environment variables (dev)
         run: |
@@ -119,7 +155,7 @@ jobs:
             --exclude .env \
             --exclude .git \
             --exclude .github \
-            ./ \
+            server/ \
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       - name: Build & restart backend (dev)
