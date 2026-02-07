@@ -72,7 +72,7 @@ export class ProductsService {
     }: ProductsPayloadDto
   ) {
     try {
-      // Debug: Log what we receive .
+      // Debug: Log what we receive
       console.log("=== DEBUG CREATE PRODUCT ===");
       console.log("information:", JSON.stringify(information, null, 2));
       console.log("product_weight value:", information?.product_weight);
