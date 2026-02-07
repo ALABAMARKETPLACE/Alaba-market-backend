@@ -113,7 +113,7 @@ export class ProductsController {
     res.redirect(URL);
   }
 
-  //to get product details for seller only editin..
+  //to get product details for seller only editin
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Get("seller/:id")
