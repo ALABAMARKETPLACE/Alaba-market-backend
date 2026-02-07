@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------
-      # DEBUG WORKSPACE (SAFE TO REMOVE LATER)
+      # DEBUG WORKSPACE (SAFE TO REMOVE LATER)..
       # -------------------------------------------------
       - name: Debug workspace
         run: |
