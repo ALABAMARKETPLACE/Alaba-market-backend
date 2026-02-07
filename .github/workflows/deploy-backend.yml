@@ -13,27 +13,18 @@ jobs:
 
     steps:
       # -------------------------------------------------
-      # CHECKOUT
+      # CHECKOUT CODE
       # -------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
-
-      # -------------------------------------------------
-      # HARD DEBUG (DO NOT REMOVE UNTIL GREEN)
-      # -------------------------------------------------
-      - name: Inspect repository contents
-        run: |
-          echo "===== REPO ROOT ====="
-          pwd
-          ls -la
-          echo "===== FILE TREE (2 levels) ====="
-          find . -maxdepth 2 -type f
 
       # -------------------------------------------------
       # VERIFY BACKEND EXISTS (ROOT-BASED)
       # -------------------------------------------------
       - name: Verify backend source
         run: |
+          echo "Checking backend source at repo root..."
+          ls -la
           test -f package.json || (echo "❌ package.json not found at repo root" && exit 1)
 
       # -------------------------------------------------
@@ -43,8 +34,8 @@ jobs:
         run: |
           if [[ "${GITHUB_REF_NAME}" == "Master" ]]; then
             echo "SERVER_HOST=${{ vars.PROD_SERVER_HOST }}" >> $GITHUB_ENV
-            echo "SERVER_USER=${{ vars.PROD_SERVER_USER }}" >> $GITHUB_ENV
-            echo "API_DIR=/home/${{ vars.PROD_SERVER_USER }}/alaba-marketplace-production/server" >> $GITHUB_ENV
+            echo "SERVER_USER=alabamarket" >> $GITHUB_ENV
+            echo "API_DIR=/home/alabamarket/alaba-marketplace-production/server" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-apis" >> $GITHUB_ENV
 
             echo "SSH_KEY<<EOF" >> $GITHUB_ENV
@@ -52,8 +43,8 @@ jobs:
             echo "EOF" >> $GITHUB_ENV
           else
             echo "SERVER_HOST=${{ vars.DEV_SERVER_HOST }}" >> $GITHUB_ENV
-            echo "SERVER_USER=${{ vars.DEV_SERVER_USER }}" >> $GITHUB_ENV
-            echo "API_DIR=/home/${{ vars.DEV_SERVER_USER }}/alaba-marketplace/server" >> $GITHUB_ENV
+            echo "SERVER_USER=alabamarket" >> $GITHUB_ENV
+            echo "API_DIR=/home/alabamarket/alaba-marketplace/server" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-backend" >> $GITHUB_ENV
 
             echo "SSH_KEY<<EOF" >> $GITHUB_ENV
@@ -62,16 +53,16 @@ jobs:
           fi
 
       # -------------------------------------------------
-      # DEBUG ENV
+      # DEBUG VALUES (SAFE)
       # -------------------------------------------------
       - name: Debug environment
         run: |
-          echo "Branch: $GITHUB_REF_NAME"
-          echo "SERVER_HOST=$SERVER_HOST"
-          echo "SERVER_USER=$SERVER_USER"
-          echo "API_DIR=$API_DIR"
-          echo "API_NAME=$API_NAME"
-          echo "SSH_KEY=${SSH_KEY:+SET}"
+          echo "Branch      : $GITHUB_REF_NAME"
+          echo "Server Host : $SERVER_HOST"
+          echo "Server User : $SERVER_USER"
+          echo "API Dir     : $API_DIR"
+          echo "API Name    : $API_NAME"
+          echo "SSH Key     : ${SSH_KEY:+SET}"
 
       # -------------------------------------------------
       # SSH SETUP
@@ -84,7 +75,7 @@ jobs:
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
       # -------------------------------------------------
-      # RSYNC (ROOT → SERVER RUNTIME DIR)
+      # SYNC BACKEND SOURCE (ROOT → SERVER)
       # -------------------------------------------------
       - name: Sync backend source
         run: |
@@ -102,12 +93,12 @@ jobs:
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
-          ssh "$SERVER_USER@$SERVER_HOST" << EOF
+          ssh "$SERVER_USER@$SERVER_HOST" << 'EOF'
             set -e
 
             # Load NVM
-            export NVM_DIR="\$HOME/.nvm"
-            [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
             nvm use 20.19.6
 
             cd "$API_DIR"
@@ -121,23 +112,24 @@ jobs:
             npm install --legacy-peer-deps
             npm run build
 
-            PM2="\$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
+            PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
+            # Check if PM2 app exists
             set +e
-            \$PM2 describe "$API_NAME" > /dev/null 2>&1
-            EXISTS=\$?
+            $PM2 describe "$API_NAME" > /dev/null 2>&1
+            EXISTS=$?
             set -e
 
-            if [ "\$EXISTS" -eq 0 ]; then
+            if [ "$EXISTS" -eq 0 ]; then
               echo "Reloading backend..."
-              \$PM2 reload "$API_NAME" --update-env
+              $PM2 reload "$API_NAME" --update-env
             else
               echo "Starting backend..."
-              \$PM2 start dist/main.js \
+              $PM2 start dist/main.js \
                 --name "$API_NAME" \
                 --cwd "$API_DIR" \
                 --node-args="-r dotenv/config"
             fi
 
-            \$PM2 save
+            $PM2 save
           EOF
