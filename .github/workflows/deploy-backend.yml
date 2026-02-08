@@ -27,7 +27,7 @@ jobs:
           ls -la
 
       # -------------------------------------------------
-      # SET ENVIRONMENT VARIABLES 
+      # SET ENVIRONMENT VARIABLES .
       # -------------------------------------------------
       - name: Setup environment variables
         run: |
