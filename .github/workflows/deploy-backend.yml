@@ -52,7 +52,7 @@ jobs:
           fi
 
       # -------------------------------------------------
-      # DEBUG ENV VALUES .
+      # DEBUG ENV VALUES 
       # -------------------------------------------------
       - name: Debug injected values
         run: |
