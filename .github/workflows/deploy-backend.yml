@@ -31,7 +31,7 @@ jobs:
           fi
 
       # -------------------------------------------------
-      # SET ENVIRONMENT VARIABLES .
+      # SET ENVIRONMENT VARIABLES
       # -------------------------------------------------
       - name: Setup environment variables
         run: |
@@ -72,7 +72,7 @@ jobs:
             "$SERVER_USER@$SERVER_HOST" "mkdir -p $API_DIR"
 
       # -------------------------------------------------
-      # RSYNC BACKEND SOURCE (REPO ROOT)
+      # RSYNC BACKEND SOURCE
       # -------------------------------------------------
       - name: Sync backend source
         run: |
@@ -86,60 +86,72 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       # -------------------------------------------------
-      # BUILD & RESTART BACKEND (FINAL, STABLE)
+      # BUILD & RESTART BACKEND (FIXED)
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
           ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=5 \
             "$SERVER_USER@$SERVER_HOST" << EOF
-            set -euo pipefail
+          set -euo pipefail
 
-            # -------------------------------
-            # LOAD NVM
-            # -------------------------------
-            export NVM_DIR="\$HOME/.nvm"
-            [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
-            nvm use 20.19.6
+          # -------------------------------
+          # EXPLICIT ENV (CI SAFE)
+          # -------------------------------
+          export API_DIR="$API_DIR"
+          export API_NAME="$API_NAME"
 
-            # -------------------------------
-            # ENSURE PM2 EXISTS
-            # -------------------------------
-            if ! command -v pm2 >/dev/null 2>&1; then
-              echo "📦 Installing PM2..."
-              npm install -g pm2
-            fi
+          # -------------------------------
+          # LOAD NVM (NON-INTERACTIVE SAFE)
+          # -------------------------------
+          export NVM_DIR="/home/$SERVER_USER/.nvm"
 
-            # -------------------------------
-            # ENTER APP DIRECTORY
-            # -------------------------------
-            cd "$API_DIR"
+          if [ ! -s "\$NVM_DIR/nvm.sh" ]; then
+            echo "❌ NVM not found at \$NVM_DIR"
+            exit 1
+          fi
 
-            if [ ! -f package.json ]; then
-              echo "❌ package.json NOT FOUND in $API_DIR"
-              pwd
-              ls -la
-              exit 1
-            fi
+          . "\$NVM_DIR/nvm.sh"
+          nvm use 20.19.6
 
-            # -------------------------------
-            # BUILD APPLICATION
-            # -------------------------------
-            npm install --legacy-peer-deps
-            npm run build
+          # -------------------------------
+          # ENSURE PM2 EXISTS
+          # -------------------------------
+          if ! command -v pm2 >/dev/null 2>&1; then
+            echo "📦 Installing PM2..."
+            npm install -g pm2
+          fi
 
-            # -------------------------------
-            # SAFE PM2 RELOAD / START
-            # -------------------------------
-            if pm2 describe "$API_NAME" > /dev/null 2>&1; then
-              echo "♻️ Reloading PM2 process..."
-              pm2 reload "$API_NAME" --update-env
-            else
-              echo "🚀 Starting PM2 process..."
-              pm2 start dist/main.js \
-                --name "$API_NAME" \
-                --cwd "$API_DIR" \
-                --node-args="-r dotenv/config"
-            fi
+          # -------------------------------
+          # ENTER APP DIRECTORY
+          # -------------------------------
+          cd "\$API_DIR"
 
-            pm2 save
+          if [ ! -f package.json ]; then
+            echo "❌ package.json NOT FOUND in \$API_DIR"
+            pwd
+            ls -la
+            exit 1
+          fi
+
+          # -------------------------------
+          # BUILD APPLICATION
+          # -------------------------------
+          npm install --legacy-peer-deps
+          npm run build
+
+          # -------------------------------
+          # SAFE PM2 RELOAD / START
+          # -------------------------------
+          if pm2 describe "\$API_NAME" > /dev/null 2>&1; then
+            echo "♻️ Reloading PM2 process..."
+            pm2 reload "\$API_NAME" --update-env
+          else
+            echo "🚀 Starting PM2 process..."
+            pm2 start dist/main.js \
+              --name "\$API_NAME" \
+              --cwd "\$API_DIR" \
+              --node-args="-r dotenv/config"
+          fi
+
+          pm2 save
           EOF
