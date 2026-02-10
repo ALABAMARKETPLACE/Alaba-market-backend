@@ -19,12 +19,13 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------
-      # DEBUG WORKSPACE (SAFE TO REMOVE)
+      # DEBUG WORKSPACE
       # -------------------------------------------------
       - name: Debug workspace
         run: |
           pwd
           ls -la
+          test -f package.json || echo "⚠️ package.json NOT in repo root"
 
       # -------------------------------------------------
       # SET ENVIRONMENT VARIABLES
@@ -81,7 +82,7 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       # -------------------------------------------------
-      # BUILD & RESTART BACKEND (FINAL FIX)
+      # BUILD & RESTART BACKEND (FINAL)
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
@@ -89,49 +90,33 @@ jobs:
           ssh "$SERVER_USER@$SERVER_HOST" << 'EOF'
             set -e
 
-            # -------------------------------
-            # LOAD NVM
-            # -------------------------------
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-
             nvm use 20.19.6
 
-            # -------------------------------
-            # ENTER APP DIRECTORY
-            # -------------------------------
+            echo "📁 API_DIR is: $API_DIR"
             cd "$API_DIR"
 
             if [ ! -f package.json ]; then
-              echo "❌ package.json not found in $API_DIR"
+              echo "❌ package.json NOT FOUND in $API_DIR"
+              echo "📂 Contents:"
+              ls -la
               exit 1
             fi
 
-            echo "📁 Working directory:"
-            pwd
-            ls -la
-
-            # -------------------------------
-            # BUILD APPLICATION
-            # -------------------------------
             npm install --legacy-peer-deps
             npm run build
 
             PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
-            # -------------------------------
-            # SAFE PM2 RELOAD / START
-            # -------------------------------
             set +e
             $PM2 describe "$API_NAME" > /dev/null 2>&1
             EXISTS=$?
             set -e
 
             if [ "$EXISTS" -eq 0 ]; then
-              echo "♻️ Reloading existing PM2 process..."
               $PM2 reload "$API_NAME" --update-env
             else
-              echo "🚀 Starting new PM2 process..."
               $PM2 start dist/main.js \
                 --name "$API_NAME" \
                 --cwd "$API_DIR" \
