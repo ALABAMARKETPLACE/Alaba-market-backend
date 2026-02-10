@@ -27,7 +27,7 @@ jobs:
           ls -la
 
       # -------------------------------------------------
-      # SET ENVIRONMENT VARIABLES .
+      # SET ENVIRONMENT VARIABLES
       # -------------------------------------------------
       - name: Setup environment variables
         run: |
@@ -52,7 +52,7 @@ jobs:
           fi
 
       # -------------------------------------------------
-      # DEBUG ENV VALUES 
+      # DEBUG ENV VALUES
       # -------------------------------------------------
       - name: Debug injected values
         run: |
@@ -74,7 +74,14 @@ jobs:
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
       # -------------------------------------------------
-      # RSYNC (CORRECT SOURCE)
+      # ENSURE BACKEND DIRECTORY EXISTS (REBUILD SAFE)
+      # -------------------------------------------------
+      - name: Ensure backend directory exists
+        run: |
+          ssh "$SERVER_USER@$SERVER_HOST" "mkdir -p $API_DIR"
+
+      # -------------------------------------------------
+      # RSYNC BACKEND SOURCE
       # -------------------------------------------------
       - name: Sync backend source
         run: |
@@ -88,41 +95,61 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       # -------------------------------------------------
-      # BUILD & RESTART BACKEND (FIXED)
+      # BUILD & RESTART BACKEND (FULL FIX)
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
-          ssh "$SERVER_USER@$SERVER_HOST" << EOF
+          ssh "$SERVER_USER@$SERVER_HOST" << 'EOF'
             set -e
 
-            # ---- Load NVM ----
-            export NVM_DIR="\$HOME/.nvm"
-            [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
+            # -------------------------------
+            # INSTALL NVM IF NOT PRESENT
+            # -------------------------------
+            if [ ! -d "$HOME/.nvm" ]; then
+              echo "Installing NVM..."
+              curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+            fi
+
+            # -------------------------------
+            # LOAD NVM (NON-INTERACTIVE SAFE)
+            # -------------------------------
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            # -------------------------------
+            # INSTALL & USE NODE
+            # -------------------------------
+            nvm install 20.19.6
             nvm use 20.19.6
 
+            # -------------------------------
+            # BUILD APPLICATION
+            # -------------------------------
             cd "$API_DIR"
 
             npm install --legacy-peer-deps
             npm run build
 
-            PM2="\$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
+            PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
-            # ---- SAFE PM2 CHECK ----
+            # -------------------------------
+            # SAFE PM2 RELOAD / START
+            # -------------------------------
             set +e
-            \$PM2 describe "$API_NAME" > /dev/null 2>&1
-            EXISTS=\$?
+            $PM2 describe "$API_NAME" > /dev/null 2>&1
+            EXISTS=$?
             set -e
 
-            if [ "\$EXISTS" -eq 0 ]; then
+            if [ "$EXISTS" -eq 0 ]; then
               echo "Reloading existing PM2 process..."
-              \$PM2 reload "$API_NAME" --update-env
+              $PM2 reload "$API_NAME" --update-env
             else
               echo "Starting new PM2 process..."
-              \$PM2 start dist/main.js \
+              $PM2 start dist/main.js \
                 --name "$API_NAME" \
                 --cwd "$API_DIR" \
                 --node-args="-r dotenv/config"
             fi
 
-            \$PM2 save
+            $PM2 save
           EOF
