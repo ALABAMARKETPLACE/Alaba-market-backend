@@ -74,7 +74,7 @@ jobs:
           ssh-keyscan -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
       # -------------------------------------------------
-      # ENSURE BACKEND DIRECTORY EXISTS (REBUILD SAFE)
+      # ENSURE BACKEND DIRECTORY EXISTS
       # -------------------------------------------------
       - name: Ensure backend directory exists
         run: |
@@ -95,7 +95,7 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       # -------------------------------------------------
-      # BUILD & RESTART BACKEND (FULL FIX)
+      # BUILD & RESTART BACKEND (FINAL FIX)
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
@@ -103,30 +103,30 @@ jobs:
             set -e
 
             # -------------------------------
-            # INSTALL NVM IF NOT PRESENT
-            # -------------------------------
-            if [ ! -d "$HOME/.nvm" ]; then
-              echo "Installing NVM..."
-              curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-            fi
-
-            # -------------------------------
-            # LOAD NVM (NON-INTERACTIVE SAFE)
+            # LOAD NVM (ALREADY INSTALLED)
             # -------------------------------
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-            # -------------------------------
-            # INSTALL & USE NODE
-            # -------------------------------
-            nvm install 20.19.6
             nvm use 20.19.6
+
+            # -------------------------------
+            # ENTER APP DIRECTORY
+            # -------------------------------
+            cd "$API_DIR"
+
+            # FAIL FAST IF WRONG DIRECTORY
+            if [ ! -f package.json ]; then
+              echo "❌ package.json not found in $API_DIR"
+              exit 1
+            fi
+
+            echo "📁 Working directory:"
+            pwd
 
             # -------------------------------
             # BUILD APPLICATION
             # -------------------------------
-            cd "$API_DIR"
-
             npm install --legacy-peer-deps
             npm run build
 
@@ -141,10 +141,10 @@ jobs:
             set -e
 
             if [ "$EXISTS" -eq 0 ]; then
-              echo "Reloading existing PM2 process..."
+              echo "♻️ Reloading existing PM2 process..."
               $PM2 reload "$API_NAME" --update-env
             else
-              echo "Starting new PM2 process..."
+              echo "🚀 Starting new PM2 process..."
               $PM2 start dist/main.js \
                 --name "$API_NAME" \
                 --cwd "$API_DIR" \
