@@ -86,7 +86,7 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       # -------------------------------------------------
-      # BUILD & RESTART BACKEND (FINAL STABLE)
+      # BUILD & RESTART BACKEND (FINAL, STABLE)
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
@@ -100,6 +100,14 @@ jobs:
             export NVM_DIR="\$HOME/.nvm"
             [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
             nvm use 20.19.6
+
+            # -------------------------------
+            # ENSURE PM2 EXISTS
+            # -------------------------------
+            if ! command -v pm2 >/dev/null 2>&1; then
+              echo "📦 Installing PM2..."
+              npm install -g pm2
+            fi
 
             # -------------------------------
             # ENTER APP DIRECTORY
@@ -119,21 +127,19 @@ jobs:
             npm install --legacy-peer-deps
             npm run build
 
-            PM2="\$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
-
             # -------------------------------
             # SAFE PM2 RELOAD / START
             # -------------------------------
-            if \$PM2 describe "$API_NAME" > /dev/null 2>&1; then
+            if pm2 describe "$API_NAME" > /dev/null 2>&1; then
               echo "♻️ Reloading PM2 process..."
-              \$PM2 reload "$API_NAME" --update-env
+              pm2 reload "$API_NAME" --update-env
             else
               echo "🚀 Starting PM2 process..."
-              \$PM2 start dist/main.js \
+              pm2 start dist/main.js \
                 --name "$API_NAME" \
                 --cwd "$API_DIR" \
                 --node-args="-r dotenv/config"
             fi
 
-            \$PM2 save
+            pm2 save
           EOF
