@@ -19,12 +19,13 @@ jobs:
         uses: actions/checkout@v4
 
       # -------------------------------------------------
-      # DEBUG WORKSPACE (SAFE TO REMOVE LATER)
+      # DEBUG WORKSPACE (SAFE TO REMOVE)
       # -------------------------------------------------
       - name: Debug workspace
         run: |
           pwd
           ls -la
+          ls -la server || true
 
       # -------------------------------------------------
       # SET ENVIRONMENT VARIABLES
@@ -36,7 +37,6 @@ jobs:
             echo "SERVER_USER=${{ vars.PROD_SERVER_USER }}" >> $GITHUB_ENV
             echo "API_DIR=/home/${{ vars.PROD_SERVER_USER }}/alaba-marketplace-production/server" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-apis" >> $GITHUB_ENV
-
             echo "SSH_KEY<<EOF" >> $GITHUB_ENV
             echo "${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
@@ -45,23 +45,10 @@ jobs:
             echo "SERVER_USER=${{ vars.DEV_SERVER_USER }}" >> $GITHUB_ENV
             echo "API_DIR=/home/${{ vars.DEV_SERVER_USER }}/alaba-marketplace/server" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-backend" >> $GITHUB_ENV
-
             echo "SSH_KEY<<EOF" >> $GITHUB_ENV
             echo "${{ secrets.DEV_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
           fi
-
-      # -------------------------------------------------
-      # DEBUG ENV VALUES
-      # -------------------------------------------------
-      - name: Debug injected values
-        run: |
-          echo "Branch: $GITHUB_REF_NAME"
-          echo "SERVER_HOST=$SERVER_HOST"
-          echo "SERVER_USER=$SERVER_USER"
-          echo "API_DIR=$API_DIR"
-          echo "API_NAME=$API_NAME"
-          echo "SSH_KEY=${SSH_KEY:+SET}"
 
       # -------------------------------------------------
       # SSH SETUP
@@ -81,7 +68,7 @@ jobs:
           ssh "$SERVER_USER@$SERVER_HOST" "mkdir -p $API_DIR"
 
       # -------------------------------------------------
-      # RSYNC BACKEND SOURCE
+      # RSYNC BACKEND SOURCE (✅ FIXED)
       # -------------------------------------------------
       - name: Sync backend source
         run: |
@@ -91,65 +78,68 @@ jobs:
             --exclude .env \
             --exclude .git \
             --exclude .github \
-            ./ \
+            ./server/ \
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       # -------------------------------------------------
-      # BUILD & RESTART BACKEND (FINAL FIX)
+      # BUILD & RESTART BACKEND (✅ FINAL FIX)
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
-          ssh "$SERVER_USER@$SERVER_HOST" << 'EOF'
-            set -e
+          ssh \
+            API_DIR="$API_DIR" \
+            API_NAME="$API_NAME" \
+            "$SERVER_USER@$SERVER_HOST" << 'EOF'
+              set -e
 
-            # -------------------------------
-            # LOAD NVM (ALREADY INSTALLED)
-            # -------------------------------
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+              # -------------------------------
+              # LOAD NVM
+              # -------------------------------
+              export NVM_DIR="$HOME/.nvm"
+              [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-            nvm use 20.19.6
+              nvm use 20.19.6
 
-            # -------------------------------
-            # ENTER APP DIRECTORY
-            # -------------------------------
-            cd "$API_DIR"
+              # -------------------------------
+              # ENTER APP DIRECTORY
+              # -------------------------------
+              cd "$API_DIR"
 
-            # FAIL FAST IF WRONG DIRECTORY
-            if [ ! -f package.json ]; then
-              echo "❌ package.json not found in $API_DIR"
-              exit 1
-            fi
+              if [ ! -f package.json ]; then
+                echo "❌ package.json not found in $API_DIR"
+                exit 1
+              fi
 
-            echo "📁 Working directory:"
-            pwd
+              echo "📁 Working directory:"
+              pwd
+              ls -la
 
-            # -------------------------------
-            # BUILD APPLICATION
-            # -------------------------------
-            npm install --legacy-peer-deps
-            npm run build
+              # -------------------------------
+              # BUILD APPLICATION
+              # -------------------------------
+              npm install --legacy-peer-deps
+              npm run build
 
-            PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
+              PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
-            # -------------------------------
-            # SAFE PM2 RELOAD / START
-            # -------------------------------
-            set +e
-            $PM2 describe "$API_NAME" > /dev/null 2>&1
-            EXISTS=$?
-            set -e
+              # -------------------------------
+              # SAFE PM2 RELOAD / START
+              # -------------------------------
+              set +e
+              $PM2 describe "$API_NAME" > /dev/null 2>&1
+              EXISTS=$?
+              set -e
 
-            if [ "$EXISTS" -eq 0 ]; then
-              echo "♻️ Reloading existing PM2 process..."
-              $PM2 reload "$API_NAME" --update-env
-            else
-              echo "🚀 Starting new PM2 process..."
-              $PM2 start dist/main.js \
-                --name "$API_NAME" \
-                --cwd "$API_DIR" \
-                --node-args="-r dotenv/config"
-            fi
+              if [ "$EXISTS" -eq 0 ]; then
+                echo "♻️ Reloading existing PM2 process..."
+                $PM2 reload "$API_NAME" --update-env
+              else
+                echo "🚀 Starting new PM2 process..."
+                $PM2 start dist/main.js \
+                  --name "$API_NAME" \
+                  --cwd "$API_DIR" \
+                  --node-args="-r dotenv/config"
+              fi
 
-            $PM2 save
+              $PM2 save
           EOF
