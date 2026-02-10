@@ -72,7 +72,7 @@ jobs:
             "$SERVER_USER@$SERVER_HOST" "mkdir -p $API_DIR"
 
       # -------------------------------------------------
-      # RSYNC BACKEND SOURCE
+      # RSYNC BACKEND SOURCE .
       # -------------------------------------------------
       - name: Sync backend source
         run: |
