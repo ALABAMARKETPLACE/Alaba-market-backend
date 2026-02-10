@@ -18,10 +18,10 @@ export class TokenManagementService {
     private readonly tokenRepository: typeof TokenManagement,
     @Inject("createRefreshToken2")
     private readonly createRefreshToken: (
-      data: TokenManagement
+      data: TokenManagement,
     ) => Promise<string>,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
-    private jwtService: JwtService
+    private jwtService: JwtService,
   ) {}
 
   async createToken(userId: number): Promise<[string, number]> {
