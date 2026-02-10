@@ -27,7 +27,6 @@ jobs:
           ls -la
           if [ ! -f package.json ]; then
             echo "❌ package.json NOT found in repo root."
-            echo "👉 Fix rsync source path."
             exit 1
           fi
 
@@ -88,30 +87,28 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:$API_DIR/"
 
       # -------------------------------------------------
-      # BUILD & RESTART BACKEND
+      # BUILD & RESTART BACKEND (STABLE VERSION)
       # -------------------------------------------------
       - name: Build & restart backend
         run: |
-          API_DIR="$API_DIR" API_NAME="$API_NAME" \
-          ssh "$SERVER_USER@$SERVER_HOST" << 'EOF'
+          ssh "$SERVER_USER@$SERVER_HOST" << EOF
             set -e
 
             # -------------------------------
             # LOAD NVM
             # -------------------------------
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+            export NVM_DIR="\$HOME/.nvm"
+            [ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
             nvm use 20.19.6
 
             # -------------------------------
             # ENTER APP DIRECTORY
             # -------------------------------
-            echo "📁 API_DIR is: $API_DIR"
             cd "$API_DIR"
 
             if [ ! -f package.json ]; then
-              echo "❌ package.json NOT FOUND on server"
-              echo "📂 Contents:"
+              echo "❌ package.json NOT FOUND in $API_DIR"
+              pwd
               ls -la
               exit 1
             fi
@@ -122,26 +119,26 @@ jobs:
             npm install --legacy-peer-deps
             npm run build
 
-            PM2="$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
+            PM2="\$HOME/.nvm/versions/node/v20.19.6/bin/pm2"
 
             # -------------------------------
             # SAFE PM2 RELOAD / START
             # -------------------------------
             set +e
-            $PM2 describe "$API_NAME" > /dev/null 2>&1
-            EXISTS=$?
+            \$PM2 describe "$API_NAME" > /dev/null 2>&1
+            EXISTS=\$?
             set -e
 
-            if [ "$EXISTS" -eq 0 ]; then
+            if [ "\$EXISTS" -eq 0 ]; then
               echo "♻️ Reloading PM2 process..."
-              $PM2 reload "$API_NAME" --update-env
+              \$PM2 reload "$API_NAME" --update-env
             else
               echo "🚀 Starting PM2 process..."
-              $PM2 start dist/main.js \
+              \$PM2 start dist/main.js \
                 --name "$API_NAME" \
                 --cwd "$API_DIR" \
                 --node-args="-r dotenv/config"
             fi
 
-            $PM2 save
+            \$PM2 save
           EOF
