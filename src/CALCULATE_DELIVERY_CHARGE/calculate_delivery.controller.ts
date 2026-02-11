@@ -5,7 +5,7 @@ import { CalculateDeliveryChargeDto } from "./dto/calculateDelivery.dto";
 import { NewCalculateDeliveryDto } from "./dto/newCalculateDelivery.dto";
 import { AuthGuard } from "../shared/guards/auth.guard";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
-import { Public } from "src/shared/decorator/optional.decorator";
+import { Public } from "../shared/decorator/optional.decorator";
 import { CalculateDeliveryPublicDto } from "./dto/calculateDeliveryPublic.dto";
 
 @Controller("calculate_delivery")
