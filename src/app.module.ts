@@ -41,7 +41,7 @@ import { PaymentGatewayModule } from "./PAYMENT_GATEWAY/payment_gateway.module";
 import { CalculateDeliveryChargeModule } from "./CALCULATE_DELIVERY_CHARGE/calculate_delivery.module";
 import { SettlementsModule } from "./SETTLEMENTS/settlements.module";
 import { UserHistoryModule } from "./USER_HISTORY/userhistory.module";
-import { NewsAndBlogsModule } from "./NEWS_BLOGS/newsandblogs.module";
+// import { NewsAndBlogsModule } from "./NEWS_BLOGS/newsandblogs.module";
 import { StoreReviewModule } from "./STORE_REVIEW/storereview.module";
 import { CacheModule } from "@nestjs/cache-manager";
 import { OrderLogModule } from "./ORDER_LOG/orderlog.module";
@@ -69,6 +69,8 @@ import { SubscriptionPlanModule } from "./SUBSCRIPTION_PLANS/subscription-plan.m
 import { BoostRequestModule } from "./BOOST_REQUESTS/boost-request.module";
 import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.module";
 import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.module";
+import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
+
 @Module({
   imports: [
     DatabaseModule,
@@ -95,6 +97,7 @@ import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.modul
     CartModule,
     MenusModule,
     OffersModule,
+    // NewsAndBlogsModule,
     SettingsModule,
     StoreModule,
     ImgcompressModule,

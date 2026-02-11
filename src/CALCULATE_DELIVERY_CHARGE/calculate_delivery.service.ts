@@ -18,13 +18,14 @@ import { Transaction } from "sequelize";
 import { DeliveryChargeService } from "../DELIVERY_CHARGE/deliverycharge.service";
 import { JwtService } from "@nestjs/jwt";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
+import { CalculateDeliveryPublicDto } from "./dto/calculateDeliveryPublic.dto";
 
 @Injectable()
 export class CalculateDeliveryChargeService {
   constructor(
     private readonly distanceChargeService: DistanceChargeService,
     private readonly deliveryChargeService: DeliveryChargeService,
-    private readonly jwtService: JwtService
+    private readonly jwtService: JwtService,
   ) {}
 
   // async getDeliveryCharge(data: CalculateDeliveryChargeDto) {
@@ -144,7 +145,7 @@ export class CalculateDeliveryChargeService {
                   data.address?.lat,
                   data.address?.long,
                   storeLocation.lat,
-                  storeLocation.long
+                  storeLocation.long,
                 );
                 // Get maximum configured distance from distance charges
                 const maxDistanceCharge = await DistanceCharge.findOne({
@@ -156,11 +157,11 @@ export class CalculateDeliveryChargeService {
 
                 if (distance > maxDistance && storeLocation.default == true) {
                   throw new Error(
-                    `Please Select your Dubai Address For Delivery to ${storeLocation.store_name}@@`
+                    `Please Select your Dubai Address For Delivery to ${storeLocation.store_name}@@`,
                   );
                 } else if (distance > maxDistance) {
                   throw new Error(
-                    `Please select your nearest store location for ${storeLocation.store_name}.@@`
+                    `Please select your nearest store location for ${storeLocation.store_name}.@@`,
                   );
                 }
 
@@ -170,13 +171,13 @@ export class CalculateDeliveryChargeService {
                     {
                       distance,
                     },
-                    transaction
+                    transaction,
                   );
                 //calculating delivery charge based on product total amount;
                 const charge2 =
                   await this.deliveryChargeService.getDeliveryCharge(
                     { amount: data.total ?? 0 },
-                    transaction
+                    transaction,
                   );
                 //calculating the sum of both
                 amount += charge + charge2;
@@ -185,7 +186,7 @@ export class CalculateDeliveryChargeService {
                 chargeDetails["totalCharge"] = amount;
               } else {
                 throw new Error(
-                  "Unable to Calculate Delivery charge, Location is missing for Store@@"
+                  "Unable to Calculate Delivery charge, Location is missing for Store@@",
                 );
               }
             }
@@ -193,9 +194,9 @@ export class CalculateDeliveryChargeService {
             return { amount, chargeDetails };
           }
           throw new Error(
-            "Unable to Calculate Delivery charge, Location is missing in Address@@"
+            "Unable to Calculate Delivery charge, Location is missing in Address@@",
           );
-        }
+        },
       );
       const discount = data.total > 100 ? (data.total / 100) * 10 : 0;
       const token = this.jwtService.sign(
@@ -208,7 +209,7 @@ export class CalculateDeliveryChargeService {
             tax: 0,
           },
         },
-        { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY }
+        { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY },
       );
       return {
         data: {
@@ -234,7 +235,7 @@ export class CalculateDeliveryChargeService {
       // Validate address has either country_id or state_id
       if (!data.address?.country_id && !data.address?.state_id) {
         throw new BadRequestException(
-          "Address must have either country_id or state_id"
+          "Address must have either country_id or state_id",
         );
       }
 
@@ -267,7 +268,7 @@ export class CalculateDeliveryChargeService {
 
           deliveryChargeRecord =
             records.find(
-              (r) => r.min_weight <= totalWeight && totalWeight < r.max_weight
+              (r) => r.min_weight <= totalWeight && totalWeight < r.max_weight,
             ) || null;
         }
       }
@@ -283,14 +284,14 @@ export class CalculateDeliveryChargeService {
 
         deliveryChargeRecord =
           records.find(
-            (r) => r.min_weight <= totalWeight && totalWeight < r.max_weight
+            (r) => r.min_weight <= totalWeight && totalWeight < r.max_weight,
           ) || null;
       }
 
       // If no delivery charge found, return error
       if (!deliveryChargeRecord) {
         throw new BadRequestException(
-          `Delivery not available for this location with weight ${totalWeight}kg. Please contact support.@@`
+          `Delivery not available for this location with weight ${totalWeight}kg. Please contact support.@@`,
         );
       }
 
@@ -314,7 +315,7 @@ export class CalculateDeliveryChargeService {
             totalWeight,
           },
         },
-        { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY }
+        { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY },
       );
 
       return {
@@ -335,6 +336,63 @@ export class CalculateDeliveryChargeService {
       };
     } catch (err) {
       console.log("Error calculating new delivery charge:", err);
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async getDeliveryChargePublic(data: CalculateDeliveryPublicDto) {
+    try {
+      // Transform guest DTO to match NewCalculateDeliveryDto structure
+      const transformedData: NewCalculateDeliveryDto = {
+        cart: data.cart.map((item) => ({
+          ...item,
+          userId: 0, // For cart item
+          productId: item.productId || item.id,
+          variantId: item.variantId || 0,
+          image: "",
+          productDetails: {
+            image: "",
+            name: item.name,
+            price: item.totalPrice / item.quantity,
+          },
+          storeDetails: null,
+          buyPrice: 0,
+        })),
+        address: {
+          id: 0,
+          country_id: data.address.country_id, // ← Add if missing
+          state_id: data.address.state_id, // ← Add if missing
+        },
+        // total: data.total || 0,
+      };
+
+      // Reuse existing logic but modify token to include guest flag
+      const result = await this.getNewDeliveryCharge(transformedData);
+
+      // Re-sign token with guest flag
+      const tokenData = this.jwtService.verify(result.token);
+      const guestToken = this.jwtService.sign(
+        {
+          data: {
+            ...tokenData.data,
+            addressId: data.address.id, // Use guest address ID
+            isGuest: true, // Add guest flag
+          },
+        },
+        { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY },
+      );
+
+      return new DataResponseDto(
+        result.data,
+        true,
+        "Delivery charge calculated successfully",
+        guestToken,
+        null,
+        false,
+      );
+    } catch (err) {
+      console.log("Error calculating public delivery charge:", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
