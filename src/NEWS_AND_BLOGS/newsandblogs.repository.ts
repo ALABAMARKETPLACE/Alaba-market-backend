@@ -8,31 +8,34 @@ import { UpdateNewsDto } from "./dto/update-news.dto";
 @Injectable()
 export class NewsAndBlogsRepository {
   // Get paginated news with filters
+  // NEWS_AND_BLOGS/newsandblogs.repository.ts
+
   async findPaginated(query: QueryNewsDto) {
-    const { page = 1, limit = 12, category, search } = query;
-    const offset = (page - 1) * limit;
+    // ✅ Use 'take' and 'skip' from PageOptionsDto (instead of limit/offset)
+    const limit = query.take || 12;
+    // const offset = query.skip || 0;
 
     const whereClause: any = {
       is_published: true,
     };
 
     // Filter by category
-    if (category) {
-      whereClause.category = category;
+    if (query.category) {
+      whereClause.category = query.category;
     }
 
     // Search in title and description
-    if (search) {
+    if (query.search) {
       whereClause[Op.or] = [
-        { title: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
+        { title: { [Op.iLike]: `%${query.search}%` } },
+        { description: { [Op.iLike]: `%${query.search}%` } },
       ];
     }
 
     const { count, rows } = await NewsAndBlogs.findAndCountAll({
       where: whereClause,
       limit,
-      offset,
+      // offset,
       order: [["createdAt", "DESC"]],
       attributes: {
         exclude: ["is_published"],
@@ -42,9 +45,6 @@ export class NewsAndBlogsRepository {
     return {
       data: rows,
       total: count,
-      page,
-      limit,
-      totalPages: Math.ceil(count / limit),
     };
   }
 

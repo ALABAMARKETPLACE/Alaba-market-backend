@@ -40,7 +40,7 @@ import { OrderPlaceService } from "./order.place";
 import { OrderLoggingService } from "../ORDER_LOG/orderlog.service";
 import { GuestOrderService } from "./guest-order.service";
 import { RRole } from "../shared/decorator/role_decorator";
-import { Public } from "src/shared/decorator/optional.decorator";
+import { Public } from "../shared/decorator/optional.decorator";
 import { CreateGuestOrderDto } from "./dto/create-guest-order.dto";
 import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 

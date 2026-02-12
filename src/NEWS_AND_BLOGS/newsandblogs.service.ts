@@ -15,14 +15,22 @@ export class NewsAndBlogsService {
   constructor(private readonly newsRepo: NewsAndBlogsRepository) {}
 
   // Get paginated news
+  // NEWS_AND_BLOGS/newsandblogs.service.ts
+
+  // ✅ FIXED: Get paginated news
   async getPaginated(query: QueryNewsDto) {
     try {
       const result = await this.newsRepo.findPaginated(query);
-      return {
-        status: true,
-        ...result,
-      };
+
+      return new DataResponseDto(
+        result.data,
+        true,
+        "News articles retrieved successfully",
+        query, // ✅ Now it matches PageOptionsDto!
+        result.total,
+      );
     } catch (err) {
+      console.error("Failed to fetch news:", err);
       throw new InternalServerErrorException("Failed to fetch news");
     }
   }
@@ -45,23 +53,23 @@ export class NewsAndBlogsService {
       throw new InternalServerErrorException("Failed to fetch news");
     }
   }
-//   async getall() {
-//     try {
-//       const news = await this.newsRepo.all();
+  //   async getall() {
+  //     try {
+  //       const news = await this.newsRepo.all();
 
-//       if (!news) {
-//         throw new NotFoundException("News article not found");
-//       }
+  //       if (!news) {
+  //         throw new NotFoundException("News article not found");
+  //       }
 
-//       // Increment views
-//       await this.newsRepo.incrementViews(id);
+  //       // Increment views
+  //       await this.newsRepo.incrementViews(id);
 
-//       return new DataResponseDto(news, true, "News article retrieved");
-//     } catch (err) {
-//       if (err instanceof NotFoundException) throw err;
-//       throw new InternalServerErrorException("Failed to fetch news");
-//     }
-//   }
+  //       return new DataResponseDto(news, true, "News article retrieved");
+  //     } catch (err) {
+  //       if (err instanceof NotFoundException) throw err;
+  //       throw new InternalServerErrorException("Failed to fetch news");
+  //     }
+  //   }
 
   // Create news
   async create(
