@@ -1,7 +1,6 @@
 require("dotenv").config();
-const path = require("path");
 
-console.log("DB HOST:", process.env.DATABASE_HOST); // temp debug
+console.log("DATABASE_HOST:", process.env.DATABASE_HOST); // temp debug
 
 module.exports = {
   development: {
@@ -19,7 +18,6 @@ module.exports = {
       },
     },
   },
-
   production: {
     username: process.env.DATABASE_USER,
     password: process.env.DATABASE_PASSWORD,

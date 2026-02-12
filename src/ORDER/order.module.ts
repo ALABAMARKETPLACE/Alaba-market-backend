@@ -13,6 +13,7 @@ import { OrderLogModule } from "../ORDER_LOG/orderlog.module";
 import { NotificationsModule } from "../NOTIFICATIONS/notifications.module";
 import { OrderPlaceService } from "./order.place";
 import { OrderLogService } from "./order.log";
+import { GuestOrderService } from "./guest-order.service";
 @Module({
   imports: [
     OrderItemsModule,
@@ -30,6 +31,7 @@ import { OrderLogService } from "./order.log";
     OrderService,
     ...OrderProvider,
     OrderPlaceService,
+    GuestOrderService,
     OrderLogService,
   ],
   exports: [OrderService],

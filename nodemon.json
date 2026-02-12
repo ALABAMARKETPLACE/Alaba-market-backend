@@ -1,6 +1,14 @@
 {
   "watch": ["src"],
   "ext": "ts",
-  "ignore": ["src/**/*.spec.ts"],
-  "exec": "ts-node -r tsconfig-paths/register src/main.ts"
+  "ignore": [
+    "src/**/*.spec.ts",
+    "node_modules",
+    "dist",
+    "test",
+    "**/*.test.ts",
+    ".git"
+  ],
+  "exec": "ts-node -r tsconfig-paths/register src/main.ts",
+  "delay": 2000
 }
