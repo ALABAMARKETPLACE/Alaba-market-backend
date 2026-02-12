@@ -16,6 +16,7 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiParam,
   ApiTags,
@@ -37,7 +38,11 @@ import { StoreId } from "../shared/decorator/storeId_decorator";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { OrderPlaceService } from "./order.place";
 import { OrderLoggingService } from "../ORDER_LOG/orderlog.service";
+import { GuestOrderService } from "./guest-order.service";
 import { RRole } from "../shared/decorator/role_decorator";
+import { Public } from "src/shared/decorator/optional.decorator";
+import { CreateGuestOrderDto } from "./dto/create-guest-order.dto";
+import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 
 @Controller("order")
 @ApiTags("order")
@@ -45,8 +50,30 @@ export class OrderController {
   constructor(
     private readonly orderService: OrderService,
     private readonly placeOrder: OrderPlaceService,
-    private readonly orderLogService: OrderLoggingService
+    private readonly orderLogService: OrderLoggingService,
+    private readonly guestOrderService: GuestOrderService,
   ) {}
+
+  @Post("guest")
+  @Public()
+  @ApiCreatedResponse({ type: DataResponseDto })
+  @HttpCode(201)
+  async createGuestOrder(
+    @Body() orderData: CreateGuestOrderDto,
+  ): Promise<DataResponseDto> {
+    return this.guestOrderService.createGuestOrder(orderData);
+  }
+
+  @Post("guest/orders")
+  @Public()
+  @ApiOkResponse({ type: DataResponseDto })
+  @HttpCode(200)
+  async getGuestOrders(
+    @Body() data: GetGuestOrdersDto,
+    @Query() pageOptions: PageOptionsGetOrdersDto,
+  ): Promise<DataResponseDto> {
+    return this.guestOrderService.getGuestOrders(data, pageOptions);
+  }
 
   //get all orders for a user
   @UseGuards(AuthGuard)
@@ -56,7 +83,7 @@ export class OrderController {
   @ApiOkResponse({ type: [OrderDto] })
   findAll(
     @UserId() userId: number,
-    @Query() pageOptions: PageOptionsGetOrdersDto
+    @Query() pageOptions: PageOptionsGetOrdersDto,
   ): Promise<DataResponseDto> {
     return this.orderService.findAll(userId, pageOptions);
   }
@@ -66,14 +93,25 @@ export class OrderController {
   async getAllOrdersDebug(@Query() query: any) {
     console.log("[DEBUG] Getting ALL orders with query:", query);
     try {
-      const orders = await this.orderService['OrderRepository'].findAll({
-        attributes: ['id', 'order_id', 'status', 'storeId', 'userId', 'delivery_company_id', 'grandTotal', 'createdAt'],
+      const orders = await this.orderService["OrderRepository"].findAll({
+        attributes: [
+          "id",
+          "order_id",
+          "status",
+          "storeId",
+          "userId",
+          "delivery_company_id",
+          "grandTotal",
+          "createdAt",
+        ],
         limit: query.limit ? parseInt(query.limit) : 100,
         offset: query.offset ? parseInt(query.offset) : 0,
-        order: [['createdAt', 'DESC']],
+        order: [["createdAt", "DESC"]],
       });
-      const totalCount = await this.orderService['OrderRepository'].count();
-      console.log(`Found ${totalCount} total orders, returning ${orders.length}`);
+      const totalCount = await this.orderService["OrderRepository"].count();
+      console.log(
+        `Found ${totalCount} total orders, returning ${orders.length}`,
+      );
       return {
         status: true,
         data: orders,
@@ -81,7 +119,7 @@ export class OrderController {
           itemCount: totalCount,
           page: Math.floor((query.offset || 0) / (query.limit || 100)) + 1,
           take: query.limit || 100,
-        }
+        },
       };
     } catch (err) {
       console.error("Error:", err);
@@ -99,12 +137,15 @@ export class OrderController {
   findByStore(
     @StoreId() storeId: number | undefined,
     @RRole() role: string,
-    @Query() pageOptions: OrderSearchStoreDto
+    @Query() pageOptions: OrderSearchStoreDto,
   ): Promise<DataResponseDto> {
     // For admin, storeId might be undefined - that's okay, it will return all orders
     // For seller, storeId is required
     if (role === Role.Seller && !storeId) {
-      throw new HttpException("Store ID is required for sellers", HttpStatus.BAD_REQUEST);
+      throw new HttpException(
+        "Store ID is required for sellers",
+        HttpStatus.BAD_REQUEST,
+      );
     }
     return this.orderService.findOrderByStore(storeId, pageOptions);
   }
@@ -138,7 +179,7 @@ export class OrderController {
   @HttpCode(200)
   getOrders(
     @RRole() role: string,
-    @StoreId() storeId?: number
+    @StoreId() storeId?: number,
   ): Promise<DataResponseDto> {
     return this.orderService.getAllOrders(role, storeId);
   }
@@ -152,7 +193,7 @@ export class OrderController {
   @HttpCode(200)
   buyAgain(
     @UserId() userId: number,
-    @Query() pageOptions: PageOptionsDto
+    @Query() pageOptions: PageOptionsDto,
   ): Promise<DataResponseDto> {
     return this.orderService.buyAgain(userId, pageOptions);
   }
@@ -167,7 +208,7 @@ export class OrderController {
   @ApiParam({ name: "id", required: true })
   findStoreOrders(
     @Param("id", new ParseIntPipe()) storeId: number,
-    @Query() pageOptions: OrderSearchStoreDto
+    @Query() pageOptions: OrderSearchStoreDto,
   ): Promise<DataResponseDto> {
     return this.orderService.findOrderByStore(storeId, pageOptions);
   }
@@ -182,7 +223,7 @@ export class OrderController {
   @ApiOkResponse({ type: [OrderDto] })
   findAllOrders(
     @Query() pageOptions: PageOptionsGetOrdersDto,
-    @Param("id") userId: number
+    @Param("id") userId: number,
   ): Promise<DataResponseDto> {
     return this.orderService.findAll(userId, pageOptions);
   }
@@ -197,7 +238,7 @@ export class OrderController {
   findDetails(
     @StoreId() storeId: number,
     @RRole() role: string,
-    @Param("id", new ParseIntPipe()) id: number
+    @Param("id", new ParseIntPipe()) id: number,
   ): Promise<DataResponseDto> {
     return this.orderService.findOrder(id, role, storeId);
   }
@@ -212,7 +253,7 @@ export class OrderController {
   findOrder(
     @StoreId() storeId: number,
     @RRole() role: string,
-    @Param("id", new ParseIntPipe()) id: number
+    @Param("id", new ParseIntPipe()) id: number,
   ): Promise<DataResponseDto> {
     return this.orderService.findOrder(id, role, storeId);
   }
@@ -228,7 +269,7 @@ export class OrderController {
   findOneforUser(
     @StoreId() storeId: number,
     @Param("id", new ParseIntPipe())
-    orderId: number
+    orderId: number,
   ): Promise<DataResponseDto> {
     return this.orderService.findOneForSeller(storeId, orderId);
   }
@@ -241,7 +282,7 @@ export class OrderController {
   @HttpCode(200)
   findOne(
     @UserId() userId: number,
-    @Param("id", new ParseIntPipe()) id: number
+    @Param("id", new ParseIntPipe()) id: number,
   ): Promise<DataResponseDto> {
     return this.orderService.findOne(userId, id);
   }
@@ -254,14 +295,14 @@ export class OrderController {
   @ApiBearerAuth()
   create(
     @UserId() userId: number,
-    @Body() create: CreateOrderDto
+    @Body() create: CreateOrderDto,
   ): Promise<DataResponseDto> {
     this.orderLogService.create(userId, create);
     return this.placeOrder.create(userId, create);
   }
 
   //to update order status only for sellers
- @Roles(Role.Seller, Role.Admin)
+  @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Put("update_status/:id")
   @ApiDataObjectResponse(OrderDto)
@@ -274,7 +315,7 @@ export class OrderController {
   @ApiBearerAuth()
   updateStatus(
     @Param("id", ParseIntPipe) id: number,
-    @Body() create: UpdateOrderStatus
+    @Body() create: UpdateOrderStatus,
   ): Promise<DataResponseDto> {
     return this.orderService.updateOrder(id, create);
   }
@@ -288,7 +329,7 @@ export class OrderController {
   @ApiBearerAuth()
   updatePayment(
     @Param("id", ParseIntPipe) orderId: number,
-    @StoreId() storeId: number
+    @StoreId() storeId: number,
   ): Promise<DataResponseDto> {
     return this.orderService.completePayment(storeId, orderId);
   }
@@ -303,7 +344,7 @@ export class OrderController {
   cancelOrder(
     @UserId() userId: number,
     @Param("id", ParseIntPipe) id: number,
-    @Body() create: CancelOrderDto
+    @Body() create: CancelOrderDto,
   ): Promise<DataResponseDto> {
     return this.orderService.cancelOrder(userId, id, create);
   }

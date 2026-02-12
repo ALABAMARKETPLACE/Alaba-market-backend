@@ -45,6 +45,23 @@ export class NewsAndBlogsService {
       throw new InternalServerErrorException("Failed to fetch news");
     }
   }
+//   async getall() {
+//     try {
+//       const news = await this.newsRepo.all();
+
+//       if (!news) {
+//         throw new NotFoundException("News article not found");
+//       }
+
+//       // Increment views
+//       await this.newsRepo.incrementViews(id);
+
+//       return new DataResponseDto(news, true, "News article retrieved");
+//     } catch (err) {
+//       if (err instanceof NotFoundException) throw err;
+//       throw new InternalServerErrorException("Failed to fetch news");
+//     }
+//   }
 
   // Create news
   async create(

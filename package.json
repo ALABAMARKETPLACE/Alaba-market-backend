@@ -39,7 +39,8 @@
     "prestart:prod": "rimraf dist && npm run build",
     "start:prod": "node dist/main.js",
     "lint": "tslint -p tsconfig.json -c tslint.json",
-    "test": "jest --config ./test/jest-e2e.json"
+    "test": "jest --config ./test/jest-e2e.json",
+    "startdev": "nodemon --delay 2000ms --watch src --ext ts --ignore '**/*.spec.ts' --exec ts-node -r tsconfig-paths/register src/main.ts"
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^1.10.3",
@@ -67,7 +68,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.13.2",
     "csv-parser": "^3.0.0",
-    "dotenv": "^16.3.1",
+    "dotenv": "^16.6.1",
     "fcm-node": "^1.6.1",
     "file-type": "^19.0.0",
     "filetype": "^0.1.0",
@@ -102,6 +103,9 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@nestjs/cli": "^11.0.16",
+    "@swc/cli": "^0.7.10",
+    "@swc/core": "^1.15.11",
     "@types/jsonwebtoken": "^8.5.8",
     "@types/node": "^20.6.3",
     "@types/passport": "^1.0.7",

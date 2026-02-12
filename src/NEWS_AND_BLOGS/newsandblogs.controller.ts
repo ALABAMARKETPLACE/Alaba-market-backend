@@ -37,9 +37,9 @@ import { NewsAndBlogsService } from "./newsandblogs.service";
 export class NewsAndBlogsController {
   constructor(private readonly newsService: NewsAndBlogsService) {}
 
-  // PUBLIC: Get paginated news
+  // PUBLIC: Get paginated
   @Public()
-  @Get("pgn")
+  @Get()
   @ApiOkResponse()
   getPaginated(@Query() query: QueryNewsDto) {
     return this.newsService.getPaginated(query);
@@ -52,6 +52,13 @@ export class NewsAndBlogsController {
   getById(@Param("id", ParseIntPipe) id: number) {
     return this.newsService.getById(id);
   }
+
+  //   @Public()
+  //   @Get("all")
+  //   @ApiOkResponse()
+  //   getAllNews() {
+  //     return this.newsService.getAll();
+  //   }
 
   // ADMIN: Create news
   @Post()
