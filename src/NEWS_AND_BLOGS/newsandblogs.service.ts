@@ -26,8 +26,8 @@ export class NewsAndBlogsService {
         result.data,
         true,
         "News articles retrieved successfully",
-        query, // ✅ Now it matches PageOptionsDto!
-        result.total,
+        // query, // ✅ Now it matches PageOptionsDto!
+        // result.total,
       );
     } catch (err) {
       console.error("Failed to fetch news:", err);

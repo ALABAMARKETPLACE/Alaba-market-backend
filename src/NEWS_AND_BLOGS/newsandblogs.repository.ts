@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { NewsAndBlogs } from "./newsandblogs.entity";
 import { Op } from "sequelize";
+import { InjectModel } from "@nestjs/sequelize";
 import { QueryNewsDto } from "./dto/query-news.dto";
 import { CreateNewsDto } from "./dto/create-news.dto";
 import { UpdateNewsDto } from "./dto/update-news.dto";
