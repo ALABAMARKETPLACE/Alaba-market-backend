@@ -52,13 +52,13 @@ async function bootstrap() {
   // ================= CORS ===========================
   app.enableCors({
     origin: [
-      "https://alabamarketplace.ng",
-      "https://development.alabamarketplace.ng",
+      'https://alabamarketplace.ng',
+      'https://development.alabamarketplace.ng',
     ],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    exposedHeaders: ["Content-Disposition"],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Content-Disposition'],
   });
   /// ==================================================
 
