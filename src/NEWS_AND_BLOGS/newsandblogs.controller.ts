@@ -53,13 +53,6 @@ export class NewsAndBlogsController {
     return this.newsService.getById(id);
   }
 
-  //   @Public()
-  //   @Get("all")
-  //   @ApiOkResponse()
-  //   getAllNews() {
-  //     return this.newsService.getAll();
-  //   }
-
   // ADMIN: Create news
   @Post()
   @UseGuards(AuthGuard, RolesGuard)

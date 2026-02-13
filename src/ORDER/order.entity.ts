@@ -35,6 +35,16 @@ export class Order extends Model<Order> {
   @Column({ type: DataType.INTEGER, allowNull: true })
   userId: number;
 
+  // order/order.entity.ts
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    comment: "True if order is part of a multi-seller checkout",
+  })
+  is_multi_seller: boolean;
+
   // ✅ CHANGED: Made nullable for guest orders (they don't have saved addresses)
   @Column({ type: DataType.INTEGER, allowNull: true })
   addressId: number;

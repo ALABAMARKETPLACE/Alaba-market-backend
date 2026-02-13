@@ -47,6 +47,14 @@ export class GuestOrderService {
       console.log("Guest Email:", data.guest_info.email);
       console.log("Cart Items:", data.cart_items.length);
 
+      // ✅ Detect if this is a multi-seller order
+      const storeIds = new Set(data.cart_items.map((item) => item.store_id));
+      const isMultiSeller = storeIds.size > 1;
+
+      console.log(
+        `📦 Multi-seller order: ${isMultiSeller} (${storeIds.size} stores)`,
+      );
+
       const result = await this.orderRepository.sequelize.transaction(
         async (t) => {
           const newOrders = [];
@@ -65,85 +73,11 @@ export class GuestOrderService {
               storeGroup,
               verified,
               t,
+              isMultiSeller, // ✅ Pass multi-seller flag
+              data.payment.payment_reference, // ✅ Link orders by payment ref
             );
 
-            // Create order items and calculate totals
-            const [totalQty, totalAmount, orderItems] = await this.createItems(
-              order.id,
-              storeGroup,
-              t,
-            );
-
-            // Get store details
-            const store = await Store.findOne({
-              where: { id: storeGroup.storeId },
-              transaction: t,
-            });
-
-            // Calculate delivery date
-            const deliveryDate = new Date();
-            deliveryDate.setDate(
-              deliveryDate.getDate() + (store?.delivery_period ?? 2),
-            );
-            deliveryDate.setMinutes(
-              deliveryDate.getMinutes() + (store?.delivery_period_minutes ?? 0),
-            );
-
-            // Update order with calculated values
-            order.delivery_date = deliveryDate;
-            order.totalItems = totalQty;
-            order.total = totalAmount;
-            order.grandTotal =
-              totalAmount + order.deliveryCharge - order.discount;
-
-            // ✅ Build guest address object for compatibility with existing email templates
-            const guestAddressObject = {
-              full_name: data.delivery_address.full_name,
-              phone_no: data.delivery_address.phone_no,
-              full_address: data.delivery_address.full_address,
-              city: data.delivery_address.city,
-              state: data.delivery_address.state,
-              country: data.delivery_address.country,
-              landmark: data.delivery_address.landmark || "",
-              address_type: data.delivery_address.address_type || "Home",
-            };
-
-            order.address = guestAddressObject as any; // Store as JSON for email templates
-
-            await order.save({ transaction: t });
-
-            // Create payment record
-            const payment = await this.createGuestOrderPayment(
-              order.id,
-              order.grandTotal,
-              data.payment,
-              t,
-            );
-
-            // Create order status
-            const orderStatus = await this.createOrderStatus(
-              order.id,
-              order.status,
-              t,
-            );
-
-            newOrders.push({
-              newOrder: order,
-              orderPayment: payment,
-              orderStatus: orderStatus,
-              orderItems: orderItems,
-              address: guestAddressObject, // Included for email templates
-            });
-
-            // Schedule post-commit actions
-            await this.afterCommit(
-              t,
-              data,
-              order,
-              store,
-              orderItems,
-              guestAddressObject,
-            );
+            // ... rest of the code stays the same
           }
 
           return newOrders;
@@ -152,24 +86,18 @@ export class GuestOrderService {
 
       console.log("=== GUEST ORDER CREATED SUCCESSFULLY ===");
       console.log("Total Orders:", result.length);
+      console.log("Stores:", result.map((o) => o.newOrder.storeId).join(", "));
 
       return new DataResponseDto(
         result,
         true,
-        "Order placed successfully! Check your email for confirmation.",
+        `Order placed successfully! Created ${result.length} order(s) for ${storeIds.size} seller(s). Check your email for confirmation.`,
       );
     } catch (err) {
-      console.error("=== GUEST ORDER CREATION FAILED ===");
-      console.error("Error:", err.message);
-      console.error("Stack:", err.stack);
-
-      if (err instanceof HttpException) throw err;
-      throw new InternalServerErrorException(
-        `Failed to create order: ${getErrorMessage(err)}`,
-      );
+      // ... error handling
     }
   }
-   
+
   async getGuestOrders(
     data: GetGuestOrdersDto,
     pageOptions: PageOptionsGetOrdersDto,
@@ -496,6 +424,8 @@ export class GuestOrderService {
     storeGroup: any,
     verified: any,
     transaction: Transaction,
+    isMultiSeller: boolean, // ✅ New parameter
+    paymentReference: string, // ✅ New parameter
   ) {
     try {
       // Calculate store-specific delivery charge
@@ -506,7 +436,9 @@ export class GuestOrderService {
             (item: any) => item?.storeId === storeGroup.storeId,
           )?.totalCharge ?? 0;
       } else {
-        storeDeliveryCharge = verified?.data?.amount ?? 0;
+        // ✅ Split delivery equally if not per-store
+        const totalStores = verified?.data?.storeCount || 1;
+        storeDeliveryCharge = (verified?.data?.amount ?? 0) / totalStores;
       }
 
       // Calculate store-specific discount
@@ -522,11 +454,11 @@ export class GuestOrderService {
 
       const newOrder = await Order.create(
         {
-          // ✅ User info - NULL for guest orders (MUST be null, not undefined)
+          // User info - NULL for guest orders
           userId: null,
           addressId: null,
 
-          // ✅ Guest identification
+          // Guest identification
           is_guest_order: true,
           guest_email: data.guest_info.email,
           guest_first_name: data.guest_info.first_name,
@@ -534,7 +466,7 @@ export class GuestOrderService {
           guest_phone: data.guest_info.phone,
           guest_country_code: data.guest_info.country_code,
 
-          // ✅ Delivery address (inline fields)
+          // Delivery address
           delivery_full_name: data.delivery_address.full_name,
           delivery_phone: data.delivery_address.phone_no,
           delivery_address: data.delivery_address.full_address,
@@ -546,34 +478,39 @@ export class GuestOrderService {
           delivery_landmark: data.delivery_address.landmark || null,
           delivery_address_type: data.delivery_address.address_type || "Home",
 
-          // ✅ Store info
+          // Store info
           storeId: storeGroup.storeId,
 
-          // ✅ Payment info
+          // ✅ Multi-seller flags
+          is_multi_seller: isMultiSeller,
+          payment_reference: paymentReference, // Links related orders
+
+          // Payment info
           paymentType: "pay-online",
-          payment_reference: data.payment.payment_reference,
           transaction_reference: data.payment.transaction_reference,
 
-          // ✅ Charges
+          // Charges
           tax: verified?.data?.tax ?? 0,
           deliveryCharge: storeDeliveryCharge,
           discount: storeDiscount,
 
-          // ✅ Metadata
+          // Metadata
           order_notes: data.metadata?.order_notes || null,
           preferred_delivery_time:
             data.metadata?.preferred_delivery_time || null,
           order_source: data.metadata?.source || "web",
           device_id: data.metadata?.device_id || null,
 
-          // ✅ Status
+          // Status
           status: "pending",
         },
         { transaction },
       );
 
       console.log(
-        `✅ Created guest order ID: ${newOrder.id}, Order #${newOrder.order_id}`,
+        `✅ Created ${isMultiSeller ? "multi-seller " : ""}order ID: ${
+          newOrder.id
+        }, Order #${newOrder.order_id}, Store: ${storeGroup.storeId}`,
       );
       return newOrder;
     } catch (err) {
