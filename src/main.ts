@@ -23,6 +23,17 @@ async function bootstrap() {
   dotenv.config({ path: envPath });
   // =============================================
 
+  // ================= DISABLE MAIL VERIFICATION IN DEV =================
+  if (NODE_ENV === "development") {
+    process.env.MAILER_VERIFY_CONNECTION = "false";
+    console.log("📧 Mail verification disabled in development");
+  }
+  // ====================================================================
+
+  // ================= SUPPRESS AWS SDK WARNING =================
+  process.env.AWS_SDK_JS_SUPPRESS_MAINTENANCE_MODE_MESSAGE = "1";
+  // ============================================================
+
   const app = await NestFactory.create(AppModule, {
     logger: ["error", "warn", "log", "debug", "verbose"],
   });
@@ -52,13 +63,13 @@ async function bootstrap() {
   // ================= CORS ===========================
   app.enableCors({
     origin: [
-      'https://alabamarketplace.ng',
-      'https://development.alabamarketplace.ng',
+      "https://alabamarketplace.ng",
+      "https://development.alabamarketplace.ng",
     ],
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Content-Disposition'],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Content-Disposition"],
   });
   /// ==================================================
 
