@@ -1,27 +1,31 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsOptional, IsUrl, MaxLength } from "class-validator";
+// banner/dto/update.dto.ts
+import { ApiPropertyOptional } from "@nestjs/swagger";
+import { IsInt, IsOptional, IsUrl } from "class-validator";
 
 export class UpdateBannerDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsOptional()
-  @MaxLength(100)
-  readonly description: string;
+  readonly description?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsUrl()
   @IsOptional()
-  readonly img_desk: string;
+  readonly img_desk?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsOptional()
-  readonly img_mob: string;
+  readonly img_mob?: string;
 
-  @ApiProperty()
-  @MaxLength(50)
+  @ApiPropertyOptional()
   @IsOptional()
-  readonly title: string;
+  readonly title?: string;
 
-  @ApiProperty()
+  // ✅ Add storeId for admin updates
+  @ApiPropertyOptional({
+    description: "Store ID (optional for admins, ignored for sellers)",
+    example: 123,
+  })
+  @IsInt()
   @IsOptional()
-  readonly status: boolean;
+  readonly storeId?: number;
 }

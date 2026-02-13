@@ -18,7 +18,10 @@ export class Banner extends Model<Banner> {
   id: number;
 
   @ForeignKey(() => Store)
-  @Column({ type: DataType.INTEGER, allowNull: false })
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: true, // ✅ Changed from false to true - allows admin banners without store
+  })
   storeId: number;
 
   @Column({ type: DataType.STRING })
