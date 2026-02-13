@@ -50,11 +50,10 @@ export class BannerController {
   findAll(
     @RRole() role: string,
     @StoreId() storeId: number,
-    @Query() pageOpt: PageOptionsDtoBanner
+    @Query() pageOpt: PageOptionsDtoBanner,
   ): Promise<DataResponseDto> | Promise<any> {
     return this.bannerService.findAll(pageOpt, storeId, role);
   }
-
   //create new banner
   @Post()
   @Roles(Role.Seller, Role.Admin)
@@ -64,10 +63,14 @@ export class BannerController {
   @ApiBearerAuth()
   create(
     @RRole() role: string,
-    @StoreId() storeId: number,
-    @Body(new StripBodyPipe(["status", "position"])) body: CreateBannerDto
+    @StoreId() storeId: number, // From JWT token (sellers only)
+    @Body(new StripBodyPipe(["status", "position"])) body: CreateBannerDto,
   ): Promise<DataResponseDto> {
-    return this.bannerService.create(storeId, body, role);
+    // ✅ For sellers: use storeId from JWT token
+    // ✅ For admins: use storeId from body (if provided) or null
+    const finalStoreId = role === Role.Seller ? storeId : body.storeId || null;
+
+    return this.bannerService.create(finalStoreId, body, role);
   }
 
   //update banner
@@ -82,10 +85,31 @@ export class BannerController {
     @StoreId() storeId: number,
     @Param("id", new ParseIntPipe()) id: number,
     @Body(new StripBodyPipe(["position"]))
-    createBannerDto: UpdateBannerDto
+    createBannerDto: UpdateBannerDto,
   ): Promise<DataResponseDto> {
-    return this.bannerService.update(storeId, id, createBannerDto, role);
+    // ✅ Same logic for update
+    const finalStoreId =
+      role === Role.Seller ? storeId : createBannerDto.storeId || null;
+
+    return this.bannerService.update(finalStoreId, id, createBannerDto, role);
   }
+
+  // //update banner
+  // @Put(":id")
+  // @Roles(Role.Seller, Role.Admin)
+  // @UseGuards(AuthGuard)
+  // @ApiOkResponse({ type: Banner })
+  // @ApiParam({ name: "id", required: true })
+  // @ApiBearerAuth()
+  // update(
+  //   @RRole() role: string,
+  //   @StoreId() storeId: number,
+  //   @Param("id", new ParseIntPipe()) id: number,
+  //   @Body(new StripBodyPipe(["position"]))
+  //   createBannerDto: UpdateBannerDto,
+  // ): Promise<DataResponseDto> {
+  //   return this.bannerService.update(storeId, id, createBannerDto, role);
+  // }
 
   @Roles(Role.Admin)
   @Put("position/:id")
@@ -95,7 +119,7 @@ export class BannerController {
   @ApiBearerAuth()
   updatePosition(
     @Param("id", new ParseIntPipe()) id: number,
-    @Body() updatePositionDto: UpdateBannerPositionDto
+    @Body() updatePositionDto: UpdateBannerPositionDto,
   ): Promise<DataResponseDto> {
     return this.bannerService.updatePosition(id, updatePositionDto);
   }
@@ -108,7 +132,7 @@ export class BannerController {
   @ApiParam({ name: "id", required: true })
   @ApiBearerAuth()
   updateStatus(
-    @Param("id", new ParseIntPipe()) id: number
+    @Param("id", new ParseIntPipe()) id: number,
   ): Promise<DataResponseDto> {
     return this.bannerService.changeStatus(id);
   }
@@ -123,7 +147,7 @@ export class BannerController {
   delete(
     @RRole() role: string,
     @StoreId() storeId: number,
-    @Param("id", new ParseIntPipe()) id: number
+    @Param("id", new ParseIntPipe()) id: number,
   ): Promise<DataResponseDto> {
     return this.bannerService.delete(id, storeId, role);
   }

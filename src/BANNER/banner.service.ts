@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   HttpException,
   Inject,
   Injectable,
@@ -19,13 +20,13 @@ import { Role } from "../shared/enum/role.enum";
 export class BannerService {
   constructor(
     @Inject("BannerRepository")
-    private readonly BannerRepository: typeof Banner
+    private readonly BannerRepository: typeof Banner,
   ) {}
 
   async findAll(
     pageOptions: PageOptionsDtoBanner,
     storeId: number,
-    role: string
+    role: string,
   ) {
     try {
       const { search } = pageOptions;
@@ -45,7 +46,9 @@ export class BannerService {
             const ord: any[] = [];
             if (storeId !== undefined && storeId !== null) {
               ord.push([
-                Sequelize.literal(`CASE WHEN "storeId" = ${storeId} THEN 0 ELSE 1 END`),
+                Sequelize.literal(
+                  `CASE WHEN "storeId" = ${storeId} THEN 0 ELSE 1 END`,
+                ),
                 "ASC",
               ]);
             }
@@ -68,13 +71,21 @@ export class BannerService {
     }
   }
 
-  async create(storeId: number, create: CreateBannerDto, role: string) {
+  async create(storeId: number | null, create: CreateBannerDto, role: string) {
     try {
+      // Validate: Sellers must have a storeId
+      if (role === Role.Seller && !storeId) {
+        throw new BadRequestException(
+          "Sellers must be associated with a store",
+        );
+      }
+
       const banner = await Banner.create({
         ...create,
-        storeId,
-        status: role === Role.Admin ? true : false,
+        storeId: storeId, // ✅ Can be null for admin banners
+        status: role === Role.Admin ? true : false, // Auto-approve admin banners
       });
+
       return new DataResponseDto(banner, true, "Successfully Created");
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -83,28 +94,78 @@ export class BannerService {
   }
 
   async update(
-    storeId: number,
+    storeId: number | null,
     id: number,
     data: UpdateBannerDto,
-    role: string
+    role: string,
   ) {
     try {
+      // Build where clause based on role
+      const whereClause: any = { id };
+
+      // Sellers can only update their own banners
+      if (role === Role.Seller) {
+        if (!storeId) {
+          throw new BadRequestException(
+            "Sellers must be associated with a store",
+          );
+        }
+        whereClause.storeId = storeId;
+      }
+      // ✅ Admins can update any banner (no storeId restriction)
+
       const [updated] = await this.BannerRepository.update(
         { ...data },
-        {
-          where: {
-            id,
-            ...(role !== Role.Admin && { storeId }),
-          },
-        }
+        { where: whereClause },
       );
-      if (updated == 0) throw new NotFoundException();
+
+      if (updated == 0)
+        throw new NotFoundException("Banner not found or unauthorized");
+
       return new DataResponseDto(updated, true, "Banner Successfully Updated");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
+
+  // async create(storeId: number, create: CreateBannerDto, role: string) {
+  //   try {
+  //     const banner = await Banner.create({
+  //       ...create,
+  //       storeId,
+  //       status: role === Role.Admin ? true : false,
+  //     });
+  //     return new DataResponseDto(banner, true, "Successfully Created");
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
+  // async update(
+  //   storeId: number,
+  //   id: number,
+  //   data: UpdateBannerDto,
+  //   role: string
+  // ) {
+  //   try {
+  //     const [updated] = await this.BannerRepository.update(
+  //       { ...data },
+  //       {
+  //         where: {
+  //           id,
+  //           ...(role !== Role.Admin && { storeId }),
+  //         },
+  //       }
+  //     );
+  //     if (updated == 0) throw new NotFoundException();
+  //     return new DataResponseDto(updated, true, "Banner Successfully Updated");
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
 
   async delete(id: number, storeId: number, role: string) {
     try {
@@ -125,11 +186,15 @@ export class BannerService {
         {
           status: Sequelize.literal("NOT status"),
         },
-        { where: { id }, returning: true }
+        { where: { id }, returning: true },
       );
       if (status == 0) throw new NotFoundException();
       const msg = `${updated?.status == true ? "Added to" : "Removed from"}`;
-      return new DataResponseDto(updated, true, `Banner ${msg} Alaba Marketplace Home`);
+      return new DataResponseDto(
+        updated,
+        true,
+        `Banner ${msg} Alaba Marketplace Home`,
+      );
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -142,7 +207,7 @@ export class BannerService {
         {
           position,
         },
-        { where: { id } }
+        { where: { id } },
       );
       if (updated == 0) throw new NotFoundException();
       const msg = "Position Updated successfully";
