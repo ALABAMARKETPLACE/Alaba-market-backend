@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { ApiTags } from "@nestjs/swagger";
 import { DashboardService } from "./dashboard.service";
 import { AuthGuard } from "../shared/guards/auth.guard";
 import { Roles } from "../shared/decorator/roles.decorator";
@@ -15,7 +15,6 @@ export class DashboardController {
 
   @Roles(Role.Admin, Role.Seller)
   @UseGuards(AuthGuard)
-  // @ApiBearerAuth()
   @Get("count")
   getCounts(@StoreId() storeId: number, @RRole() role: string) {
     return this.service.getCount(storeId, role);
@@ -23,7 +22,6 @@ export class DashboardController {
 
   @Roles(Role.Admin, Role.Seller)
   @UseGuards(AuthGuard)
-  // @ApiBearerAuth()
   @Get("statistics")
   getStatistics(@StoreId() storeId: number, @RRole() role: string) {
     return this.service.getStatistics(storeId, role);
@@ -35,8 +33,8 @@ export class DashboardController {
   orderStatistics(
     @StoreId() storeId: number,
     @RRole() role: string,
-    @Query() query: OrderStatisticsDto,
+    @Query() query: OrderStatisticsDto
   ) {
-    return this.service.getOrderStatistics(storeId, role, query);
+    return this.service.getOrderStatistics(storeId, role,query);
   }
 }

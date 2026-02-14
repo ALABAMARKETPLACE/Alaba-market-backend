@@ -46,12 +46,12 @@ export class FeaturedProductsService {
     @Inject("StoreRepository")
     private readonly storeRepository: typeof Store,
     @Inject("FeaturedRotationStateRepository")
-    private readonly rotationStateRepository: typeof FeaturedRotationState,
+    private readonly rotationStateRepository: typeof FeaturedRotationState
   ) {}
 
   async getProductsByPosition(
     position: number,
-    batchSize: number = DEFAULT_BATCH_SIZE,
+    batchSize: number = DEFAULT_BATCH_SIZE
   ): Promise<DataResponseDto> {
     try {
       const rotationResult = await this.rotatePositionIfDue(position, {
@@ -79,14 +79,11 @@ export class FeaturedProductsService {
           true,
           emptyMessage,
           emptyPageOptions as any,
-          rotationResult.context.queueLength,
+          rotationResult.context.queueLength
         );
       }
 
       const orderedProducts = await this.fetchProductsByIds(activeIds);
-
-      // ✅ SORT: Electronics first, then others
-      const sortedProducts = this.sortByElectronicsFirst(orderedProducts);
 
       const pageOptions = {
         page: rotationResult.context.batchIndex + 1,
@@ -96,12 +93,11 @@ export class FeaturedProductsService {
       };
 
       const response: any = new DataResponseDto(
-        sortedProducts,
-        // orderedProducts,
+        orderedProducts,
         true,
         "Successfull",
         pageOptions as any,
-        rotationResult.context.queueLength,
+        rotationResult.context.queueLength
       );
 
       response.rotation = {
@@ -123,7 +119,7 @@ export class FeaturedProductsService {
 
   async getAllProductsForPosition(
     position: number,
-    query: GetPositionProductsDto,
+    query: GetPositionProductsDto
   ): Promise<DataResponseDto> {
     try {
       const queueInfo = await this.buildQueueForPosition(position);
@@ -148,7 +144,7 @@ export class FeaturedProductsService {
           true,
           "No featured products available",
           emptyPageOptions,
-          0,
+          0
         );
       }
 
@@ -180,74 +176,9 @@ export class FeaturedProductsService {
       const orderMap = new Map<number, number>();
       queue.forEach((id, index) => orderMap.set(id, index));
 
-      // const filteredProducts = products
-      //   .filter((product: any) => {
-      //     if (!product) return false;
-
-      //     if (
-      //       query.store_id &&
-      //       Number(product.store_id) !== Number(query.store_id)
-      //     ) {
-      //       return false;
-      //     }
-
-      //     if (query.status !== undefined) {
-      //       const statusBool = Number(query.status) === 1;
-      //       if (Boolean(product.status) !== statusBool) {
-      //         return false;
-      //       }
-      //     }
-
-      //     if (
-      //       query.min_price !== undefined &&
-      //       Number(product.price ?? 0) < Number(query.min_price)
-      //     ) {
-      //       return false;
-      //     }
-
-      //     if (
-      //       query.max_price !== undefined &&
-      //       Number(product.price ?? 0) > Number(query.max_price)
-      //     ) {
-      //       return false;
-      //     }
-
-      //     if (query.search) {
-      //       const term = query.search.toLowerCase();
-      //       const matchesName = product.name?.toLowerCase().includes(term);
-      //       const matchesSku = product.sku?.toLowerCase().includes(term);
-      //       const matchesBrand = product.brand?.toLowerCase().includes(term);
-      //       if (!matchesName && !matchesSku && !matchesBrand) {
-      //         return false;
-      //       }
-      //     }
-
-      //     return true;
-      //   })
-      //   .sort((a: any, b: any) => {
-      //     const indexA = orderMap.get(a._id) ?? Number.MAX_SAFE_INTEGER;
-      //     const indexB = orderMap.get(b._id) ?? Number.MAX_SAFE_INTEGER;
-      //     return indexA - indexB;
-      //   });
-
-      // electronics feature products setup below:
       const filteredProducts = products
         .filter((product: any) => {
           if (!product) return false;
-
-          // ✅ NEW: Filter by electronics_only
-          if (query.electronics_only && !this.isElectronicsProduct(product)) {
-            return false;
-          }
-
-          // ✅ NEW: Filter by category
-          if (query.category) {
-            const productCategory = product.category?.toLowerCase() || "";
-            const queryCategory = query.category.toLowerCase();
-            if (!productCategory.includes(queryCategory)) {
-              return false;
-            }
-          }
 
           if (
             query.store_id &&
@@ -290,14 +221,6 @@ export class FeaturedProductsService {
           return true;
         })
         .sort((a: any, b: any) => {
-          // ✅ PRIORITY 1: Electronics come first
-          const aIsElectronics = this.isElectronicsProduct(a);
-          const bIsElectronics = this.isElectronicsProduct(b);
-
-          if (aIsElectronics && !bIsElectronics) return -1;
-          if (!aIsElectronics && bIsElectronics) return 1;
-
-          // ✅ PRIORITY 2: If both are same category type, sort by queue position
           const indexA = orderMap.get(a._id) ?? Number.MAX_SAFE_INTEGER;
           const indexB = orderMap.get(b._id) ?? Number.MAX_SAFE_INTEGER;
           return indexA - indexB;
@@ -319,27 +242,13 @@ export class FeaturedProductsService {
 
         const fallbackIds = await this.fetchRecentFallbackIds(
           excludeIds,
-          take - paginatedProducts.length,
+          take - paginatedProducts.length
         );
 
         if (fallbackIds.length) {
           const fallbackDetails = await this.fetchProductsByIds(fallbackIds);
           fallbackProducts = fallbackDetails.filter((product: any) => {
             if (!product?._id) return false;
-
-            // ✅ NEW: Filter by electronics_only
-            if (query.electronics_only && !this.isElectronicsProduct(product)) {
-              return false;
-            }
-
-            // ✅ NEW: Filter by category
-            if (query.category) {
-              const productCategory = product.category?.toLowerCase() || "";
-              const queryCategory = query.category.toLowerCase();
-              if (!productCategory.includes(queryCategory)) {
-                return false;
-              }
-            }
 
             if (
               query.store_id &&
@@ -381,60 +290,7 @@ export class FeaturedProductsService {
 
             return true;
           });
-
-          // ✅ Sort fallback products by electronics first
-          fallbackProducts = this.sortByElectronicsFirst(fallbackProducts);
         }
-
-        // if (fallbackIds.length) {
-        //   const fallbackDetails = await this.fetchProductsByIds(fallbackIds);
-        //   fallbackProducts = fallbackDetails.filter((product: any) => {
-        //     if (!product?._id) return false;
-
-        //     if (
-        //       query.store_id &&
-        //       Number(product.store_id) !== Number(query.store_id)
-        //     ) {
-        //       return false;
-        //     }
-
-        //     if (query.status !== undefined) {
-        //       const statusBool = Number(query.status) === 1;
-        //       if (Boolean(product.status) !== statusBool) {
-        //         return false;
-        //       }
-        //     }
-
-        //     if (
-        //       query.min_price !== undefined &&
-        //       Number(product.price ?? 0) < Number(query.min_price)
-        //     ) {
-        //       return false;
-        //     }
-
-        //     if (
-        //       query.max_price !== undefined &&
-        //       Number(product.price ?? 0) > Number(query.max_price)
-        //     ) {
-        //       return false;
-        //     }
-
-        //     if (query.search) {
-        //       const term = query.search.toLowerCase();
-        //       const matchesName = product.name?.toLowerCase().includes(term);
-        //       const matchesSku = product.sku?.toLowerCase().includes(term);
-        //       const matchesBrand = product.brand?.toLowerCase().includes(term);
-        //       if (!matchesName && !matchesSku && !matchesBrand) {
-        //         return false;
-        //       }
-        //     }
-
-        //     return true;
-        //   });
-
-        //   // ✅ ADD THIS: Sort fallback products by electronics first
-        //   fallbackProducts = this.sortByElectronicsFirst(fallbackProducts);
-        // }
       }
 
       const payload = {
@@ -456,7 +312,7 @@ export class FeaturedProductsService {
         true,
         "Successfull",
         pageOptions,
-        totalFiltered + fallbackProducts.length,
+        totalFiltered + fallbackProducts.length
       );
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -466,7 +322,7 @@ export class FeaturedProductsService {
 
   async rotatePositionIfDue(
     position: number,
-    options: RotateOptions = {},
+    options: RotateOptions = {}
   ): Promise<{
     rotated: boolean;
     state: FeaturedRotationState;
@@ -482,7 +338,7 @@ export class FeaturedProductsService {
     const queue = queueInfo.queueProductIds;
     const queueChanged = !this.isSameQueue(
       queue,
-      state.queue_product_ids ?? [],
+      state.queue_product_ids ?? []
     );
 
     const batchSizeChanged =
@@ -522,7 +378,7 @@ export class FeaturedProductsService {
         queueProductIds: queue,
         timestamp: now.toISOString(),
       }),
-      "everythign is end and you can ",
+      "everythign is end and you can "
     );
 
     let activeIds: number[] = [];
@@ -542,7 +398,7 @@ export class FeaturedProductsService {
       if (position !== 1 && baseIds.length < batchSize) {
         fallbackIds = await this.fetchRecentFallbackIds(
           exclude,
-          batchSize - baseIds.length,
+          batchSize - baseIds.length
         );
       }
 
@@ -551,7 +407,7 @@ export class FeaturedProductsService {
       if (position !== 1) {
         fallbackIds = await this.fetchRecentFallbackIds(
           new Set<number>(),
-          batchSize,
+          batchSize
         );
         activeIds = fallbackIds.slice(0, batchSize);
       } else {
@@ -568,7 +424,7 @@ export class FeaturedProductsService {
     state.fallback_product_ids = fallbackIds;
     state.last_rotation_at = now;
     state.next_rotation_at = new Date(
-      now.getTime() + rotationMinutes * 60 * 1000,
+      now.getTime() + rotationMinutes * 60 * 1000
     );
     if (queueChanged || !state.queue_refreshed_at) {
       state.queue_refreshed_at = now;
@@ -590,7 +446,7 @@ export class FeaturedProductsService {
         nextRotationAt: state.next_rotation_at?.toISOString() ?? null,
         timestamp: new Date().toISOString(),
       }),
-      "=============================end========================",
+      "=============================end========================"
     );
 
     return {
@@ -605,97 +461,8 @@ export class FeaturedProductsService {
     };
   }
 
-  // elelctronic preference category starts here
-
-  private readonly ELECTRONICS_CATEGORIES = [
-    "Electronics",
-    "electronics",
-    "Mobile Phones",
-    "Computers",
-    "Laptops",
-    "Tablets",
-    "Cameras",
-    "Audio",
-    "Television",
-    "Smart Watches",
-    "Gaming",
-    "Computer Accessories",
-    "Phone Accessories",
-  ];
-
-  private isElectronicsProduct(product: any): boolean {
-    if (!product) return false;
-    // const category = product.category?.toLowerCase() || "";
-    // const subCategory = product.subCategory?.toLowerCase() || "";
-    // const name = product.name?.toLowerCase() || "";
-    //
-    const category = (product?.category || "").toString().toLowerCase();
-    const subCategory = (product?.subCategory || "").toString().toLowerCase();
-    const name = (product?.name || "").toString().toLowerCase();
-
-    const electronicsKeywords = [
-      "electronics",
-      "electronic",
-      "electric",
-      "electronical",
-      "electricals",
-      "electrical",
-      "phone",
-      "phones",
-      "computer",
-      "laptop",
-      "tablet",
-      "camera",
-      "television",
-      "tv",
-      "audio",
-      "speaker",
-      "headphone",
-      "gaming",
-      "console",
-      "solar",
-      "battery",
-      "smart watch",
-    ];
-
-    // Check if category matches
-    if (
-      this.ELECTRONICS_CATEGORIES.some(
-        (cat) =>
-          category.includes(cat.toLowerCase()) ||
-          subCategory.includes(cat.toLowerCase()),
-      )
-    ) {
-      return true;
-    }
-
-    // Check if name contains electronics keywords
-    return electronicsKeywords.some(
-      (keyword) =>
-        name.includes(keyword) ||
-        category.includes(keyword) ||
-        subCategory.includes(keyword),
-    );
-  }
-
-  private sortByElectronicsFirst(products: any[]): any[] {
-    return products.sort((a, b) => {
-      const aIsElectronics = this.isElectronicsProduct(a);
-      const bIsElectronics = this.isElectronicsProduct(b);
-
-      // Electronics products come first
-      if (aIsElectronics && !bIsElectronics) return -1;
-      if (!aIsElectronics && bIsElectronics) return 1;
-
-      // If both are electronics or both are not, maintain original order (by createdAt DESC)
-      return 0;
-    });
-  }
-
-  // electronics preference category setup ends here
-
   private async getOrCreateRotationState(
-    position: number,
+    position: number
   ): Promise<FeaturedRotationState> {
     const existing = await this.rotationStateRepository.findByPk(position);
     if (existing) {
@@ -775,7 +542,7 @@ export class FeaturedProductsService {
   private buildBatch(
     queue: number[],
     batchSize: number,
-    batchIndex: number,
+    batchIndex: number
   ): number[] {
     if (!queue.length) {
       return [];
@@ -806,7 +573,7 @@ export class FeaturedProductsService {
 
   private async fetchRecentFallbackIds(
     excludeIds: Set<number>,
-    limit: number,
+    limit: number
   ): Promise<number[]> {
     if (limit <= 0) {
       return [];
@@ -879,7 +646,7 @@ export class FeaturedProductsService {
     try {
       console.log(
         "[FeaturedProducts.getAllProducts] Incoming query:",
-        JSON.stringify(query, null, 2),
+        JSON.stringify(query, null, 2)
       );
 
       const {
@@ -918,7 +685,7 @@ export class FeaturedProductsService {
           "[FeaturedProducts.getAllProducts] Processing store_id:",
           store_id,
           "Type:",
-          typeof store_id,
+          typeof store_id
         );
         const normalizedStoreId = Number(store_id);
         const storeFilter = Number.isNaN(normalizedStoreId)
@@ -927,12 +694,12 @@ export class FeaturedProductsService {
 
         console.log(
           "[FeaturedProducts.getAllProducts] Normalized store_id:",
-          storeFilter,
+          storeFilter
         );
 
         if (!storeFilter) {
           console.log(
-            "[FeaturedProducts.getAllProducts] Invalid store_id, returning empty result",
+            "[FeaturedProducts.getAllProducts] Invalid store_id, returning empty result"
           );
           return new DataResponseDto([], true, "Successfull", query, 0);
         }
@@ -944,20 +711,20 @@ export class FeaturedProductsService {
         if (!storeRecord) {
           console.warn(
             "[FeaturedProducts.getAllProducts] No store found for id",
-            storeFilter,
+            storeFilter
           );
           return new DataResponseDto([], true, "Successfull", query, 0);
         }
 
         console.log(
           "[FeaturedProducts.getAllProducts] Store record:",
-          JSON.stringify(storeRecord.toJSON(), null, 2),
+          JSON.stringify(storeRecord.toJSON(), null, 2)
         );
 
         whereClause.store_id = storeFilter;
         console.log(
           "[FeaturedProducts.getAllProducts] Added store_id to whereClause:",
-          whereClause.store_id,
+          whereClause.store_id
         );
       }
 
@@ -1000,7 +767,7 @@ export class FeaturedProductsService {
 
       console.log(
         "[FeaturedProducts.getAllProducts] Final whereClause:",
-        JSON.stringify(whereClause, null, 2),
+        JSON.stringify(whereClause, null, 2)
       );
 
       const findOptions: any = {
@@ -1032,7 +799,7 @@ export class FeaturedProductsService {
         findOptions.include.push(storeInclude);
         console.log(
           "[FeaturedProducts.getAllProducts] Added Store include with filter:",
-          JSON.stringify(storeInclude.where, null, 2),
+          JSON.stringify(storeInclude.where, null, 2)
         );
       }
 
@@ -1046,74 +813,46 @@ export class FeaturedProductsService {
             offset: findOptions.offset,
           },
           null,
-          2,
-        ),
+          2
+        )
       );
 
       const { count, rows } = await this.productsRepository.findAndCountAll(
-        findOptions,
+        findOptions
       );
-
-      // console.log(
-      //   "[FeaturedProducts.getAllProducts] Query results - Count:",
-      //   count,
-      //   "Rows:",
-      //   rows.length,
-      // );
-      // if (rows.length > 0) {
-      //   console.log(
-      //     "[FeaturedProducts.getAllProducts] First product sample:",
-      //     JSON.stringify(
-      //       {
-      //         _id: rows[0]?._id,
-      //         name: rows[0]?.name,
-      //         store_id: rows[0]?.store_id,
-      //         status: rows[0]?.status,
-      //       },
-      //       null,
-      //       2,
-      //     ),
-      //   );
-      // }
-
-      // ✅ SORT: Electronics first
-      const sortedRows = this.sortByElectronicsFirst(rows);
 
       console.log(
         "[FeaturedProducts.getAllProducts] Query results - Count:",
         count,
         "Rows:",
-        sortedRows.length,
+        rows.length
       );
-      if (sortedRows.length > 0) {
+      if (rows.length > 0) {
         console.log(
           "[FeaturedProducts.getAllProducts] First product sample:",
           JSON.stringify(
             {
-              _id: sortedRows[0]?._id,
-              name: sortedRows[0]?.name,
-              store_id: sortedRows[0]?.store_id,
-              status: sortedRows[0]?.status,
+              _id: rows[0]?._id,
+              name: rows[0]?.name,
+              store_id: rows[0]?.store_id,
+              status: rows[0]?.status,
             },
             null,
-            2,
-          ),
+            2
+          )
         );
       }
 
       // Return raw products with meta pagination (like product_search_single)
-      // return new DataResponseDto(rows, true, "Successfull", query, count);
-
-      // ✅ SORT: Electronics first
-      return new DataResponseDto(sortedRows, true, "Successfull", query, count);
+      return new DataResponseDto(rows, true, "Successfull", query, count);
     } catch (err) {
       console.error(
         "[FeaturedProducts.getAllProducts] Error occurred:",
-        err?.message || err,
+        err?.message || err
       );
       console.error(
         "[FeaturedProducts.getAllProducts] Error stack:",
-        err?.stack,
+        err?.stack
       );
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
