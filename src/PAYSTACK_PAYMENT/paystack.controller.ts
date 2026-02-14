@@ -37,7 +37,7 @@ import {
 } from "./dto/paystack-refund.dto";
 import { PaystackWebhookDto } from "./dto/paystack-webhook.dto";
 import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto";
-import { Public } from "src/shared/decorator/optional.decorator";
+import { Public } from "../shared/decorator/optional.decorator";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
