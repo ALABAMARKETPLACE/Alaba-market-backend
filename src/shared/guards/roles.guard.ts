@@ -21,12 +21,12 @@ export class RolesGuard implements CanActivate {
       return true;
     }
     const { user } = context.switchToHttp().getRequest();
-    const hasRequiredRole = requiredRoles.some((role) =>
-      user?.data?.role?.includes(role)
+    const hasRequiredRole = requiredRoles.some(
+      (role) => user?.role?.includes(role), // ✅ Changed from user?.data?.role to user?.role
     );
     if (!hasRequiredRole) {
       throw new UnauthorizedException(
-        "Failed to Authorize. You have no access to this service"
+        "Failed to Authorize. You have no access to this service",
       );
     }
 

@@ -19,7 +19,7 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly reflector: Reflector,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -27,7 +27,7 @@ export class AuthGuard implements CanActivate {
 
     const isPublic = this.reflector.get<boolean>(
       "isPublic",
-      context.getHandler()
+      context.getHandler(),
     );
 
     const token = this.extractTokenFromHeader(request);
@@ -48,7 +48,7 @@ export class AuthGuard implements CanActivate {
      */
     if (!token) {
       throw new UnauthorizedException(
-        "You don't have permission to access this resource. Please log in."
+        "You don't have permission to access this resource. Please log in.",
       );
     }
 
@@ -71,13 +71,11 @@ export class AuthGuard implements CanActivate {
       /**
        * SESSION BLACKLIST CHECK
        */
-      const blacklist = await this.cacheManager.get(
-        String(request.user.fid)
-      );
+      const blacklist = await this.cacheManager.get(String(request.user.fid));
 
       if (blacklist) {
         throw new ForbiddenException(
-          "Unauthorized access. You've already signed out."
+          "Unauthorized access. You've already signed out.",
         );
       }
 
@@ -86,7 +84,7 @@ export class AuthGuard implements CanActivate {
        */
       const requiredRoles = this.reflector.getAllAndOverride<Role[]>(
         ROLES_KEY,
-        [context.getHandler(), context.getClass()]
+        [context.getHandler(), context.getClass()],
       );
 
       if (requiredRoles && requiredRoles.length > 0) {
@@ -96,13 +94,12 @@ export class AuthGuard implements CanActivate {
 
         // FIX: case-insensitive role comparison
         const hasRole = requiredRoles.some(
-          (role) =>
-            role.toLowerCase() === request.user.role.toLowerCase()
+          (role) => role.toLowerCase() === request.user.role.toLowerCase(),
         );
 
         if (!hasRole) {
           throw new ForbiddenException(
-            "Failed to Authorize. You have no access to this service."
+            "Failed to Authorize. You have no access to this service.",
           );
         }
       }
@@ -116,15 +113,12 @@ export class AuthGuard implements CanActivate {
         }
 
         const blacklistStore = await this.cacheManager.get(
-          `store${request.user.storeId}`
+          `store${request.user.storeId}`,
         );
 
-        if (
-          blacklistStore &&
-          Number(blacklistStore) === request.user.storeId
-        ) {
+        if (blacklistStore && Number(blacklistStore) === request.user.storeId) {
           throw new ForbiddenException(
-            "Your Seller privileges have been revoked. Please contact Admin."
+            "Your Seller privileges have been revoked. Please contact Admin.",
           );
         }
       }
@@ -134,7 +128,7 @@ export class AuthGuard implements CanActivate {
       if (err instanceof HttpException) throw err;
 
       throw new UnauthorizedException(
-        "Your session has expired. Please try logging in again."
+        "Your session has expired. Please try logging in again.",
       );
     }
   }
@@ -143,8 +137,7 @@ export class AuthGuard implements CanActivate {
    * EXTRACT BEARER TOKEN
    */
   private extractTokenFromHeader(request: any): string | undefined {
-    const [type, token] =
-      request.headers?.authorization?.split(" ") ?? [];
+    const [type, token] = request.headers?.authorization?.split(" ") ?? [];
 
     return type === "Bearer" ? token : undefined;
   }
