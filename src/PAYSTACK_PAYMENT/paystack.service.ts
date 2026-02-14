@@ -1,10 +1,8 @@
 import {
   HttpException,
   HttpStatus,
-  Injectable,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
-import { HttpService } from "@nestjs/axios";
 import { catchError, lastValueFrom, map } from "rxjs";
 import * as crypto from "crypto";
 import { Transaction } from "sequelize";
@@ -29,8 +27,16 @@ import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 import { Order } from "../ORDER/order.entity";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 
+// GUEST USER IMPORTS
+
+import { Injectable, BadRequestException, Logger } from "@nestjs/common";
+import { HttpService } from "@nestjs/axios";
+import { firstValueFrom } from "rxjs";
+import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto";
+
 @Injectable()
 export class PaystackService {
+  private readonly logger = new Logger(PaystackService.name);
   private readonly baseUrl = "https://api.paystack.co";
 
   constructor(
@@ -39,7 +45,7 @@ export class PaystackService {
     @InjectModel(Store)
     private readonly storeRepository: typeof Store,
 
-    private readonly paymentSplitService: PaymentSplitService
+    private readonly paymentSplitService: PaymentSplitService,
   ) {}
 
   /* ----------------------------------
@@ -56,13 +62,13 @@ export class PaystackService {
      INITIALIZE PAYMENT
   ---------------------------------- */
   async initializePayment(
-    initData: PaystackInitializeDto
+    initData: PaystackInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
     const amountInKobo = Number(initData.amount);
     if (amountInKobo < 100) {
       throw new HttpException(
         "Amount must be at least 100 kobo",
-        HttpStatus.BAD_REQUEST
+        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -93,10 +99,10 @@ export class PaystackService {
           catchError((err) => {
             throw new HttpException(
               err.response?.data?.message || "Initialization failed",
-              err.response?.status || HttpStatus.BAD_REQUEST
+              err.response?.status || HttpStatus.BAD_REQUEST,
             );
-          })
-        )
+          }),
+        ),
     );
 
     return response.data;
@@ -106,13 +112,13 @@ export class PaystackService {
      SPLIT PAYMENT
   ---------------------------------- */
   private async initializeWithSplit(
-    initData: PaystackInitializeDto
+    initData: PaystackInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
     const store = await this.storeRepository.findByPk(initData.store_id);
     if (!store || !store.paystack_subaccount_code) {
       throw new HttpException(
         "Invalid store subaccount",
-        HttpStatus.BAD_REQUEST
+        HttpStatus.BAD_REQUEST,
       );
     }
 
@@ -122,7 +128,7 @@ export class PaystackService {
     if (initData.order_id) {
       await this.paymentSplitService.createPaymentSplit(
         initData.order_id,
-        amountInKobo / 100
+        amountInKobo / 100,
       );
     }
 
@@ -145,7 +151,7 @@ export class PaystackService {
         .post(`${this.baseUrl}/transaction/initialize`, payload, {
           headers: this.getHeaders(),
         })
-        .pipe(map((r) => r.data))
+        .pipe(map((r) => r.data)),
     );
 
     return response.data;
@@ -160,7 +166,7 @@ export class PaystackService {
         .get(`${this.baseUrl}/transaction/verify/${verifyData.reference}`, {
           headers: this.getHeaders(),
         })
-        .pipe(map((r) => r.data))
+        .pipe(map((r) => r.data)),
     );
 
     return response.data;
@@ -184,12 +190,12 @@ export class PaystackService {
   async processWebhook(
     webhookData: PaystackWebhookDto,
     signature: string,
-    rawPayload: string
+    rawPayload: string,
   ): Promise<void> {
     if (!this.verifyWebhookSignature(rawPayload, signature)) {
       throw new HttpException(
         "Invalid webhook signature",
-        HttpStatus.UNAUTHORIZED
+        HttpStatus.UNAUTHORIZED,
       );
     }
 
@@ -221,12 +227,12 @@ export class PaystackService {
           currency: paymentData.currency,
           cardHolder: paymentData.customer?.email,
         },
-        { transaction: t }
+        { transaction: t },
       );
 
       await Order.update(
         { status: "paid" },
-        { where: { id: payment.orderId }, transaction: t }
+        { where: { id: payment.orderId }, transaction: t },
       );
 
       await OrderStatus.create(
@@ -235,7 +241,7 @@ export class PaystackService {
           status: "paid",
           remark: "Payment confirmed via Paystack",
         },
-        { transaction: t }
+        { transaction: t },
       );
     });
   }
@@ -257,7 +263,7 @@ export class PaystackService {
 
       await Order.update(
         { status: "failed" },
-        { where: { id: payment.orderId }, transaction: t }
+        { where: { id: payment.orderId }, transaction: t },
       );
 
       await OrderStatus.create(
@@ -266,58 +272,53 @@ export class PaystackService {
           status: "failed",
           remark: "Payment failed via Paystack",
         },
-        { transaction: t }
+        { transaction: t },
       );
     });
   }
 
-
   /* ----------------------------------------------------
    GET TRANSACTION DETAILS
 ---------------------------------------------------- */
-async getTransactionDetails(reference: string): Promise<DataResponseDto> {
+  async getTransactionDetails(reference: string): Promise<DataResponseDto> {
     const response = await lastValueFrom(
       this.httpService
         .get(`${this.baseUrl}/transaction/verify/${reference}`, {
           headers: this.getHeaders(),
         })
-        .pipe(map(r => r.data))
+        .pipe(map((r) => r.data)),
     );
 
     return new DataResponseDto(
       response.data,
       true,
-      "Transaction details retrieved"
+      "Transaction details retrieved",
     );
   }
 
-/* ----------------------------------------------------
+  /* ----------------------------------------------------
    LIST TRANSACTIONS
 ---------------------------------------------------- */
-async listTransactions(
-    page = 1,
-    perPage = 50
-  ): Promise<DataResponseDto> {
+  async listTransactions(page = 1, perPage = 50): Promise<DataResponseDto> {
     const response = await lastValueFrom(
       this.httpService
-        .get(
-          `${this.baseUrl}/transaction?page=${page}&perPage=${perPage}`,
-          { headers: this.getHeaders() }
-        )
-        .pipe(map(r => r.data))
+        .get(`${this.baseUrl}/transaction?page=${page}&perPage=${perPage}`, {
+          headers: this.getHeaders(),
+        })
+        .pipe(map((r) => r.data)),
     );
 
     return new DataResponseDto(
       response.data,
       true,
-      "Transactions fetched successfully"
+      "Transactions fetched successfully",
     );
   }
   /* ----------------------------------
      REFUND
   ---------------------------------- */
   async createRefund(
-    refundData: PaystackRefundDto
+    refundData: PaystackRefundDto,
   ): Promise<PaystackRefundResponseDto> {
     const payload = {
       transaction: refundData.transaction,
@@ -332,7 +333,7 @@ async listTransactions(
         .post(`${this.baseUrl}/refund`, payload, {
           headers: this.getHeaders(),
         })
-        .pipe(map((r) => r.data))
+        .pipe(map((r) => r.data)),
     );
 
     return response.data;
@@ -348,6 +349,124 @@ async listTransactions(
   async verifyPaymentByReference(reference: string) {
     return this.verifyPayment({ reference });
   }
+
+  // ==================== GUEST PAYMENT INITIALIZATION ====================
+
+  /* ==================== GUEST PAYMENT INITIALIZATION ==================== */
+
+  async initializeGuestPayment(
+    guestData: PaystackGuestInitializeDto,
+  ): Promise<any> {
+    try {
+      this.logger.log(
+        `Initializing guest payment for ${guestData.guest_info.email}`,
+      );
+
+      // Generate unique reference for guest payment
+      const reference = `guest_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(7)}`;
+
+      // Calculate total amount (cart total + delivery)
+      const totalAmount = guestData.amount + guestData.delivery_charge;
+
+      // Extract store IDs for split payment (if multi-seller)
+      const storeIds = [
+        ...new Set(guestData.cart_items.map((item) => item.store_id)),
+      ];
+      const isMultiSeller = storeIds.length > 1;
+
+      // Build metadata
+      const metadata = {
+        custom_fields: [
+          {
+            display_name: "Guest Name",
+            variable_name: "guest_name",
+            value: `${guestData.guest_info.first_name} ${guestData.guest_info.last_name}`,
+          },
+          {
+            display_name: "Guest Phone",
+            variable_name: "guest_phone",
+            value: guestData.guest_info.phone,
+          },
+          {
+            display_name: "Order Type",
+            variable_name: "order_type",
+            value: "guest_order",
+          },
+          {
+            display_name: "Multi-Seller",
+            variable_name: "is_multi_seller",
+            value: isMultiSeller ? "Yes" : "No",
+          },
+        ],
+        cart_items: guestData.cart_items,
+        delivery_charge: guestData.delivery_charge,
+        store_ids: storeIds,
+        is_multi_seller: isMultiSeller,
+        ...guestData.metadata,
+      };
+
+      // Prepare Paystack request
+      const paystackPayload = {
+        email: guestData.guest_info.email,
+        amount: totalAmount, // Already in kobo
+        currency: "NGN",
+        reference,
+        callback_url:
+          guestData.callback_url ||
+          `${process.env.FRONTEND_URL}/guest/payment/callback`,
+        metadata,
+        channels: ["card", "bank", "ussd", "mobile_money"], // All payment channels
+      };
+
+      // Call Paystack API using firstValueFrom
+      const response = await firstValueFrom(
+        this.httpService
+          .post(`${this.baseUrl}/transaction/initialize`, paystackPayload, {
+            headers: this.getHeaders(), // ✅ Use getHeaders() method
+          })
+          .pipe(map((r) => r.data)), // ✅ Extract data from response
+      );
+
+      // ✅ Check response.status (not response.data.status)
+      if (!response.status) {
+        throw new BadRequestException(
+          response.message || "Payment initialization failed",
+        );
+      }
+
+      this.logger.log(`Guest payment initialized: ${reference}`); // ✅ FIXED: Added opening parenthesis
+
+      return {
+        status: true,
+        message: "Payment initialized for guest checkout",
+        data: {
+          authorization_url: response.data.authorization_url,
+          access_code: response.data.access_code,
+          reference: response.data.reference,
+          amount: totalAmount / 100, // Convert back to Naira for display
+        },
+      };
+    } catch (error) {
+      this.logger.error(
+        `Guest payment initialization failed: ${error.message}`,
+      );
+
+      // ✅ Better error handling
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        error.response?.data?.message ||
+          error.message ||
+          "Failed to initialize payment",
+      );
+    }
+  }
+
+  // GUEST USER DATA ENDS HERE
 }
 
 

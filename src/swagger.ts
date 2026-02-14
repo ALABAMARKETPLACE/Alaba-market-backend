@@ -6,23 +6,9 @@ export function setupSwagger(app: INestApplication) {
     .setTitle(`${process.env.NAME}`)
     .setDescription("API Documentation")
     .setVersion("1.0")
-    .addBearerAuth(
-      {
-        type: "http",
-        scheme: "bearer",
-        bearerFormat: "JWT",
-        name: "Authorization",
-        description: "Enter JWT token",
-        in: "header",
-      },
-      "bearer",
-    )
+    .addBearerAuth()
     .build();
 
   const document = SwaggerModule.createDocument(app, options);
-  SwaggerModule.setup("apis", app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+  SwaggerModule.setup("apis", app, document);
 }
