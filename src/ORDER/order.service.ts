@@ -40,7 +40,7 @@ export class OrderService {
     private readonly orderStatusService: OrderStatusService,
     private readonly mailService: MailService,
     private readonly notificationService: NotificationsService,
-    private readonly paymentGateWayService: PaymentGateWayService
+    private readonly paymentGateWayService: PaymentGateWayService,
   ) {}
 
   includeModals: any[] = [
@@ -89,13 +89,13 @@ export class OrderService {
     include: [
       [
         Sequelize.literal(
-          `(SELECT "store_name" FROM "STORE" WHERE "STORE"."id" = "Order"."storeId")`
+          `(SELECT "store_name" FROM "STORE" WHERE "STORE"."id" = "Order"."storeId")`,
         ),
         "store_name",
       ],
       [
         Sequelize.literal(
-          `(SELECT "orderId" FROM "STORE_REVIEW" WHERE "STORE_REVIEW"."orderId" = "id")`
+          `(SELECT "orderId" FROM "STORE_REVIEW" WHERE "STORE_REVIEW"."orderId" = "id")`,
         ),
         "available",
       ],
@@ -105,7 +105,7 @@ export class OrderService {
             NOT EXISTS (SELECT "orderId" FROM "STORE_REVIEW" WHERE "STORE_REVIEW"."orderId" = "Order"."id") 
             AND "Order"."status" = 'delivered' 
             THEN TRUE ELSE FALSE 
-          END`
+          END`,
         ),
         "review",
       ],
@@ -144,7 +144,7 @@ export class OrderService {
         include: this.includeModals,
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
-        if (!order) throw new NotFoundException();
+      if (!order) throw new NotFoundException();
       return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -153,18 +153,166 @@ export class OrderService {
   }
 
   //for admin and seller
-  async findOrder(order_id: number, role: string, storeId: number) {
+  // async findOrder(order_id: number, role: string, storeId: number) {
+  // async findOrder(id: number, role: string, storeId: number) {
+  //   // async findOrder(id: number, role: string, storeId: number
+  //   try {
+  //     const order = await this.OrderRepository.findOne({
+  //       where: {
+  //         ...(role != Role.Admin && { storeId }),
+  //         id: id,
+  //         // order_id,
+  //       },
+  //       attributes: this.orderAttributes,
+  //       include: this.includeModals,
+  //       order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
+  //     });
+  //     if (!order) throw new NotFoundException();
+  //     return new DataResponseDto(order, true, "Successfully fetched");
+  //   } catch (err) {
+  //     if (err instanceof HttpException) throw err;
+  //     throw new InternalServerErrorException(getErrorMessage(err));
+  //   }
+  // }
+
+  //for admin and seller
+  async findOrder(id: number, role: string, storeId: number) {
     try {
       const order = await this.OrderRepository.findOne({
         where: {
           ...(role != Role.Admin && { storeId }),
-          order_id,
+          id: id, // Using database primary key
         },
-        attributes: this.orderAttributes,
-        include: this.includeModals,
+        attributes: {
+          exclude: ["userId", "addressId", "storeId"],
+          include: [
+            // Store details
+            [
+              Sequelize.literal(
+                `(SELECT "store_name" FROM "STORE" WHERE "STORE"."id" = "Order"."storeId")`,
+              ),
+              "store_name",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT "email" FROM "STORE" WHERE "STORE"."id" = "Order"."storeId")`,
+              ),
+              "store_email",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT "phone" FROM "STORE" WHERE "STORE"."id" = "Order"."storeId")`,
+              ),
+              "store_phone",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT "business_address" FROM "STORE" WHERE "STORE"."id" = "Order"."storeId")`,
+              ),
+              "store_address",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT "logo_upload" FROM "STORE" WHERE "STORE"."id" = "Order"."storeId")`,
+              ),
+              "store_logo",
+            ],
+            // Customer details (for registered users)
+            [
+              Sequelize.literal(
+                `(SELECT "name" FROM "USER" WHERE "USER"."_id" = "Order"."userId")`,
+              ),
+              "customer_name",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT "email" FROM "USER" WHERE "USER"."_id" = "Order"."userId")`,
+              ),
+              "customer_email",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT "phone" FROM "USER" WHERE "USER"."_id" = "Order"."userId")`,
+              ),
+              "customer_phone",
+            ],
+            [
+              Sequelize.literal(
+                `(SELECT "photo" FROM "USER" WHERE "USER"."_id" = "Order"."userId")`,
+              ),
+              "customer_photo",
+            ],
+            // Review availability
+            [
+              Sequelize.literal(
+                `(SELECT "orderId" FROM "STORE_REVIEW" WHERE "STORE_REVIEW"."orderId" = "Order"."id")`,
+              ),
+              "available",
+            ],
+            // Can review flag
+            [
+              Sequelize.literal(
+                `CASE WHEN 
+                NOT EXISTS (SELECT "orderId" FROM "STORE_REVIEW" WHERE "STORE_REVIEW"."orderId" = "Order"."id") 
+                AND "Order"."status" = 'delivered' 
+                THEN TRUE ELSE FALSE 
+              END`,
+              ),
+              "review",
+            ],
+          ],
+        },
+        include: [
+          {
+            model: OrderStatus,
+            required: true,
+            attributes: { exclude: ["id", "orderId"] },
+          },
+          {
+            model: OrderPayments,
+            required: false,
+            attributes: {
+              exclude: ["id", "orderId", "createdAt", "updatedAt"],
+            },
+          },
+          {
+            model: StoreReview,
+            required: false,
+            attributes: ["rating", "remark", "id"],
+          },
+          {
+            model: OrderItems,
+            required: true,
+            attributes: { exclude: [] },
+            include: [
+              {
+                model: Products,
+                required: false,
+                as: "productDetails",
+                attributes: [
+                  "_id",
+                  "name",
+                  "subCategory",
+                  "image",
+                  "price",
+                  "sku",
+                ], // ✅ Added name, image, price
+              },
+            ],
+          },
+          {
+            model: OrderSubstitution,
+            required: false,
+            where: {
+              status: "pending",
+            },
+          },
+        ],
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
-      if (!order) throw new NotFoundException();
+
+      if (!order) throw new NotFoundException("Order not found");
+
       return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -236,7 +384,7 @@ export class OrderService {
             },
             { model: User, required: true, attributes: ["name"] },
           ],
-        }
+        },
       );
       return new DataResponseDto(rows, true, "Success", pageOptionsDto, count);
     } catch (err) {
@@ -245,7 +393,10 @@ export class OrderService {
     }
   }
 
-  async findOrderByStore(storeId: number | undefined, pageOptionsDto: OrderSearchStoreDto) {
+  async findOrderByStore(
+    storeId: number | undefined,
+    pageOptionsDto: OrderSearchStoreDto,
+  ) {
     const { from, to, status, orderId, offset, limit } = pageOptionsDto;
     try {
       let dateFilter: any = null;
@@ -269,21 +420,21 @@ export class OrderService {
 
       const { rows, count } = await this.OrderRepository.findAndCountAll({
         attributes: [
-          'id',
-          'order_id',
-          'status',
-          'grandTotal',
-          'total',
-          'totalItems',
-          'paymentType',
-          'deliveryCharge',
-          'tax',
-          'discount',
-          'delivery_date',
-          'storeId',
-          'userId',
-          'delivery_company_id',
-          'createdAt',
+          "id",
+          "order_id",
+          "status",
+          "grandTotal",
+          "total",
+          "totalItems",
+          "paymentType",
+          "deliveryCharge",
+          "tax",
+          "discount",
+          "delivery_date",
+          "storeId",
+          "userId",
+          "delivery_company_id",
+          "createdAt",
           [
             Sequelize.literal(`(
               SELECT "image"
@@ -396,14 +547,10 @@ export class OrderService {
   //   }
   // }
 
-  async updateOrder(
-  id: number,
-  data: UpdateOrderStatus
-  ) {
+  async updateOrder(id: number, data: UpdateOrderStatus) {
     try {
       const result = await this.OrderRepository.sequelize.transaction(
         async (transaction: Transaction) => {
-
           // Find order by DB PRIMARY KEY (id)
           const order: any = await this.OrderRepository.findByPk(id, {
             transaction,
@@ -423,7 +570,7 @@ export class OrderService {
 
           if (terminalStatuses.includes(order.status)) {
             throw new BadRequestException(
-              `Cannot update order with '${order.status}' status`
+              `Cannot update order with '${order.status}' status`,
             );
           }
 
@@ -441,10 +588,7 @@ export class OrderService {
             const paymentInfo = await order.getOrderPayment({ transaction });
 
             if (paymentInfo && paymentInfo.status === "pending") {
-              await paymentInfo.update(
-                { status: "approved" },
-                { transaction }
-              );
+              await paymentInfo.update({ status: "approved" }, { transaction });
             }
           }
 
@@ -453,10 +597,7 @@ export class OrderService {
             const paymentInfo = await order.getOrderPayment({ transaction });
 
             if (paymentInfo) {
-              await paymentInfo.update(
-                { status: "success" },
-                { transaction }
-              );
+              await paymentInfo.update({ status: "success" }, { transaction });
             }
 
             await this.notificationService.createNotification(
@@ -464,7 +605,7 @@ export class OrderService {
               `Your order has been delivered. Thank you for shopping with ${process.env.NAME}`,
               "Order Delivered",
               order.order_id, // business ID is fine for notifications
-              order.userId
+              order.userId,
             );
           }
 
@@ -472,7 +613,7 @@ export class OrderService {
           await this.orderStatusService.create(
             order,
             data.remark ?? null,
-            transaction
+            transaction,
           );
 
           //Post-commit side effects (email)
@@ -486,7 +627,7 @@ export class OrderService {
                 user,
                 store,
                 order.products,
-                order.address
+                order.address,
               );
 
               await this.mailService.sellerEmails(email);
@@ -497,17 +638,15 @@ export class OrderService {
           });
 
           return order;
-        }
+        },
       );
 
       return new DataResponseDto(result, true, "Successfully Updated");
-
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
-
 
   async cancelOrder(userId: number, id: number, data: CancelOrderDto) {
     try {
@@ -527,7 +666,7 @@ export class OrderService {
             throw new Error("Order has been cancelled already@@");
           if (order.status == "waiting_refund")
             throw new Error(
-              "Order has already been cancelled and is awaiting refund approval."
+              "Order has already been cancelled and is awaiting refund approval.",
             );
           if (order.status != "pending" && order.status != "substitution")
             throw new Error("You can't Cancel this order@@");
@@ -544,7 +683,7 @@ export class OrderService {
                 reason: data.remark,
                 refund_processed_date: new Date(),
               },
-              { transaction }
+              { transaction },
             );
           } else {
             RefundRequest.create(
@@ -558,7 +697,7 @@ export class OrderService {
                 reason: data.remark,
                 refund_processed_date: new Date(),
               },
-              { transaction }
+              { transaction },
             );
           }
 
@@ -574,7 +713,7 @@ export class OrderService {
                 : "cancelled",
               remark: data.remark,
             },
-            transaction
+            transaction,
           );
           await OrderSubstitution.update(
             {
@@ -587,7 +726,7 @@ export class OrderService {
                 orderId: id,
               },
               transaction,
-            }
+            },
           );
           await OrderStatus.create(
             {
@@ -597,7 +736,7 @@ export class OrderService {
                 : "cancelled",
               remark: data.remark,
             },
-            { transaction }
+            { transaction },
           );
           if (!store.auto_approve_refund) {
             transaction.afterCommit(async () => {
@@ -606,14 +745,14 @@ export class OrderService {
                 order,
                 user,
                 store,
-                order.products
+                order.products,
               );
               let sellerEmail = await orderCancelSellerMail(
                 order,
                 user,
                 store,
                 order.products,
-                data.remark
+                data.remark,
               );
               this.mailService.sellerEmails(email);
               this.mailService.sellerEmails(sellerEmail);
@@ -626,10 +765,10 @@ export class OrderService {
                 orderId: id,
               },
               transaction: transaction,
-            }
+            },
           );
           return order;
-        }
+        },
       );
       return new DataResponseDto(result, true, "Order Cancelled Successfully.");
     } catch (err) {
@@ -653,7 +792,9 @@ export class OrderService {
       ].map((item) => [
         Sequelize.fn(
           "count",
-          Sequelize.literal(`CASE WHEN status = '${item}' THEN 1 ELSE null END`)
+          Sequelize.literal(
+            `CASE WHEN status = '${item}' THEN 1 ELSE null END`,
+          ),
         ),
         `${item}Orders`,
       ]);
@@ -664,7 +805,10 @@ export class OrderService {
 
       const order = await this.OrderRepository.findOne({
         where: whereClause,
-        attributes: [...attributes, [Sequelize.fn("count", "*"), "totalOrders"]],
+        attributes: [
+          ...attributes,
+          [Sequelize.fn("count", "*"), "totalOrders"],
+        ],
       });
       return new DataResponseDto(order, true, "Succesfull");
     } catch (err) {
@@ -700,7 +844,7 @@ export class OrderService {
     try {
       const [status, updated] = await OrderPayments.update(
         { status: "success" },
-        { where: { orderId }, returning: true }
+        { where: { orderId }, returning: true },
       );
       if (status == 0) throw new NotFoundException();
       return new DataResponseDto(updated, true, "Success");

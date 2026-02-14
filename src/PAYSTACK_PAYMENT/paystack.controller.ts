@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -35,6 +36,8 @@ import {
   PaystackRefundResponseDto,
 } from "./dto/paystack-refund.dto";
 import { PaystackWebhookDto } from "./dto/paystack-webhook.dto";
+import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto";
+import { Public } from "../shared/decorator/optional.decorator";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -51,22 +54,70 @@ export class PaystackController {
     type: PaystackInitializeResponseDto,
   })
   async initializePayment(
-    @Body() initData: PaystackInitializeDto
+    @Body() initData: PaystackInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
     return await this.paystackService.initializePayment(initData);
   }
+
+  // GUEST USER INITIALIZATION STARTS HERE
+
+  @Post("initialize-guest")
+  @Public() // ✅ No authentication required
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Initialize Paystack payment for guest checkout",
+  })
+  @ApiOkResponse({
+    description: "Guest payment initialized successfully",
+  })
+  async initializeGuestPayment(
+    @Body() guestData: PaystackGuestInitializeDto,
+  ): Promise<any> {
+    return await this.paystackService.initializeGuestPayment(guestData);
+  }
+
+  @Post("verify-guest")
+  @Public() // ✅ No authentication required
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Verify guest payment transaction" })
+  @ApiOkResponse({
+    description: "Guest payment verification completed",
+  })
+  async verifyGuestPayment(
+    @Body() verifyData: { reference: string; guest_email: string },
+  ): Promise<any> {
+    // Verify payment
+    const verification = await this.paystackService.verifyPayment({
+      reference: verifyData.reference,
+    });
+
+    // Additional check: ensure email matches
+    if (
+      verification.data?.customer?.email?.toLowerCase() !==
+      verifyData.guest_email?.toLowerCase()
+    ) {
+      throw new BadRequestException("Payment email mismatch");
+    }
+
+    return verification;
+  }
+
+  // GUEST USER INITIALIZATION ENDS HERE
 
   @Post("initialize-split")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Initialize Paystack payment with automatic split (5% admin, 95% seller)" })
+  @ApiOperation({
+    summary:
+      "Initialize Paystack payment with automatic split (5% admin, 95% seller)",
+  })
   @ApiOkResponse({
     description: "Split payment initialized successfully",
     type: PaystackInitializeResponseDto,
   })
   async initializeSplitPayment(
-    @Body() initData: PaystackInitializeDto
+    @Body() initData: PaystackInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
     // Force split payment to true
     initData.split_payment = true;
@@ -83,7 +134,7 @@ export class PaystackController {
     type: PaystackVerificationResponseDto,
   })
   async verifyPayment(
-    @Body() verifyData: PaystackVerifyDto
+    @Body() verifyData: PaystackVerifyDto,
   ): Promise<PaystackVerificationResponseDto> {
     return await this.paystackService.verifyPayment(verifyData);
   }
@@ -102,7 +153,7 @@ export class PaystackController {
     description: "Payment verification completed",
   })
   async verifyPaymentByReference(
-    @Query("reference") reference: string
+    @Query("reference") reference: string,
   ): Promise<any> {
     return await this.paystackService.verifyPaymentByReference(reference);
   }
@@ -117,7 +168,7 @@ export class PaystackController {
     type: PaystackRefundResponseDto,
   })
   async createRefund(
-    @Body() refundData: PaystackRefundDto
+    @Body() refundData: PaystackRefundDto,
   ): Promise<PaystackRefundResponseDto> {
     return await this.paystackService.createRefund(refundData);
   }
@@ -131,7 +182,7 @@ export class PaystackController {
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers("x-paystack-signature") signature: string,
-    @Body() webhookData: PaystackWebhookDto
+    @Body() webhookData: PaystackWebhookDto,
   ): Promise<any> {
     // Get raw body for signature verification
     const rawBody = req.rawBody?.toString() || JSON.stringify(webhookData);
@@ -139,7 +190,7 @@ export class PaystackController {
     return await this.paystackService.processWebhook(
       webhookData,
       signature,
-      rawBody
+      rawBody,
     );
   }
 
@@ -169,7 +220,7 @@ export class PaystackController {
     description: "Transaction details retrieved successfully",
   })
   async getTransactionDetails(
-    @Query("reference") reference: string
+    @Query("reference") reference: string,
   ): Promise<any> {
     return await this.paystackService.getTransactionDetails(reference);
   }
@@ -196,7 +247,7 @@ export class PaystackController {
   })
   async listTransactions(
     @Query("page") page: number = 1,
-    @Query("perPage") perPage: number = 50
+    @Query("perPage") perPage: number = 50,
   ): Promise<any> {
     return await this.paystackService.listTransactions(page, perPage);
   }
