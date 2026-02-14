@@ -635,7 +635,13 @@ export class FeaturedProductsService {
 
     const electronicsKeywords = [
       "electronics",
+      "electronic",
+      "electric",
+      "electronical",
+      "electricals",
+      "electrical",
       "phone",
+      "phones",
       "computer",
       "laptop",
       "tablet",
@@ -647,6 +653,8 @@ export class FeaturedProductsService {
       "headphone",
       "gaming",
       "console",
+      "solar",
+      "battery",
       "smart watch",
     ];
 
