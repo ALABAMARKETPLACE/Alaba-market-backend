@@ -624,9 +624,14 @@ export class FeaturedProductsService {
   ];
 
   private isElectronicsProduct(product: any): boolean {
-    const category = product.category?.toLowerCase() || "";
-    const subCategory = product.subCategory?.toLowerCase() || "";
-    const name = product.name?.toLowerCase() || "";
+    if (!product) return false;
+    // const category = product.category?.toLowerCase() || "";
+    // const subCategory = product.subCategory?.toLowerCase() || "";
+    // const name = product.name?.toLowerCase() || "";
+    //
+    const category = (product?.category || "").toString().toLowerCase();
+    const subCategory = (product?.subCategory || "").toString().toLowerCase();
+    const name = (product?.name || "").toString().toLowerCase();
 
     const electronicsKeywords = [
       "electronics",
