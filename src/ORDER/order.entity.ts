@@ -22,7 +22,6 @@ import { StoreReview } from "../STORE_REVIEW/storereview.entity";
 import { OrderItem } from "sequelize";
 import { OrderSubstitution } from "../ORDER_SUBSTITUTION/substitution.entity";
 import { DeliveryCompany } from "../DELIVERY_COMPANY/delivery_company.entity";
-import { Address } from "../ADDRESS/address.entity";
 
 @Table({ tableName: "ORDER" })
 export class Order extends Model<Order> {
@@ -195,7 +194,6 @@ export class Order extends Model<Order> {
     type: DataType.STRING,
     allowNull: true,
     comment: "Guest user email address",
-    // No need for @Index decorator - add it via migration instead
   })
   guest_email: string;
 
@@ -343,9 +341,6 @@ export class Order extends Model<Order> {
 
   // ==================== RELATIONSHIPS ====================
 
-  @BelongsTo(() => Address, { foreignKey: "addressId", as: "addressDetails" })
-  addressDetails: Address;
-
   @BelongsTo(() => User)
   userDetails: User;
 
@@ -364,11 +359,8 @@ export class Order extends Model<Order> {
   @HasMany(() => OrderStatus, { onDelete: "cascade", hooks: true })
   orderStatus: OrderStatus[];
 
-  // @HasMany(() => OrderItems, { onDelete: "cascade", hooks: true })
-  // orderItems: OrderItem[];
-
   @HasMany(() => OrderItems, { onDelete: "cascade", hooks: true })
-  orderItems: OrderItems[];
+  orderItems: OrderItem[];
 
   @HasMany(() => OrderSubstitution)
   orderSubstitution: OrderSubstitution[];
