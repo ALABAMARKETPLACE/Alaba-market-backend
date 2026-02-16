@@ -1,3 +1,4 @@
+// order.module.ts
 import { Module } from "@nestjs/common";
 import { OrderController } from "./order.controller";
 import { OrderService } from "./order.service";
@@ -14,6 +15,7 @@ import { NotificationsModule } from "../NOTIFICATIONS/notifications.module";
 import { OrderPlaceService } from "./order.place";
 import { OrderLogService } from "./order.log";
 import { GuestOrderService } from "./guest-order.service";
+
 @Module({
   imports: [
     OrderItemsModule,
@@ -23,7 +25,7 @@ import { GuestOrderService } from "./guest-order.service";
     CartModule,
     PaymentGatewayModule,
     PaystackModule,
-    OrderLogModule,
+    OrderLogModule, 
     NotificationsModule,
   ],
   controllers: [OrderController],
@@ -32,7 +34,7 @@ import { GuestOrderService } from "./guest-order.service";
     ...OrderProvider,
     OrderPlaceService,
     GuestOrderService,
-    OrderLogService,
+    OrderLogService, 
   ],
   exports: [OrderService],
 })
