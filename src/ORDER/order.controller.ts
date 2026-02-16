@@ -50,8 +50,9 @@ export class OrderController {
   constructor(
     private readonly orderService: OrderService,
     private readonly placeOrder: OrderPlaceService,
-    private readonly orderLogService: OrderLoggingService,
+    // private readonly orderLogService: OrderLoggingService,
     private readonly guestOrderService: GuestOrderService,
+    private readonly orderLogger: OrderLoggingService,
   ) {}
 
   @Post("guest")
@@ -171,6 +172,7 @@ export class OrderController {
   }
   // }
 
+  //get all orders grouped by their statsu and count for seller
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)
   @Get("getall")
@@ -287,17 +289,32 @@ export class OrderController {
     return this.orderService.findOne(userId, id);
   }
 
-  //create new Order
+  // //create new Order
+  // @UseGuards(AuthGuard)
+  // @Post()
+  // @ApiDataObjectResponse(OrderDto)
+  // @HttpCode(201)
+  // @ApiBearerAuth()
+  // create(
+  //   @UserId() userId: number,
+  //   @Body() create: CreateOrderDto,
+  // ): Promise<DataResponseDto> {
+  //   // this.orderLogService.create(userId, create);
+  //   return this.placeOrder.create(userId, create);
+  // }
+
   @UseGuards(AuthGuard)
   @Post()
-  @ApiDataObjectResponse(OrderDto)
   @HttpCode(201)
   @ApiBearerAuth()
-  create(
+  async create(
     @UserId() userId: number,
     @Body() create: CreateOrderDto,
   ): Promise<DataResponseDto> {
-    this.orderLogService.create(userId, create);
+    // Log the attempt (optional - for analytics)
+    // this.orderLogger.create(userId, create).catch(console.error);
+
+    // Create the actual order
     return this.placeOrder.create(userId, create);
   }
 

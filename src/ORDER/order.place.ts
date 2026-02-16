@@ -50,56 +50,72 @@ export class OrderPlaceService {
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
     private readonly orderLogService: OrderLogService,
-    private readonly jwtService: JwtService
+    private readonly jwtService: JwtService,
   ) {}
 
   async create(userId: number, data: CreateOrderDto) {
     try {
-      const result = await this.orderRepository.sequelize.transaction(async (t) => {
-        const newOrders = [];
-        const verified = await this.basicCheck(data);
+      const result = await this.orderRepository.sequelize.transaction(
+        async (t) => {
+          const newOrders = [];
+          const verified = await this.basicCheck(data);
 
-        const products = await this.groupProducts(data.cart, t);
-        const address = await this.orderAddress(userId, data.address, t);
-        for (const item of products) {
-          const order = await this.placeOrder(userId, data, item, verified, t);
-          const [qnty, total, itms] = await this.createItems(order.id, item, t);
-          const store = await Store.findOne({
-            where: { id: item.storeId },
-            transaction: t,
-          });
-          //================
-          const deliveryDate = new Date();
-          deliveryDate.setDate(
-            deliveryDate.getDate() + (store?.delivery_period ?? 2)
-          );
-          deliveryDate.setMinutes(
-            deliveryDate.getMinutes() + (store?.delivery_period_minutes ?? 0)
-          );
-          order.delivery_date = deliveryDate;
-          order.totalItems = qnty;
-          order.total = total;
-          order.grandTotal = total; //inside modal
-          order.address = address;
-          await order.save({ transaction: t });
-          const payment = await this.orderPayment(
-            order.id,
-            order.grandTotal,
-            data.payment,
-            t
-          );
-          const orderStatus = await this.orderStatus(order.id, order.status, t);
-          newOrders.push({
-            newOrder: order,
-            orderPayment: payment,
-            orderStatus: orderStatus,
-            orderItems: itms,
-            address: address,
-          });
-          await this.afterCommit(t, data, order, store, itms, address);
-        }
-        return newOrders;
-      });
+          const products = await this.groupProducts(data.cart, t);
+          const address = await this.orderAddress(userId, data.address, t);
+          for (const item of products) {
+            const order = await this.placeOrder(
+              userId,
+              data,
+              item,
+              verified,
+              t,
+            );
+            const [qnty, total, itms] = await this.createItems(
+              order.id,
+              item,
+              t,
+            );
+            const store = await Store.findOne({
+              where: { id: item.storeId },
+              transaction: t,
+            });
+            //================
+            const deliveryDate = new Date();
+            deliveryDate.setDate(
+              deliveryDate.getDate() + (store?.delivery_period ?? 2),
+            );
+            deliveryDate.setMinutes(
+              deliveryDate.getMinutes() + (store?.delivery_period_minutes ?? 0),
+            );
+            order.delivery_date = deliveryDate;
+            order.totalItems = qnty;
+            order.total = total;
+            order.grandTotal = total; //inside modal
+            order.address = address;
+            await order.save({ transaction: t });
+            const payment = await this.orderPayment(
+              order.id,
+              order.grandTotal,
+              data.payment,
+              t,
+            );
+            const orderStatus = await this.orderStatus(
+              order.id,
+              order.status,
+              t,
+            );
+            newOrders.push({
+              newOrder: order,
+              orderPayment: payment,
+              orderStatus: orderStatus,
+              orderItems: itms,
+              address: address,
+            });
+            await this.afterCommit(t, data, order, store, itms, address);
+          }
+          return newOrders;
+        },
+      );
       return new DataResponseDto(result);
     } catch (err) {
       console.log(err);
@@ -109,7 +125,7 @@ export class OrderPlaceService {
           data,
           err instanceof HttpException == true
             ? err.message
-            : getErrorMessage(err)
+            : getErrorMessage(err),
         );
       } catch (err) {
         if (err instanceof HttpException) throw err;
@@ -120,7 +136,7 @@ export class OrderPlaceService {
 
   async groupProducts(
     data: any[],
-    transaction: Transaction
+    transaction: Transaction,
   ): Promise<orderItemss[]> {
     try {
       const items: orderItemss[] = await data.reduce(
@@ -140,7 +156,7 @@ export class OrderPlaceService {
             variantId: item?.variantId,
           };
           const exist = acc.find(
-            (store: any) => store?.storeId == storeId?.store_id
+            (store: any) => store?.storeId == storeId?.store_id,
           );
           if (exist) {
             exist?.products?.push(obj);
@@ -152,7 +168,7 @@ export class OrderPlaceService {
           }
           return acc;
         },
-        Promise.resolve([])
+        Promise.resolve([]),
       );
       return items;
     } catch (err) {
@@ -165,13 +181,13 @@ export class OrderPlaceService {
       console.log("🔍 [basicCheck] Starting order validation...");
 
       // 🚫 BLOCK CASH ON DELIVERY (FIX)
-      const paymentType =
-        data?.payment?.type?.toString().toLowerCase()?.trim();
+      const paymentType = data?.payment?.type?.toString().toLowerCase()?.trim();
 
-      if (paymentType === "cash on delivery" || paymentType === "cash-on-delivery") {
-        throw new BadRequestException(
-          "Cash on delivery is not available"
-        );
+      if (
+        paymentType === "cash on delivery" ||
+        paymentType === "cash-on-delivery"
+      ) {
+        throw new BadRequestException("Cash on delivery is not available");
       }
 
       //===================
@@ -194,14 +210,14 @@ export class OrderPlaceService {
         verified?.data?.addressId,
         "(type:",
         typeof verified?.data?.addressId,
-        ")"
+        ")",
       );
       console.log(
         "   - Request address.id:",
         data?.address?.id,
         "(type:",
         typeof data?.address?.id,
-        ")"
+        ")",
       );
 
       const tokenAddressId = Number(verified?.data?.addressId);
@@ -211,7 +227,7 @@ export class OrderPlaceService {
         "   - After conversion:",
         tokenAddressId,
         "vs",
-        requestAddressId
+        requestAddressId,
       );
 
       if (tokenAddressId !== requestAddressId) {
@@ -261,7 +277,7 @@ export class OrderPlaceService {
     data: CreateOrderDto,
     product: orderItemss,
     verified: any,
-    transaction: Transaction
+    transaction: Transaction,
   ) {
     try {
       // Handle both array and single value discount structures
@@ -269,7 +285,7 @@ export class OrderPlaceService {
       if (Array.isArray(verified?.data?.discount)) {
         storeDiscount =
           verified?.data?.discount?.find(
-            (item: any) => item?.storeId === product?.storeId
+            (item: any) => item?.storeId === product?.storeId,
           )?.discount ?? 0;
       } else {
         storeDiscount = verified?.data?.discount ?? 0;
@@ -280,7 +296,7 @@ export class OrderPlaceService {
       if (Array.isArray(verified?.data?.deliveryCharges)) {
         storeDeliveryCharge =
           verified?.data?.deliveryCharges?.find(
-            (item: any) => item?.storeId === product?.storeId
+            (item: any) => item?.storeId === product?.storeId,
           )?.totalCharge ?? 0;
       } else {
         storeDeliveryCharge = verified?.data?.amount ?? 0;
@@ -300,7 +316,7 @@ export class OrderPlaceService {
           deliveryCharge: storeDeliveryCharge,
           discount: storeDiscount,
         },
-        { transaction }
+        { transaction },
       );
       return newOrder;
     } catch (err) {
@@ -310,7 +326,7 @@ export class OrderPlaceService {
   async createItems(
     orderId: number,
     items: orderItemss,
-    t: Transaction
+    t: Transaction,
   ): Promise<[number, number, OrderItems[]]> {
     const orderItems: OrderItems[] = [];
     let total = 0;
@@ -326,7 +342,7 @@ export class OrderPlaceService {
           throw new ServiceUnavailableException("Product is Not Available");
         if (product.store_id != items.storeId)
           throw new ServiceUnavailableException(
-            "Product is Not Available on this store."
+            "Product is Not Available on this store.",
           );
         if (product.unit == 0 || product.unit < item?.quantity)
           throw new ServiceUnavailableException("Product out of stock");
@@ -349,7 +365,7 @@ export class OrderPlaceService {
             sku: product.sku,
             barcode: product.bar_code,
           },
-          { transaction: t }
+          { transaction: t },
         );
         //===========================================================================
         if (item?.variantId) {
@@ -396,7 +412,7 @@ export class OrderPlaceService {
 
   private async verifyPaymentWithGateway(
     paymentRef: string,
-    grandTotal: number
+    grandTotal: number,
   ) {
     if (this.isPaystackPayment(paymentRef)) {
       // Verify with Paystack
@@ -462,11 +478,11 @@ export class OrderPlaceService {
     // }
   }
 
-    async orderPayment(
+  async orderPayment(
     orderId: number,
     grandTotal: number,
     payment: paymentType,
-    t: Transaction
+    t: Transaction,
   ) {
     const status = payment?.ref ? "pending" : "pending";
 
@@ -482,7 +498,7 @@ export class OrderPlaceService {
         ref: payment?.ref,
         amount: grandTotal * 100,
       },
-      { transaction: t }
+      { transaction: t },
     );
   }
   async orderStatus(orderId: number, status: string, t: Transaction) {
@@ -493,7 +509,7 @@ export class OrderPlaceService {
           status,
           remark: "your order is getting processed.",
         },
-        { transaction: t }
+        { transaction: t },
       );
       return orderStatus;
     } catch (err) {
@@ -503,7 +519,7 @@ export class OrderPlaceService {
   async orderAddress(
     userId: number,
     addres: AddressType,
-    t: Transaction
+    t: Transaction,
   ): Promise<any> {
     try {
       console.log("[orderAddress] Looking for address:", {
@@ -531,7 +547,7 @@ export class OrderPlaceService {
     newOrder: any,
     store: Store,
     orderItems: any[],
-    address: any
+    address: any,
   ) {
     try {
       t.afterCommit(async () => {
@@ -558,7 +574,7 @@ export class OrderPlaceService {
           newOrder.order_id,
           newOrder.userId,
           orderItems[0]?.image,
-          user?.fcmtoken
+          user?.fcmtoken,
         );
         //seller notificcation.(push)
         await this.notificationService.sendPushNotification({
