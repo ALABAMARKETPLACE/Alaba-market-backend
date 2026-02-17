@@ -103,6 +103,8 @@ jobs:
           # -------------------------------
           # VERIFY NODE & NPM
           # -------------------------------
+          export PATH=/opt/cpanel/ea-nodejs22/bin:$PATH
+          
           node -v
           npm -v
 
