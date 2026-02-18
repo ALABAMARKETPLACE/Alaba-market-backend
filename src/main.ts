@@ -3,31 +3,38 @@ import { AppModule } from "./app.module";
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { setupSwagger } from "./swagger";
 import * as dotenv from "dotenv";
-import * as path from "path";
 import * as bodyParser from "body-parser";
 import { AllExceptionsFilter } from "./shared/filters/all-exceptions.filter";
 
-// Catch crashes OUTSIDE Nest (very important for PM2) w
+// ✅ Load .env FIRST (before anything else)
+dotenv.config();
+
+// Catch crashes OUTSIDE Nest (very important for PM2)
 process.on("unhandledRejection", (reason: any) => {
-  console.error("UNHANDLED REJECTION:", reason);
+  console.error("❌ UNHANDLED REJECTION:", reason);
+  // Don't exit in production - let PM2 handle it
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("UNCAUGHT EXCEPTION:", error);
+  console.error("❌ UNCAUGHT EXCEPTION:", error);
+  // Don't exit in production - let PM2 handle it
 });
 
 async function bootstrap() {
-  // ================= ENV CONFIG =================
+  // ================= ENV VALIDATION =================
   const NODE_ENV = process.env.NODE_ENV || "development";
-  const envPath = path.resolve(__dirname, "..", `.env.${NODE_ENV}`);
-  dotenv.config({ path: envPath });
-  // =============================================
+  const PORT = parseInt(process.env.PORT, 10) || 8000;
+
+  console.log("📋 Environment:", NODE_ENV);
+  console.log("🗄️  Database:", process.env.DATABASE_HOST);
+  console.log("🌐 Port:", PORT);
+  // ==================================================
 
   const app = await NestFactory.create(AppModule, {
     logger: ["error", "warn", "log", "debug", "verbose"],
   });
 
-  const logger = new Logger(process.env.NAME || "NestApp");
+  const logger = new Logger("NestApplication");
 
   // ================= GLOBAL FILTERS =================
   app.useGlobalFilters(new AllExceptionsFilter());
@@ -37,7 +44,6 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
-      // Allow extra properties (e.g., nested image objects) to pass through
       whitelist: false,
       forbidNonWhitelisted: false,
     }),
@@ -50,47 +56,78 @@ async function bootstrap() {
   // ==================================================
 
   // ================= CORS ===========================
+  const allowedOrigins = [
+    "https://alabamarketplace.ng",
+    "https://development.alabamarketplace.ng",
+  ];
+
+  // ✅ Add localhost for development
+  if (NODE_ENV === "development") {
+    allowedOrigins.push("http://localhost:3000");
+    allowedOrigins.push("http://localhost:3001");
+    allowedOrigins.push("http://localhost:5173"); // Vite default
+  }
+
   app.enableCors({
-    origin: [
-      "https://alabamarketplace.ng",
-      "https://development.alabamarketplace.ng",
-    ],
+    origin: allowedOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     exposedHeaders: ["Content-Disposition"],
   });
-  /// ==================================================
+  // ==================================================
 
   // ================= REQUEST LOGGER =================
-  app.use((req: any, res: any, next: any) => {
-    console.log("\n=== INCOMING REQUEST ===");
-    console.log(`Method: ${req.method}`);
-    console.log(`URL: ${req.originalUrl}`);
-    console.log(`Origin: ${req.headers.origin}`);
-    console.log(`User-Agent: ${req.headers["user-agent"]}`);
-    console.log(`Content-Type: ${req.headers["content-type"]}`);
-    console.log(
-      `Authorization: ${req.headers.authorization ? "Present" : "Not present"}`,
-    );
+  // ✅ Only log in development or if explicitly enabled
+  if (NODE_ENV === "development" || process.env.LOG_REQUESTS === "true") {
+    app.use((req: any, res: any, next: any) => {
+      const startTime = Date.now();
 
-    res.on("finish", () => {
-      console.log(`Response Status: ${res.statusCode}`);
-      console.log("=== REQUEST COMPLETE ===\n");
+      logger.log(`→ ${req.method} ${req.originalUrl}`);
+
+      res.on("finish", () => {
+        const duration = Date.now() - startTime;
+        const statusEmoji = res.statusCode < 400 ? "✅" : "❌";
+        logger.log(
+          `${statusEmoji} ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`,
+        );
+      });
+
+      next();
     });
-
-    next();
-  });
+  }
   // ==================================================
 
   // ================= SWAGGER ========================
-  setupSwagger(app);
+  // ✅ Only enable Swagger in development/staging
+  if (NODE_ENV !== "production") {
+    setupSwagger(app);
+    logger.log(`📚 Swagger: http://localhost:${PORT}/api/docs`);
+  }
   // ==================================================
 
-  const PORT = Number(process.env.PORT) || 8000;
+  // ================= GRACEFUL SHUTDOWN ==============
+  // ✅ Handle PM2 shutdown signals
+  process.on("SIGTERM", async () => {
+    logger.log("⚠️  SIGTERM received, shutting down gracefully...");
+    await app.close();
+    process.exit(0);
+  });
+
+  process.on("SIGINT", async () => {
+    logger.log("⚠️  SIGINT received, shutting down gracefully...");
+    await app.close();
+    process.exit(0);
+  });
+  // ==================================================
 
   await app.listen(PORT, "0.0.0.0", () => {
-    logger.log(`Server running on port ${PORT} | ENV: ${NODE_ENV}`);
+    logger.log(`🚀 Server running on http://localhost:${PORT}`);
+    logger.log(`📊 Environment: ${NODE_ENV}`);
+    logger.log(`🗄️  Database: ${process.env.DATABASE_HOST}`);
+    if (NODE_ENV !== "production") {
+      logger.log(`📚 Swagger: http://localhost:${PORT}/api/docs`);
+    }
   });
 }
 
