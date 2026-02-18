@@ -57,6 +57,7 @@ async function bootstrap() {
 
   // ================= CORS ===========================
   const allowedOrigins = [
+    "https://dev.alabamarketplace.ng/",
     "https://alabamarketplace.ng",
     "https://development.alabamarketplace.ng",
   ];
