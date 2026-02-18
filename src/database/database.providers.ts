@@ -126,7 +126,7 @@ export const databaseProviders = [
       // await sequelize.sync({ force: true });
 
       // Use alter: true to update existing tables (safer)
-      await sequelize.sync({ alter: true });
+      // await sequelize.sync({ alter: true });
       return sequelize;
     },
     inject: [ConfigService],
