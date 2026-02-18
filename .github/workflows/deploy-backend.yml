@@ -129,7 +129,7 @@ jobs:
           # -------------------------------
           if pm2 describe "\$API_NAME" > /dev/null 2>&1; then
             echo "♻️ Reloading PM2 process..."
-            pm2 restart "$API_NAME"
+            pm2 restart "$API_NAME" --update-env
           else
             echo "🚀 Starting PM2 process..."
             cd /home/$SERVER_USER
