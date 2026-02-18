@@ -139,13 +139,3 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-# Environment files (NEVER COMMIT THESE!)
-.env
-.env.*
-.env.local
-.env.development
-.env.staging
-.env.production
-
-# Allow template
-!.env.example
