@@ -38,7 +38,7 @@ jobs:
           if [[ "${GITHUB_REF_NAME}" == "Master" ]]; then
             echo "SERVER_HOST=${{ vars.PROD_SERVER_HOST }}" >> $GITHUB_ENV
             echo "SERVER_USER=${{ vars.PROD_SERVER_USER }}" >> $GITHUB_ENV
-            echo "API_DIR=/home/${{ vars.PROD_SERVER_USER }}/alaba-marketplace-production/server" >> $GITHUB_ENV
+            echo "API_DIR=${{ vars.PROD_SCRIPT_PATH }}" >> $GITHUB_ENV
             echo "API_NAME=alabamarketplace-apis" >> $GITHUB_ENV
             echo "SSH_KEY<<EOF" >> $GITHUB_ENV
             echo "${{ secrets.PROD_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
