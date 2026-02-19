@@ -60,6 +60,7 @@ async function bootstrap() {
     "https://dev.alabamarketplace.ng",
     "https://alabamarketplace.ng",
     "https://development.alabamarketplace.ng",
+    "https://prod-front.alabamarketplace.ng",
     "dev.alabamarketplace.ng",
   ];
 
