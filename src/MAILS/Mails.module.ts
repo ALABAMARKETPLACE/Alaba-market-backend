@@ -3,6 +3,7 @@ import { Global, Module } from "@nestjs/common";
 import { MailService } from "./Mails.services";
 import { PdfService } from "./pdf.services";
 import { SettingsModule } from "../SETTINGS/settings.module";
+
 @Global()
 @Module({
   imports: [
