@@ -1,19 +1,6 @@
 require("dotenv").config();
 
-console.log("DATABASE_HOST:", process.env.DATABASE_HOST);
-
-// Helper: only add SSL config when needed
-const getDialectOptions = () => {
-  if (process.env.DATABASE_SSL === "true") {
-    return {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false,
-      },
-    };
-  }
-  return {}; // ✅ Empty object = no SSL
-};
+console.log("DATABASE_HOST:", process.env.DATABASE_HOST); // temp debug
 
 module.exports = {
   development: {
@@ -21,19 +8,29 @@ module.exports = {
     password: process.env.DATABASE_PASSWORD,
     database: process.env.DATABASE_DATABASE || process.env.DATABASE,
     host: process.env.DATABASE_HOST,
-    port: process.env.DATABASE_PORT || 5432,
+    port: process.env.DATABASE_PORT,
     dialect: "postgres",
     logging: console.log,
-    dialectOptions: getDialectOptions(),
+    dialectOptions: {
+      ssl: {
+        require: process.env.DATABASE_SSL === "true",
+        rejectUnauthorized: false,
+      },
+    },
   },
   production: {
     username: process.env.DATABASE_USER,
     password: process.env.DATABASE_PASSWORD,
     database: process.env.DATABASE_DATABASE || process.env.DATABASE,
     host: process.env.DATABASE_HOST,
-    port: process.env.DATABASE_PORT || 5432,
+    port: process.env.DATABASE_PORT,
     dialect: "postgres",
     logging: false,
-    dialectOptions: getDialectOptions(),
+    dialectOptions: {
+      ssl: {
+        require: process.env.DATABASE_SSL === "true",
+        rejectUnauthorized: false,
+      },
+    },
   },
 };

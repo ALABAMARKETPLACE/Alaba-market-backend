@@ -128,11 +128,12 @@ import { DriverOrder } from "../DELIVERY_COMPANY/driver_order.entity";
           DriverOrder,
         ],
 
-        autoLoadModels: true,
+        // ✅ REMOVED - these were causing the sync errors:
+        // autoLoadModels: true,
 
-        /** ⚠️ SAME AS sequelize.sync({ alter: true }) */
-        synchronize: true,
-        sync: { alter: true },
+        // /** ⚠️ SAME AS sequelize.sync({ alter: true }) */
+        // synchronize: true,
+        // sync: { alter: true },
 
         /** Azure PostgreSQL SSL */
         dialectOptions: {

@@ -4,17 +4,20 @@ import { Dialect } from "sequelize";
 @Injectable()
 export class ConfigService {
   get sequelizeOrmConfig() {
+    console.log("DATABASE_SSL =", process.env.DATABASE_SSL);
+    console.log("DATABASE_HOST =", process.env.DATABASE_HOST);
 
-     console.log("DATABASE_SSL =", process.env.DATABASE_SSL);
-     console.log("DATABASE_HOST =", process.env.DATABASE_HOST);
-    
     return {
-      dialect: process.env.DATABASE as Dialect,
+      // dialect: process.env.DATABASE as Dialect,
+      dialect: "postgres" as Dialect,
       host: process.env.DATABASE_HOST,
       port: +process.env.DATABASE_PORT,
       username: process.env.DATABASE_USER,
       password: process.env.DATABASE_PASSWORD,
       database: process.env.DATABASE_DATABASE,
+
+      synchronize: false,
+
       logging: false,
       pool: {
         max: 5,
@@ -23,14 +26,14 @@ export class ConfigService {
         idle: 10000,
       },
       dialectOptions:
-      process.env.DATABASE_SSL === "true"
-        ? {
-            ssl: {
-              require: true,
-              rejectUnauthorized: false,
-            },
-          }
-        : {},
+        process.env.DATABASE_SSL === "true"
+          ? {
+              ssl: {
+                require: true,
+                rejectUnauthorized: false,
+              },
+            }
+          : {},
     };
   }
   get firebaseConfig() {

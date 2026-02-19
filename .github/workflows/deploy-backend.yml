@@ -46,8 +46,8 @@ jobs:
           else
             echo "SERVER_HOST=${{ vars.DEV_SERVER_HOST }}" >> $GITHUB_ENV
             echo "SERVER_USER=${{ vars.DEV_SERVER_USER }}" >> $GITHUB_ENV
-            echo "API_DIR=/home/${{ vars.DEV_SERVER_USER }}/alaba-marketplace/server" >> $GITHUB_ENV
-            echo "API_NAME=alabamarketplace-backend" >> $GITHUB_ENV
+            echo "API_DIR=${{ vars.DEV_SCRIPT_PATH }}" >> $GITHUB_ENV
+            echo "API_NAME=dev-backend" >> $GITHUB_ENV
             echo "SSH_KEY<<EOF" >> $GITHUB_ENV
             echo "${{ secrets.DEV_SSH_PRIVATE_KEY }}" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
@@ -129,13 +129,12 @@ jobs:
           # -------------------------------
           if pm2 describe "\$API_NAME" > /dev/null 2>&1; then
             echo "♻️ Reloading PM2 process..."
-            pm2 reload "\$API_NAME" --update-env
+            pm2 restart "$API_NAME" --update-env
           else
             echo "🚀 Starting PM2 process..."
-            pm2 start dist/main.js \
-              --name "\$API_NAME" \
-              --cwd "\$API_DIR" \
-              --node-args="-r dotenv/config"
+            cd /home/$SERVER_USER
+            
+            pm2 start ecosystem.config.js --only "$API_NAME"
           fi
 
           pm2 save
