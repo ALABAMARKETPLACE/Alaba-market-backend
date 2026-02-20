@@ -90,7 +90,7 @@ export class OrderPlaceService {
             order.delivery_date = deliveryDate;
             order.totalItems = qnty;
             order.total = total;
-            order.grandTotal = total; //inside modal
+            order.grandTotal = total;
             order.address = address;
             await order.save({ transaction: t });
             const payment = await this.orderPayment(
@@ -323,6 +323,7 @@ export class OrderPlaceService {
       throw err;
     }
   }
+
   async createItems(
     orderId: number,
     items: orderItemss,
@@ -399,6 +400,7 @@ export class OrderPlaceService {
       throw err;
     }
   }
+
   private isPaystackPayment(paymentRef: string): boolean {
     if (!paymentRef) return false;
     // Paystack references typically start with specific patterns
@@ -501,6 +503,7 @@ export class OrderPlaceService {
       { transaction: t },
     );
   }
+
   async orderStatus(orderId: number, status: string, t: Transaction) {
     try {
       const orderStatus = await OrderStatus.create(
@@ -516,6 +519,7 @@ export class OrderPlaceService {
       throw err;
     }
   }
+
   async orderAddress(
     userId: number,
     addres: AddressType,
@@ -541,6 +545,7 @@ export class OrderPlaceService {
       throw err;
     }
   }
+
   async afterCommit(
     t: Transaction,
     data: CreateOrderDto,
