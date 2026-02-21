@@ -6,17 +6,17 @@ import * as dotenv from "dotenv";
 import * as bodyParser from "body-parser";
 import { AllExceptionsFilter } from "./shared/filters/all-exceptions.filter";
 
-// Load .env FIRST (before anything else)
+// ✅ Load .env FIRST (before anything else)
 dotenv.config();
 
 // Catch crashes OUTSIDE Nest (very important for PM2)
 process.on("unhandledRejection", (reason: any) => {
-  console.error("UNHANDLED REJECTION:", reason);
+  console.error("❌ UNHANDLED REJECTION:", reason);
   // Don't exit in production - let PM2 handle it
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("UNCAUGHT EXCEPTION:", error);
+  console.error("❌ UNCAUGHT EXCEPTION:", error);
   // Don't exit in production - let PM2 handle it
 });
 
@@ -25,9 +25,9 @@ async function bootstrap() {
   const NODE_ENV = process.env.NODE_ENV || "development";
   const PORT = parseInt(process.env.PORT, 10) || 8000;
 
-  console.log("Environment:", NODE_ENV);
-  console.log("Database:", process.env.DATABASE_HOST);
-  console.log("Port:", PORT);
+  console.log("📋 Environment:", NODE_ENV);
+  console.log("🗄️  Database:", process.env.DATABASE_HOST);
+  console.log("🌐 Port:", PORT);
   // ==================================================
 
   const app = await NestFactory.create(AppModule, {
@@ -64,7 +64,7 @@ async function bootstrap() {
     "dev.alabamarketplace.ng",
   ];
 
-  // Add localhost for development
+  // ✅ Add localhost for development
   if (NODE_ENV === "development") {
     allowedOrigins.push("http://localhost:3000");
     allowedOrigins.push("http://localhost:3001");
@@ -81,7 +81,7 @@ async function bootstrap() {
   // ==================================================
 
   // ================= REQUEST LOGGER =================
-  // Only log in development or if explicitly enabled
+  // ✅ Only log in development or if explicitly enabled
   if (NODE_ENV === "development" || process.env.LOG_REQUESTS === "true") {
     app.use((req: any, res: any, next: any) => {
       const startTime = Date.now();
@@ -102,34 +102,34 @@ async function bootstrap() {
   // ==================================================
 
   // ================= SWAGGER ========================
-  // Only enable Swagger in development/staging
+  // ✅ Only enable Swagger in development/staging
   if (NODE_ENV !== "production") {
     setupSwagger(app);
-    logger.log(`Swagger: http://localhost:${PORT}/apis/`);
+    logger.log(`📚 Swagger: http://localhost:${PORT}/api/docs`);
   }
   // ==================================================
 
   // ================= GRACEFUL SHUTDOWN ==============
-  // Handle PM2 shutdown signals
+  // ✅ Handle PM2 shutdown signals
   process.on("SIGTERM", async () => {
-    logger.log("SIGTERM received, shutting down gracefully...");
+    logger.log("⚠️  SIGTERM received, shutting down gracefully...");
     await app.close();
     process.exit(0);
   });
 
   process.on("SIGINT", async () => {
-    logger.log("SIGINT received, shutting down gracefully...");
+    logger.log("⚠️  SIGINT received, shutting down gracefully...");
     await app.close();
     process.exit(0);
   });
   // ==================================================
 
   await app.listen(PORT, "0.0.0.0", () => {
-    logger.log(`Server running on http://localhost:${PORT}`);
-    logger.log(`Environment: ${NODE_ENV}`);
-    logger.log(`Database: ${process.env.DATABASE_HOST}`);
+    logger.log(`🚀 Server running on http://localhost:${PORT}`);
+    logger.log(`📊 Environment: ${NODE_ENV}`);
+    logger.log(`🗄️  Database: ${process.env.DATABASE_HOST}`);
     if (NODE_ENV !== "production") {
-      logger.log(`: http://localhost:${PORT}/apis/`);
+      logger.log(`📚 Swagger: http://localhost:${PORT}/api/docs`);
     }
   });
 }

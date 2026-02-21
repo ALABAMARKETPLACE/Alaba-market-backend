@@ -66,9 +66,10 @@ export class BannerController {
     @StoreId() storeId: number, // From JWT token (sellers only)
     @Body(new StripBodyPipe(["status", "position"])) body: CreateBannerDto,
   ): Promise<DataResponseDto> {
-    // For sellers: use storeId from JWT token
-    // For admins: use storeId from body (if provided) or null
+    // ✅ For sellers: use storeId from JWT token
+    // ✅ For admins: use storeId from body (if provided) or null
     const finalStoreId = role === Role.Seller ? storeId : body.storeId || null;
+
     return this.bannerService.create(finalStoreId, body, role);
   }
 
