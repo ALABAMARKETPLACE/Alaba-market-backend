@@ -22,7 +22,7 @@ import {
 import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced";
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { Order } from "./order.entity";
-import { Transaction, Op } from "sequelize"; // ✅ ADDED Op
+import { Transaction } from "sequelize";
 import { InjectModel } from "@nestjs/sequelize";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import { PaymentGateWayService } from "../PAYMENT_GATEWAY/payment_gateway.service";
@@ -57,94 +57,11 @@ export class OrderPlaceService {
     try {
       const result = await this.orderRepository.sequelize.transaction(
         async (t) => {
-          // ✅ IDEMPOTENCY CHECK - Prevent duplicate orders
-          if (data.payment?.ref) {
-            console.log(
-              "🔍 [Idempotency Check] Checking for existing order with payment ref:",
-              data.payment.ref,
-            );
-
-            const existingOrders = await Order.findAll({
-              where: {
-                userId,
-                createdAt: {
-                  [Op.gte]: new Date(Date.now() - 120000), // Last 2 minutes
-                },
-              },
-              include: [
-                {
-                  model: OrderPayments,
-                  where: { ref: data.payment.ref },
-                  required: true,
-                },
-                {
-                  model: OrderItems,
-                  required: false,
-                },
-                {
-                  model: OrderStatus,
-                  required: false,
-                },
-              ],
-              transaction: t,
-            });
-
-            if (existingOrders && existingOrders.length > 0) {
-              console.log(
-                "⚠️ [Duplicate Prevention] Order already exists for payment ref:",
-                {
-                  userId,
-                  paymentRef: data.payment.ref,
-                  existingOrderIds: existingOrders.map((o) => o.id),
-                  createdAt: existingOrders[0].createdAt,
-                },
-              );
-
-              // Return existing orders in same format as new orders
-              const formattedExistingOrders = await Promise.all(
-                existingOrders.map(async (order) => {
-                  const payment = await OrderPayments.findOne({
-                    where: { orderId: order.id },
-                    transaction: t,
-                  });
-                  const status = await OrderStatus.findAll({
-                    where: { orderId: order.id },
-                    transaction: t,
-                  });
-                  const items = await OrderItems.findAll({
-                    where: { orderId: order.id },
-                    transaction: t,
-                  });
-                  const address = await NewAddress.findOne({
-                    where: { id: order.addressId },
-                    transaction: t,
-                  });
-
-                  return {
-                    newOrder: order,
-                    orderPayment: payment,
-                    orderStatus: status,
-                    orderItems: items,
-                    address: address,
-                  };
-                }),
-              );
-
-              return formattedExistingOrders;
-            }
-
-            console.log(
-              "✅ [Idempotency Check] No existing order found, proceeding with creation",
-            );
-          }
-
-          // ✅ PROCEED WITH NEW ORDER CREATION
           const newOrders = [];
           const verified = await this.basicCheck(data);
 
           const products = await this.groupProducts(data.cart, t);
           const address = await this.orderAddress(userId, data.address, t);
-
           for (const item of products) {
             const order = await this.placeOrder(
               userId,
@@ -162,7 +79,7 @@ export class OrderPlaceService {
               where: { id: item.storeId },
               transaction: t,
             });
-
+            //================
             const deliveryDate = new Date();
             deliveryDate.setDate(
               deliveryDate.getDate() + (store?.delivery_period ?? 2),
@@ -170,27 +87,23 @@ export class OrderPlaceService {
             deliveryDate.setMinutes(
               deliveryDate.getMinutes() + (store?.delivery_period_minutes ?? 0),
             );
-
             order.delivery_date = deliveryDate;
             order.totalItems = qnty;
             order.total = total;
-            order.grandTotal = total;
+            order.grandTotal = total; //inside modal
             order.address = address;
             await order.save({ transaction: t });
-
             const payment = await this.orderPayment(
               order.id,
               order.grandTotal,
               data.payment,
               t,
             );
-
             const orderStatus = await this.orderStatus(
               order.id,
               order.status,
               t,
             );
-
             newOrders.push({
               newOrder: order,
               orderPayment: payment,
@@ -198,14 +111,11 @@ export class OrderPlaceService {
               orderItems: itms,
               address: address,
             });
-
             await this.afterCommit(t, data, order, store, itms, address);
           }
-
           return newOrders;
         },
       );
-
       return new DataResponseDto(result);
     } catch (err) {
       console.log(err);
@@ -232,6 +142,7 @@ export class OrderPlaceService {
       const items: orderItemss[] = await data.reduce(
         async (accPromise, item) => {
           const acc = await accPromise;
+          //index only scan on products._id and store_id
           const storeId = await Products.findOne({
             attributes: ["store_id"],
             where: { _id: item?.productId },
@@ -269,7 +180,7 @@ export class OrderPlaceService {
     try {
       console.log("🔍 [basicCheck] Starting order validation...");
 
-      // 🚫 BLOCK CASH ON DELIVERY
+      // 🚫 BLOCK CASH ON DELIVERY (FIX)
       const paymentType = data?.payment?.type?.toString().toLowerCase()?.trim();
 
       if (
@@ -279,6 +190,7 @@ export class OrderPlaceService {
         throw new BadRequestException("Cash on delivery is not available");
       }
 
+      //===================
       if (!Array.isArray(data.cart) || data.cart.length === 0) {
         throw new BadRequestException("No Products Selected");
       }
@@ -291,6 +203,7 @@ export class OrderPlaceService {
         throw new BadRequestException("Failed to Calculate Delivery charge.");
       }
 
+      //=====================
       console.log("[basicCheck] Comparing address IDs:");
       console.log(
         "   - Token addressId:",
@@ -328,6 +241,36 @@ export class OrderPlaceService {
       throw err;
     }
   }
+
+  // async placeOrder(
+  //   userId: number,
+  //   data: CreateOrderDto,
+  //   product: orderItemss,
+  //   verified: any,
+  //   transaction: Transaction
+  // ) {
+  //   try {
+  //     const newOrder = await Order.create(
+  //       {
+  //         userId,
+  //         addressId: data.address?.id,
+  //         storeId: product.storeId,
+  //         paymentType: data.payment?.ref
+  //           ? "pay online"
+  //           : data?.payment?.type == "Pay On Credit"
+  //           ? "pay-on-credit"
+  //           : "cash-on-delivery",
+  //         tax: verified?.data?.tax ?? 0,
+  //         deliveryCharge: verified?.data?.amount,
+  //         discount: verified?.data?.discount ?? 0,
+  //       },
+  //       { transaction }
+  //     );
+  //     return newOrder;
+  //   } catch (err) {
+  //     throw err;
+  //   }
+  // }
 
   async placeOrder(
     userId: number,
@@ -380,7 +323,6 @@ export class OrderPlaceService {
       throw err;
     }
   }
-
   async createItems(
     orderId: number,
     items: orderItemss,
@@ -409,7 +351,7 @@ export class OrderPlaceService {
           transaction: t,
         });
         await product.increment("orderCount", { by: 1, transaction: t });
-
+        //============================================================================================
         const newItem = await OrderItems.create(
           {
             orderId,
@@ -417,7 +359,7 @@ export class OrderPlaceService {
             variantId: item?.variantId,
             quantity: item?.quantity,
             price: product.retail_rate,
-            totalPrice: 0,
+            totalPrice: 0, //inside modal,
             image: product.image,
             name: product.name,
             sku: product.sku,
@@ -425,7 +367,7 @@ export class OrderPlaceService {
           },
           { transaction: t },
         );
-
+        //===========================================================================
         if (item?.variantId) {
           const variant = await ProductVariant.findOne({
             where: { id: item?.variantId },
@@ -437,7 +379,7 @@ export class OrderPlaceService {
           if (variant.units == 0 || variant.units < item?.quantity)
             throw new ServiceUnavailableException("Variant is out of stock");
           newItem.price = variant.price;
-          newItem.totalPrice = 0;
+          newItem.totalPrice = 0; //inside modal
           newItem.image = variant.image;
           newItem.sku = variant.sku;
           newItem.barcode = variant.barcode;
@@ -457,9 +399,10 @@ export class OrderPlaceService {
       throw err;
     }
   }
-
   private isPaystackPayment(paymentRef: string): boolean {
     if (!paymentRef) return false;
+    // Paystack references typically start with specific patterns
+    // You can adjust this logic based on your reference patterns
     return (
       paymentRef.startsWith("ps_") ||
       paymentRef.startsWith("paystack_") ||
@@ -472,6 +415,7 @@ export class OrderPlaceService {
     grandTotal: number,
   ) {
     if (this.isPaystackPayment(paymentRef)) {
+      // Verify with Paystack
       const paystackResponse: any = await this.paystackService.verifyPayment({
         reference: paymentRef,
       });
@@ -480,7 +424,7 @@ export class OrderPlaceService {
         paystackResponse.status &&
         paystackResponse.data?.data?.status === "success"
       ) {
-        const amountInKobo = paystackResponse.data?.data?.amount;
+        const amountInKobo = paystackResponse.data?.data?.amount; // Paystack amount is in kobo
         const expectedAmountInKobo = grandTotal * 100;
 
         return {
@@ -503,6 +447,35 @@ export class OrderPlaceService {
         };
       }
     }
+    // else {
+    //   // Verify with Network International
+    //   const niResponse = await this.paymentGatewayService.getOrderDetails(
+    //     paymentRef
+    //   );
+
+    //   if (niResponse?._embedded?.payment[0]?.state === "CAPTURED") {
+    //     const amount = niResponse.amount?.value;
+    //     const expectedAmount = grandTotal * 100;
+
+    //     return {
+    //       verified: true,
+    //       status: amount === expectedAmount ? "success" : "incomplete",
+    //       amount: amount,
+    //       currency: niResponse.amount?.currencyCode,
+    //       email: niResponse.emailAddress,
+    //       gateway: "network_international",
+    //     };
+    //   } else {
+    //     return {
+    //       verified: false,
+    //       status: "failedd",
+    //       amount: grandTotal * 100,
+    //       currency: "USD",
+    //       email: null,
+    //       gateway: "network_international",
+    //     };
+    //   }
+    // }
   }
 
   async orderPayment(
@@ -528,7 +501,6 @@ export class OrderPlaceService {
       { transaction: t },
     );
   }
-
   async orderStatus(orderId: number, status: string, t: Transaction) {
     try {
       const orderStatus = await OrderStatus.create(
@@ -544,7 +516,6 @@ export class OrderPlaceService {
       throw err;
     }
   }
-
   async orderAddress(
     userId: number,
     addres: AddressType,
@@ -570,7 +541,6 @@ export class OrderPlaceService {
       throw err;
     }
   }
-
   async afterCommit(
     t: Transaction,
     data: CreateOrderDto,
@@ -581,19 +551,21 @@ export class OrderPlaceService {
   ) {
     try {
       t.afterCommit(async () => {
+        //get items to remove from cart
         const itemstoRemove = data?.cart
           ?.filter((item: any) => item?.id && !isNaN(Number(item?.id)))
           .map((item: any) => Number(item?.id));
 
+        //removing items from cart after the order is placed successfully
         if (itemstoRemove.length > 0) {
           await this.cartService.removeFromCart(itemstoRemove);
         }
-
+        //getting store,user,address details to send emails and et.c
         const user = await newOrder.getUserDetails({
           row: true,
           attributes: ["name", "email", "fcmtoken"],
         });
-
+        //increasing the order count in store
         await store.increment("order_count", { by: 1 });
         await this.notificationService.createNotification(
           "order",
@@ -604,13 +576,13 @@ export class OrderPlaceService {
           orderItems[0]?.image,
           user?.fcmtoken,
         );
-
+        //seller notificcation.(push)
         await this.notificationService.sendPushNotification({
           to: store.fcmtoken,
           message: `You have received a new order #${newOrder?.order_id}`,
           title: "You have a new Order",
         });
-
+        //after the order is placed we are sending emails to user and seller.
         const datass = {
           user: user,
           newOrder,

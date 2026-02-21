@@ -70,7 +70,6 @@ import { BoostRequestModule } from "./BOOST_REQUESTS/boost-request.module";
 import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.module";
 import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.module";
 import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
-import { EmailModule } from "./MAILS/Mails.module"; 
 
 @Module({
   imports: [
@@ -84,7 +83,6 @@ import { EmailModule } from "./MAILS/Mails.module";
       max: 200,
     }),
     SharedModule,
-    EmailModule,
     AuthModule,
     UserModule,
     LandingModule,
