@@ -111,9 +111,12 @@ export class PaystackSubaccount extends Model<PaystackSubaccount> {
   })
   is_active: boolean;
 
-  @BelongsTo(() => Store, { foreignKey: 'store_id', constraints: false })
+  @BelongsTo(() => Store, { foreignKey: "store_id", constraints: false })
   store: Store;
 
-  @BelongsTo(() => User, { foreignKey: 'admin_approved_by', constraints: false })
+  @BelongsTo(() => User, {
+    foreignKey: "admin_approved_by",
+    constraints: false,
+  })
   approver: User;
 }
