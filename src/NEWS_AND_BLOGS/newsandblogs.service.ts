@@ -13,9 +13,6 @@ import { ImgcompressService } from "../IMAGE_COMPRESS/img_compress.service";
 
 @Injectable()
 export class NewsAndBlogsService {
-  private readonly S3_BUCKET_URL =
-    "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace";
-
   constructor(
     private readonly newsRepo: NewsAndBlogsRepository,
     private readonly imageUploadService: ImgcompressService,
@@ -68,24 +65,27 @@ export class NewsAndBlogsService {
     try {
       const newsData: any = { ...data };
 
-      // ✅ Upload image and store full S3 URL
+      // ✅ Upload image and store full S3 URL ONLY
       if (files?.image) {
         const imageUrl = await this.imageUploadService.uploadToS3(files.image);
         newsData.image = imageUrl;
+        // ✅ NO imageKey assignment here!
       }
 
-      // ✅ Upload video and store full S3 URL
+      // ✅ Upload video and store full S3 URL ONLY
       if (files?.video) {
         const videoUrl = await this.imageUploadService.uploadToS3(files.video);
         newsData.video = videoUrl;
+        // ✅ NO videoKey assignment here!
       }
 
-      // ✅ Upload thumbnail and store full S3 URL
+      // ✅ Upload thumbnail and store full S3 URL ONLY
       if (files?.thumbnail) {
         const thumbnailUrl = await this.imageUploadService.uploadToS3(
           files.thumbnail,
         );
         newsData.thumbnail = thumbnailUrl;
+        // ✅ NO thumbnailKey assignment here!
       }
 
       const news = await this.newsRepo.create(newsData);
@@ -133,6 +133,7 @@ export class NewsAndBlogsService {
         // Upload new image
         const imageUrl = await this.imageUploadService.uploadToS3(files.image);
         updateData.image = imageUrl;
+        // ✅ NO imageKey assignment here!
       }
 
       // ✅ Handle video update
@@ -146,6 +147,7 @@ export class NewsAndBlogsService {
 
         const videoUrl = await this.imageUploadService.uploadToS3(files.video);
         updateData.video = videoUrl;
+        // ✅ NO videoKey assignment here!
       }
 
       // ✅ Handle thumbnail update
@@ -161,6 +163,7 @@ export class NewsAndBlogsService {
           files.thumbnail,
         );
         updateData.thumbnail = thumbnailUrl;
+        // ✅ NO thumbnailKey assignment here!
       }
 
       const updated = await this.newsRepo.update(id, updateData);
