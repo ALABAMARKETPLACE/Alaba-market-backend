@@ -49,17 +49,38 @@ export class NewsAndBlogs extends Model {
   })
   image: string;
 
+  // ✅ ADD: S3 Key for image deletion
+  @Column({
+    type: DataType.STRING(512),
+    allowNull: true,
+  })
+  imageKey: string;
+
   @Column({
     type: DataType.STRING(512),
     allowNull: true,
   })
   video: string;
 
+  // ✅ ADD: S3 Key for video deletion
+  @Column({
+    type: DataType.STRING(512),
+    allowNull: true,
+  })
+  videoKey: string;
+
   @Column({
     type: DataType.STRING(512),
     allowNull: true,
   })
   thumbnail: string;
+
+  // ✅ ADD: S3 Key for thumbnail deletion
+  @Column({
+    type: DataType.STRING(512),
+    allowNull: true,
+  })
+  thumbnailKey: string;
 
   @Column({
     type: DataType.STRING(100),

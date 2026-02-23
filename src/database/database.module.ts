@@ -34,7 +34,7 @@ import { InvoiceItems } from "../INVOICE_ITEMS/invoiceitems.entity";
 import { Invoice } from "../INVOICE/invoice.entity";
 import { Settlements } from "../SETTLEMENTS/settlements.entity";
 import { UserHistory } from "../USER_HISTORY/userhistory.entity";
-import { NewsAndBlogs } from "../NEWS_BLOGS/newsandblogs.entity";
+import { NewsAndBlogs } from "../NEWS_AND_BLOGS/newsandblogs.entity";
 import { StoreReview } from "../STORE_REVIEW/storereview.entity";
 import { OrderLog } from "../ORDER_LOG/orderlog.entity";
 import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
@@ -59,6 +59,7 @@ import { DeliveryCompany } from "../DELIVERY_COMPANY/delivery_company.entity";
 import { Driver } from "../DELIVERY_COMPANY/driver.entity";
 import { DriverInvitation } from "../DELIVERY_COMPANY/driver_invitation.entity";
 import { DriverOrder } from "../DELIVERY_COMPANY/driver_order.entity";
+import { PaystackSubaccount } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.entity";
 
 @Global()
 @Module({
@@ -126,6 +127,7 @@ import { DriverOrder } from "../DELIVERY_COMPANY/driver_order.entity";
           Driver,
           DriverInvitation,
           DriverOrder,
+          PaystackSubaccount,
         ],
 
         // ✅ REMOVED - these were causing the sync errors:
