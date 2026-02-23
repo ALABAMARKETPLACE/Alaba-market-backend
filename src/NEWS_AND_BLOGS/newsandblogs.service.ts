@@ -13,6 +13,9 @@ import { ImgcompressService } from "../IMAGE_COMPRESS/img_compress.service";
 
 @Injectable()
 export class NewsAndBlogsService {
+  private readonly S3_BUCKET_URL =
+    "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace";
+
   constructor(
     private readonly newsRepo: NewsAndBlogsRepository,
     private readonly imageUploadService: ImgcompressService,
@@ -65,38 +68,24 @@ export class NewsAndBlogsService {
     try {
       const newsData: any = { ...data };
 
-      // ✅ Upload image
+      // ✅ Upload image and store full S3 URL
       if (files?.image) {
-        const dirName = process.env.DIRECTORY || "news/images";
-        const imageKey = `${dirName}/${Date.now()}_${files.image.originalname}`;
-
         const imageUrl = await this.imageUploadService.uploadToS3(files.image);
         newsData.image = imageUrl;
-        newsData.imageKey = imageKey;
       }
 
-      // ✅ Upload video
+      // ✅ Upload video and store full S3 URL
       if (files?.video) {
-        const dirName = process.env.DIRECTORY || "news/videos";
-        const videoKey = `${dirName}/${Date.now()}_${files.video.originalname}`;
-
         const videoUrl = await this.imageUploadService.uploadToS3(files.video);
         newsData.video = videoUrl;
-        newsData.videoKey = videoKey;
       }
 
-      // ✅ Upload thumbnail
+      // ✅ Upload thumbnail and store full S3 URL
       if (files?.thumbnail) {
-        const dirName = process.env.DIRECTORY || "news/thumbnails";
-        const thumbnailKey = `${dirName}/${Date.now()}_${
-          files.thumbnail.originalname
-        }`;
-
         const thumbnailUrl = await this.imageUploadService.uploadToS3(
           files.thumbnail,
         );
         newsData.thumbnail = thumbnailUrl;
-        newsData.thumbnailKey = thumbnailKey;
       }
 
       const news = await this.newsRepo.create(newsData);
@@ -133,50 +122,45 @@ export class NewsAndBlogsService {
 
       // ✅ Handle image update
       if (files?.image) {
-        // Delete old image from S3
-        if (existing.imageKey) {
-          await this.imageUploadService.deleteFromS3(existing.imageKey);
+        // Delete old image from S3 (extract key from URL)
+        if (existing.image) {
+          const oldKey = this.extractS3Key(existing.image);
+          if (oldKey) {
+            await this.imageUploadService.deleteFromS3(oldKey);
+          }
         }
 
         // Upload new image
-        const dirName = process.env.DIRECTORY || "news/images";
-        const imageKey = `${dirName}/${Date.now()}_${files.image.originalname}`;
-
         const imageUrl = await this.imageUploadService.uploadToS3(files.image);
         updateData.image = imageUrl;
-        updateData.imageKey = imageKey;
       }
 
       // ✅ Handle video update
       if (files?.video) {
-        if (existing.videoKey) {
-          await this.imageUploadService.deleteFromS3(existing.videoKey);
+        if (existing.video) {
+          const oldKey = this.extractS3Key(existing.video);
+          if (oldKey) {
+            await this.imageUploadService.deleteFromS3(oldKey);
+          }
         }
-
-        const dirName = process.env.DIRECTORY || "news/videos";
-        const videoKey = `${dirName}/${Date.now()}_${files.video.originalname}`;
 
         const videoUrl = await this.imageUploadService.uploadToS3(files.video);
         updateData.video = videoUrl;
-        updateData.videoKey = videoKey;
       }
 
       // ✅ Handle thumbnail update
       if (files?.thumbnail) {
-        if (existing.thumbnailKey) {
-          await this.imageUploadService.deleteFromS3(existing.thumbnailKey);
+        if (existing.thumbnail) {
+          const oldKey = this.extractS3Key(existing.thumbnail);
+          if (oldKey) {
+            await this.imageUploadService.deleteFromS3(oldKey);
+          }
         }
-
-        const dirName = process.env.DIRECTORY || "news/thumbnails";
-        const thumbnailKey = `${dirName}/${Date.now()}_${
-          files.thumbnail.originalname
-        }`;
 
         const thumbnailUrl = await this.imageUploadService.uploadToS3(
           files.thumbnail,
         );
         updateData.thumbnail = thumbnailUrl;
-        updateData.thumbnailKey = thumbnailKey;
       }
 
       const updated = await this.newsRepo.update(id, updateData);
@@ -202,15 +186,26 @@ export class NewsAndBlogsService {
         throw new NotFoundException("News article not found");
       }
 
-      // ✅ Delete files from S3
-      if (news.imageKey) {
-        await this.imageUploadService.deleteFromS3(news.imageKey);
+      // ✅ Delete files from S3 (extract keys from URLs)
+      if (news.image) {
+        const imageKey = this.extractS3Key(news.image);
+        if (imageKey) {
+          await this.imageUploadService.deleteFromS3(imageKey);
+        }
       }
-      if (news.videoKey) {
-        await this.imageUploadService.deleteFromS3(news.videoKey);
+
+      if (news.video) {
+        const videoKey = this.extractS3Key(news.video);
+        if (videoKey) {
+          await this.imageUploadService.deleteFromS3(videoKey);
+        }
       }
-      if (news.thumbnailKey) {
-        await this.imageUploadService.deleteFromS3(news.thumbnailKey);
+
+      if (news.thumbnail) {
+        const thumbnailKey = this.extractS3Key(news.thumbnail);
+        if (thumbnailKey) {
+          await this.imageUploadService.deleteFromS3(thumbnailKey);
+        }
       }
 
       await this.newsRepo.delete(id);
@@ -220,6 +215,24 @@ export class NewsAndBlogsService {
       if (err instanceof NotFoundException) throw err;
       console.error("Failed to delete news:", err);
       throw new InternalServerErrorException("Failed to delete news");
+    }
+  }
+
+  /**
+   * Extract S3 key from full S3 URL
+   * Example: https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771859161043_newlogo.jpeg
+   * Returns: alabamarketplace/1771859161043_newlogo.jpeg
+   */
+  private extractS3Key(url: string): string | null {
+    if (!url) return null;
+
+    try {
+      // Match pattern: https://bucket.s3.region.amazonaws.com/KEY
+      const match = url.match(/amazonaws\.com\/(.+)$/);
+      return match ? match[1] : null;
+    } catch (err) {
+      console.error("Failed to extract S3 key from URL:", url, err);
+      return null;
     }
   }
 }
