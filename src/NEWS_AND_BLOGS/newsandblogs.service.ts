@@ -223,8 +223,9 @@ export class NewsAndBlogsService {
 
   /**
    * Extract S3 key from full S3 URL
-   * Example: https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771859161043_newlogo.jpeg
+   * OLD URL: https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771859161043_newlogo.jpeg
    * Returns: alabamarketplace/1771859161043_newlogo.jpeg
+   * NEW URL: https://alabamarketplace.s3.us-east-2.amazonaws.com/files/1759318627804.jpg
    */
   private extractS3Key(url: string): string | null {
     if (!url) return null;
