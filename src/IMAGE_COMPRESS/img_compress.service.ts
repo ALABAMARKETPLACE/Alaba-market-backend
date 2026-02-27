@@ -8,8 +8,7 @@ import sharp from "sharp";
 // import * as pdfjsLib from "pdfjs-dist";
 // import { createCanvas } from "canvas";
 // import { pdfToPng } from "pdf-to-png-converter";
-import { PDFDocument } from 'pdf-lib';
-
+import { PDFDocument } from "pdf-lib";
 
 @Injectable()
 export class ImgcompressService {
@@ -25,25 +24,56 @@ export class ImgcompressService {
 
   async imgCompressAndUpload(file: Express.Multer.File): Promise<any> {
     try {
+      // ✅ Add debug logging
+      console.log("[imgCompressAndUpload] Starting compression...");
+      console.log("File:", file?.originalname, file?.mimetype, file?.size);
+      console.log("AWS Config:", {
+        bucket: process.env.BUCKET_NAME,
+        region: process.env.REGION,
+        directory: process.env.DIRECTORY,
+        hasAccessKey: !!process.env.ACCESSKEYID,
+        hasSecretKey: !!process.env.SECRETKEYID,
+      });
+
       const outputSharp = sharp(file.buffer);
       if (file.mimetype == "image/png") {
         outputSharp.png({ compressionLevel: 9 });
       } else {
         outputSharp.webp({ quality: 80 });
       }
+
+      console.log("   Compressing image...");
       const resizedImg = await outputSharp.toBuffer();
+      console.log("   Compressed size:", resizedImg.length);
+
       const dirName = process.env.DIRECTORY;
       const params = {
         Bucket: process.env.BUCKET_NAME,
         Key: `${dirName}/${Date.now()}.jpg`,
         Body: resizedImg,
-        ACL: "public-read",
+        ContentType: "image/jpeg",
       };
+
+      console.log("   Uploading to S3:", params.Key);
       const data = await this.s3.upload(params).promise();
+      console.log("Upload successful:", data.Location);
+
       return data;
     } catch (err) {
+      // ✅ LOG THE ACTUAL ERROR
+      console.error("[imgCompressAndUpload] Error details:", {
+        message: err.message,
+        code: err.code,
+        statusCode: err.statusCode,
+        stack: err.stack,
+      });
+
       if (err instanceof HttpException) throw err;
-      throw new InternalServerErrorException();
+
+      // ✅ Throw error with actual message
+      throw new InternalServerErrorException(
+        err.message || "Failed to compress and upload image",
+      );
     }
   }
 
@@ -51,16 +81,25 @@ export class ImgcompressService {
     try {
       const bucketName = process.env.BUCKET_NAME;
       const dirName = process.env.DIRECTORY;
+      const timestamp = Date.now();
+
       const params = {
         Bucket: bucketName,
-        Key: `${dirName}/${file.originalname}`,
+        Key: `${dirName}/${timestamp}_${file.originalname}`, // ✅ Add timestamp to avoid duplicates
         Body: file.buffer,
-        ACL: "public-read",
+        ContentType: file.mimetype,
       };
+
+      console.log("🔍 [uploadToS3] Uploading:", params.Key);
       const data = await this.s3.upload(params).promise();
+      console.log("✅ [uploadToS3] Success:", data.Location);
+
       return data.Location;
     } catch (error) {
-      throw error;
+      console.error("[uploadToS3] Error:", error);
+      throw new InternalServerErrorException(
+        error.message || "Failed to upload to S3",
+      );
     }
   }
 
@@ -103,21 +142,19 @@ export class ImgcompressService {
 
       const uploadPromises = files.map(async (file) => {
         try {
-          console.log('file',file)
-          console.log('this is file type',file?.mimetype)
+          console.log("file", file);
+          console.log("this is file type", file?.mimetype);
           const timestamp = Date.now();
 
           if (file.mimetype === "application/pdf") {
-
-            
-          const pdfDoc = await PDFDocument.load(file?.buffer);
-          const pageCount = pdfDoc.getPageCount();
+            const pdfDoc = await PDFDocument.load(file?.buffer);
+            const pageCount = pdfDoc.getPageCount();
 
             const pdfParams = {
               Bucket: bucketName,
               Key: `${dirName}/${timestamp}_${file.originalname}`,
               Body: file.buffer,
-              ACL: "public-read",
+              // ACL: "public-read",
               ContentType: "application/pdf",
             };
 
@@ -125,22 +162,22 @@ export class ImgcompressService {
 
             // const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-conversion-'));
             // const tempPdfPath = path.join(tempDir, file.originalname);
-            
+
             // fs.writeFileSync(tempPdfPath, file.buffer);
-            
+
             // const basename = path.basename(file.originalname, path.extname(file.originalname));
             // const opts = {
             //   format: 'png',
             //   out_dir: tempDir,
             //   out_prefix: basename,
-            //   page: 1, 
+            //   page: 1,
             // };
-            
+
             // await pdf.convert(tempPdfPath, opts);
-            
-            // const convertedImagePath = path.join(tempDir, `${basename}-1.png`); 
+
+            // const convertedImagePath = path.join(tempDir, `${basename}-1.png`);
             // const colorImageBuffer = fs.readFileSync(convertedImagePath);
-            
+
             // const bwImageBuffer = await sharp(colorImageBuffer).grayscale().toBuffer();
 
             // const colorParams = {
@@ -172,7 +209,7 @@ export class ImgcompressService {
               // bwImageUrl: bwData.Location,
               pdfUrl: pdfData.Location,
               originalName: file.originalname,
-              pageCount:pageCount
+              pageCount: pageCount,
             };
           } else if (allowedImageTypes.includes(file.mimetype)) {
             const bwBuffer = await sharp(file.buffer).grayscale().toBuffer();
@@ -181,14 +218,14 @@ export class ImgcompressService {
               Bucket: bucketName,
               Key: `${dirName}/${timestamp}_color_${file.originalname}`,
               Body: file.buffer,
-              ACL: "public-read",
+              ContentType: file.mimetype,
             };
 
             const bwParams = {
               Bucket: bucketName,
               Key: `${dirName}/${timestamp}_bw_${file.originalname}`,
               Body: bwBuffer,
-              ACL: "public-read",
+              ContentType: file.mimetype,
             };
 
             const [colorData, bwData] = await Promise.all([
@@ -200,7 +237,7 @@ export class ImgcompressService {
               colorImageUrl: colorData.Location,
               bwImageUrl: bwData.Location,
               originalName: file.originalname,
-              pageCount:1
+              pageCount: 1,
             };
           } else {
             throw new Error(`Unsupported file type: ${file.mimetype}`);
@@ -217,7 +254,7 @@ export class ImgcompressService {
       const uploadResults = await Promise.all(uploadPromises);
 
       const successfulResults = uploadResults.filter(
-        (result) => result !== null
+        (result) => result !== null,
       );
 
       const allFilesUploaded = errorFiles.length === 0;
