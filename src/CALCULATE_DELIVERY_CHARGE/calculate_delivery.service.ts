@@ -245,6 +245,8 @@ export class CalculateDeliveryChargeService {
         return sum + item.weight * quantity;
       }, 0);
 
+      // UPDATED SECTION FOR ZERO DELIVERY FEE BWLO
+
       // Try to find delivery charge by state first, then by country
       let deliveryChargeRecord: NewDistanceCharge | null = null;
 
@@ -288,14 +290,28 @@ export class CalculateDeliveryChargeService {
           ) || null;
       }
 
-      // If no delivery charge found, return error
-      if (!deliveryChargeRecord) {
-        throw new BadRequestException(
-          `Delivery not available for this location with weight ${totalWeight}kg. Please contact support.@@`,
-        );
-      }
+      // ⚠️ TEMPORARY: Accept all addresses (admin approval check disabled)
+      // TODO: Re-enable admin approval check after configuring delivery zones
+      // if (!deliveryChargeRecord) {
+      //   throw new BadRequestException(
+      //     `Delivery not available for this location with weight ${totalWeight}kg. Please contact support.@@`,
+      //   );
+      // }
 
-      const deliveryCharge = deliveryChargeRecord.delivery_charge;
+      // ✅ TEMPORARY: Use default delivery charge if none configured
+      const deliveryCharge = deliveryChargeRecord?.delivery_charge || 0; // Default to 0 if no config
+      console.log(
+        "⚠️ [Delivery] Using default charge for unconfigured location:",
+        {
+          state_id: data.address.state_id,
+          country_id: data.address.country_id,
+          totalWeight,
+          deliveryCharge,
+          hasConfig: !!deliveryChargeRecord,
+        },
+      );
+
+      // UPDATED SECTION FO ZERO DELIVERY FEE ABOVE
 
       // Calculate discount (same logic as old service)
       const cartTotal = data.cart.reduce((sum, item) => {
