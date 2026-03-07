@@ -1,3 +1,7 @@
+import { Logger } from "@nestjs/common";
+
+const logger = new Logger("OrderSubstitutionUserTemplate");
+
 const ToUserOrderSubstitution = async ({
     user,
     order,
@@ -329,7 +333,10 @@ const ToUserOrderSubstitution = async ({
       };
       return obj;
     } catch (err) {
-      console.error("Error in ToUserOrderSubstitution:", err);
+      logger.error(
+        `Error in ToUserOrderSubstitution: ${err?.message || err}`,
+        err?.stack,
+      );
       let obj = {};
       return obj;
     }
