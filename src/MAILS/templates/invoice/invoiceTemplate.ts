@@ -1,6 +1,5 @@
-
-const InvoiceHtml = async (Details: any,token:string) => {
-    const deactivationLink=`${process.env.BASE_URL}invoice/${token}`;
+const InvoiceHtml = async (Details: any, token: string) => {
+  const deactivationLink = `${process.env.BASE_URL}invoice/${token}`;
   let obj = {
     to: Details?.to_mail,
     subject: `Invoice Generated`,
@@ -22,7 +21,9 @@ const InvoiceHtml = async (Details: any,token:string) => {
           "
         >
           <div style="text-align: center">
-            <div style="border-top: 20px solid ${process.env.COLOR}; background-color: #ececec">
+            <div style="border-top: 20px solid ${
+              process.env.COLOR
+            }; background-color: #ececec">
               <img
                 src="${process.env.LOGO}"
                 alt="logo"
@@ -38,7 +39,9 @@ const InvoiceHtml = async (Details: any,token:string) => {
     
           <div style="padding: 20px">
             <p style="font-size: 13px; color: gray">
-              You have a new Invoice with invoice ID:${Details.invoice_id??''}, open the url
+              You have a new Invoice with invoice ID:${
+                Details.invoice_id ?? ""
+              }, open the url
               below to view the invoice. also attached in the email itself.
             </p>
             <table
@@ -92,9 +95,10 @@ const InvoiceHtml = async (Details: any,token:string) => {
               </span>
             </h2>
             <p>
-              Founded in 2023 by a group of businessmen in UAE, ${process.env.NAME} leverages the
-              power of marketing intelligence and e-commerce vision to deliver a
-              wide range of products that make your lifestyle more attractive.
+               Founded in 2026 by the Alaba Amalgamated Traders Union in partnership with Taxgoglobal Corporation, 
+              ${
+                process.env.NAME
+              } leverages the power of marketing intelligence and e-commerce vision to deliver a wide range of products that make your lifestyle more attractive.
             </p>
           </div>
         </div>

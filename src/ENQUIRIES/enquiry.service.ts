@@ -14,6 +14,7 @@ import { EnquirySearchDto } from "./dto/querySearch.dto";
 import { Op } from "sequelize";
 import { MailService } from "../MAILS/Mails.services";
 const EnquiryNotification = require("../MAILS/templates/auth/enquiryNotification");
+const EnquirySenderNotification = require("../MAILS/templates/auth/enquirySenderNotification");
 
 const DEFAULT_ENQUIRY_RECIPIENTS = [
   "Customerservice@alabamarketplace.ng",
@@ -77,7 +78,14 @@ export class EnquiryService {
         message: enquiry.message,
       });
 
-      this.mailService.AuthMail(mail);
+      const senderMail = EnquirySenderNotification({
+        to: enquiry.email,
+        email: enquiry.email,
+        message: enquiry.message,
+      });
+
+      await this.mailService.queueEnquiryNotification(mail);
+      await this.mailService.queueEnquiryNotification(senderMail);
 
       return new DataResponseDto(createData, true, "Successfully added");
     } catch (err) {

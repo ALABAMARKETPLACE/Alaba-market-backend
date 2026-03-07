@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import puppeteer from 'puppeteer';
 @Injectable()
 export class PdfService {
+  private readonly logger = new Logger(PdfService.name);
+
   async PdfGen(data: any) {
     try {
       let Modal = data;
@@ -28,7 +30,7 @@ export class PdfService {
       };
       return obj;
     } catch (err) {
-      console.log('err = = = >', err);
+      this.logger.error(`PdfGen FAILED: ${err?.message || err}`, err?.stack);
     }
   }
 
