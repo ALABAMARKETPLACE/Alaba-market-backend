@@ -66,8 +66,8 @@ web_modules/
 .yarn-integrity
 
 # dotenv environment variable files 
-.env
-.env.*
+# .env
+# .env.*
 !.env.example
 .env.localdev
 .env.development
@@ -139,3 +139,13 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+# Environment files (NEVER COMMIT THESE!)
+.env
+.env.*
+.env.local
+.env.development
+.env.staging
+.env.production
+
+# Allow template
+!.env.example

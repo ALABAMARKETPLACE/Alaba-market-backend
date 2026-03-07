@@ -21,7 +21,7 @@ export class OrderPayments extends Model<OrderPayments> {
   @ForeignKey(() => Order)
   @Column({ type: DataType.INTEGER, allowNull: true, unique: true })
   orderId: number;
-
+  
   @ForeignKey(() => Print)
   @Column({ type: DataType.INTEGER, allowNull: true, unique: true })
   printId: number;
@@ -44,7 +44,7 @@ export class OrderPayments extends Model<OrderPayments> {
   @Column({ type: DataType.STRING })
   currency: string;
 
-  @Column({ type: DataType.STRING, unique: false, allowNull: true })
+  @Column({ type: DataType.STRING, unique: true, allowNull: true })
   ref: string;
 
   @Column({
