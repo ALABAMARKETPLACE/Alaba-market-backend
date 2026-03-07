@@ -18,7 +18,12 @@ import {
   ApiParam,
 } from "@nestjs/swagger";
 
-import { login_Request, login_phone, login_google, login_apple } from "./dto/login.dto";
+import {
+  login_Request,
+  login_phone,
+  login_google,
+  login_apple,
+} from "./dto/login.dto";
 import { signup_Request } from "./dto/signup.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 
@@ -53,7 +58,7 @@ class CheckPhoneParams {
 export class AuthController {
   constructor(
     private readonly AuthService: AuthService,
-    private readonly tokenService: TokenManagementService
+    private readonly tokenService: TokenManagementService,
   ) {}
 
   //to signout from app
@@ -85,7 +90,7 @@ export class AuthController {
   @ApiOkResponse({ type: DataResponseDto })
   @ApiParam({ name: "phone", required: true })
   checkPhone(
-    @Param(ValidationPipe) phone: CheckPhoneParams
+    @Param(ValidationPipe) phone: CheckPhoneParams,
   ): Promise<DataResponseDto> {
     return this.AuthService.checkPhoneNumber(phone?.phone);
   }
@@ -105,6 +110,7 @@ export class AuthController {
   @ApiCreatedResponse({ type: DataResponseDto })
   @UseInterceptors(RemovePasswordInterceptor)
   signup(@Body() signup_Request: signup_Request): Promise<DataResponseDto> {
+    console.log({ signup_Request });
     return this.AuthService.signup(signup_Request);
   }
 
@@ -143,20 +149,28 @@ export class AuthController {
   @UsePipes(new ValidationPipe({ transform: true }))
   @UseInterceptors(RemovePasswordInterceptor)
   login(@Body() login_Request: login_Request) {
-    console.log('=== AUTH CONTROLLER LOGIN ===');
-    console.log('Login Request Body:', JSON.stringify(login_Request, null, 2));
-    console.log('Email:', login_Request.email);
-    console.log('Password length:', login_Request.password ? login_Request.password.length : 'undefined');
-    
+    console.log("=== AUTH CONTROLLER LOGIN ===");
+    console.log("Login Request Body:", JSON.stringify(login_Request, null, 2));
+    console.log("Email:", login_Request.email);
+    console.log(
+      "Password length:",
+      login_Request.password ? login_Request.password.length : "undefined",
+    );
+
     const result = this.AuthService.emailLogin(login_Request);
-    
-    result.then((response) => {
-      console.log('Login Success Response:', JSON.stringify(response, null, 2));
-    }).catch((error) => {
-      console.log('Login Error:', error.message);
-      console.log('Login Error Details:', JSON.stringify(error, null, 2));
-    });
-    
+
+    result
+      .then((response) => {
+        console.log(
+          "Login Success Response:",
+          JSON.stringify(response, null, 2),
+        );
+      })
+      .catch((error) => {
+        console.log("Login Error:", error.message);
+        console.log("Login Error Details:", JSON.stringify(error, null, 2));
+      });
+
     return result;
   }
 
@@ -192,6 +206,7 @@ export class AuthController {
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   forgot(@Body() forgot: ForgotPasswordDto): Promise<DataResponseDto> {
+    console.log({ forgot });
     return this.AuthService.forgotPassword(forgot);
   }
 
@@ -217,7 +232,7 @@ export class AuthController {
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   deactivateAccount(
-    @Body() deact: DeactivateAccountDto
+    @Body() deact: DeactivateAccountDto,
   ): Promise<DataResponseDto> {
     return this.AuthService.deactivateAccount(deact);
   }

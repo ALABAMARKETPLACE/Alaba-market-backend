@@ -12,12 +12,29 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { EnquirySearchDto } from "./dto/querySearch.dto";
 import { Op } from "sequelize";
+import { MailService } from "../MAILS/Mails.services";
+const EnquiryNotification = require("../MAILS/templates/auth/enquiryNotification");
+
+const DEFAULT_ENQUIRY_RECIPIENTS = [
+  "Customerservice@alabamarketplace.ng",
+  "alabamarketplace2025@gmail.com",
+  "emeka@taxgoglobal.com",
+  "alaba@taxgoglobal.com",
+  "olagiddz@gmail.com",
+];
+
+const parseRecipients = (value?: string) =>
+  (value || "")
+    .split(",")
+    .map((email) => email.trim())
+    .filter(Boolean);
 
 @Injectable()
 export class EnquiryService {
   constructor(
     @Inject("EnquiryRepository")
-    private readonly EnquiryRepository: typeof Enquiry
+    private readonly EnquiryRepository: typeof Enquiry,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll(querys: EnquirySearchDto) {
@@ -48,6 +65,20 @@ export class EnquiryService {
       enquiry.email = create.email?.toLowerCase();
       enquiry.message = create.message;
       const createData = await enquiry.save();
+
+      const recipients =
+        parseRecipients(process.env.ENQUIRY_NOTIFY_EMAILS).length > 0
+          ? parseRecipients(process.env.ENQUIRY_NOTIFY_EMAILS)
+          : DEFAULT_ENQUIRY_RECIPIENTS;
+
+      const mail = EnquiryNotification({
+        to: recipients,
+        email: enquiry.email,
+        message: enquiry.message,
+      });
+
+      this.mailService.AuthMail(mail);
+
       return new DataResponseDto(createData, true, "Successfully added");
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -87,7 +118,7 @@ export class EnquiryService {
         {
           where: { id },
           returning: true,
-        }
+        },
       );
       if (updated == 0) throw new NotFoundException();
       return new DataResponseDto(data);
