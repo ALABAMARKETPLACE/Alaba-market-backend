@@ -44,7 +44,6 @@ export class EnquiryController {
     return this.EnquiryService.findAll(pageOpt);
   }
 
-  @UseGuards(AuthGuard)
   @Post("post")
   @ApiCreatedResponse({ type: [Enquiry] })
   @ApiBearerAuth()
