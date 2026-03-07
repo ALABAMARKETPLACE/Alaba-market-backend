@@ -1,10 +1,13 @@
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
-import { Logger, ValidationPipe } from "@nestjs/common";
+import { ValidationPipe } from "@nestjs/common";
 import { setupSwagger } from "./swagger";
 import * as dotenv from "dotenv";
 import * as bodyParser from "body-parser";
 import { AllExceptionsFilter } from "./shared/filters/all-exceptions.filter";
+import * as path from "path";
+import { FileLogger, patchConsole } from "./shared/logger/file-logger";
+import { createRequestLogger } from "./shared/logger/request-logger";
 
 // ✅ Load .env FIRST (before anything else)
 dotenv.config();
@@ -24,6 +27,39 @@ async function bootstrap() {
   // ================= ENV VALIDATION =================
   const NODE_ENV = process.env.NODE_ENV || "development";
   const PORT = parseInt(process.env.PORT, 10) || 8000;
+  const LOG_FILE_PATH =
+    process.env.LOG_FILE_PATH ||
+    path.join(process.cwd(), "logs", "app.log");
+  const LOG_ERROR_FILE_PATH =
+    process.env.LOG_ERROR_FILE_PATH ||
+    path.join(process.cwd(), "logs", "error.log");
+  const LOG_WARN_FILE_PATH =
+    process.env.LOG_WARN_FILE_PATH ||
+    path.join(process.cwd(), "logs", "warn.log");
+  const LOG_ROTATE_DAILY = process.env.LOG_ROTATE_DAILY !== "false";
+  const LOG_REQUESTS = process.env.LOG_REQUESTS !== "false";
+  const LOG_REQUEST_BODIES = process.env.LOG_REQUEST_BODIES !== "false";
+  const LOG_REQUEST_HEADERS = process.env.LOG_REQUEST_HEADERS === "true";
+
+  const originalConsole = {
+    log: console.log.bind(console),
+    error: console.error.bind(console),
+    warn: console.warn.bind(console),
+    debug: console.debug.bind(console),
+    info: console.info.bind(console),
+  };
+
+  const fileLogger = new FileLogger({
+    logFilePath: LOG_FILE_PATH,
+    errorLogFilePath: LOG_ERROR_FILE_PATH,
+    warnLogFilePath: LOG_WARN_FILE_PATH,
+    appName: "NestApplication",
+    mirrorToConsole: true,
+    consoleMethods: originalConsole,
+    rotateDaily: LOG_ROTATE_DAILY,
+  });
+
+  patchConsole(fileLogger, { forwardToConsole: false });
 
   console.log("📋 Environment:", NODE_ENV);
   console.log("🗄️  Database:", process.env.DATABASE_HOST);
@@ -31,10 +67,11 @@ async function bootstrap() {
   // ==================================================
 
   const app = await NestFactory.create(AppModule, {
-    logger: ["error", "warn", "log", "debug", "verbose"],
+    logger: fileLogger,
   });
 
-  const logger = new Logger("NestApplication");
+  const logger = fileLogger;
+  app.useLogger(fileLogger);
 
   // ================= GLOBAL FILTERS =================
   app.useGlobalFilters(new AllExceptionsFilter());
@@ -81,23 +118,13 @@ async function bootstrap() {
   // ==================================================
 
   // ================= REQUEST LOGGER =================
-  // ✅ Only log in development or if explicitly enabled
-  if (NODE_ENV === "development" || process.env.LOG_REQUESTS === "true") {
-    app.use((req: any, res: any, next: any) => {
-      const startTime = Date.now();
-
-      logger.log(`→ ${req.method} ${req.originalUrl}`);
-
-      res.on("finish", () => {
-        const duration = Date.now() - startTime;
-        const statusEmoji = res.statusCode < 400 ? "✅" : "❌";
-        logger.log(
-          `${statusEmoji} ${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`,
-        );
-      });
-
-      next();
-    });
+  if (LOG_REQUESTS) {
+    app.use(
+      createRequestLogger(logger, {
+        logBodies: LOG_REQUEST_BODIES,
+        logHeaders: LOG_REQUEST_HEADERS,
+      }),
+    );
   }
   // ==================================================
 

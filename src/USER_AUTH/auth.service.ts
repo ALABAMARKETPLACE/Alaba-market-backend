@@ -48,7 +48,7 @@ export class AuthService {
     private readonly tokenService: TokenManagementService,
     private readonly authRepo: AuthRepository,
     private readonly firebaseService: FirebaseService,
-    private readonly jwtService: JwtService
+    private readonly jwtService: JwtService,
   ) {}
 
   async signup(body: signup_Request) {
@@ -68,6 +68,8 @@ export class AuthService {
       // Direct signup without Firebase token verification
       const phone = body?.phone;
 
+      console.log({ body });
+
       const exist = await this.authRepo.checkUserExist(body?.email, phone);
       if (exist) throw new ConflictException("User Already Exist.");
       const user = await this.authRepo.createNewUser(body, phone);
@@ -76,6 +78,7 @@ export class AuthService {
       const [refresh, fid] = await this.tokenService.createToken(user._id);
       const token = await this.createToken(user, fid);
       let Mail = await SignupHtml(user, token);
+      console.log({Mail})
       this.mailService.AuthMail(Mail);
       const message = "Account created successfully.";
       return new DataResponseDto(user, true, message, token, refresh, true);
@@ -88,48 +91,48 @@ export class AuthService {
 
   async emailLogin(body: login_Request) {
     try {
-      console.log('=== AUTH SERVICE EMAIL LOGIN ===');
-      console.log('Login body received:', JSON.stringify(body, null, 2));
-      
+      console.log("=== AUTH SERVICE EMAIL LOGIN ===");
+      console.log("Login body received:", JSON.stringify(body, null, 2));
+
       const { email, password, fcmtoken, seller_fcmtoken } = body;
-      console.log('Extracted email:', email);
-      console.log('Password provided:', password ? 'YES' : 'NO');
-      
+      console.log("Extracted email:", email);
+      console.log("Password provided:", password ? "YES" : "NO");
+
       const user = await this.authRepo.findUserbyEmail(email);
-      console.log('User found:', user ? 'YES' : 'NO');
+      console.log("User found:", user ? "YES" : "NO");
       if (user) {
-        console.log('User ID:', user._id);
-        console.log('User status:', user.status);
-        console.log('Has password:', user?.password ? 'YES' : 'NO');
+        console.log("User ID:", user._id);
+        console.log("User status:", user.status);
+        console.log("Has password:", user?.password ? "YES" : "NO");
       }
-      
+
       if (!user) throw new NotFoundException(`No User found for ${email}`);
       if (user?.status != true)
         throw new UnauthorizedException("Your Account is Deactivated");
       if (!user?.password)
         throw new UnauthorizedException("No Password Found. use Google Login.");
-        
-      console.log('Comparing passwords...');
+
+      console.log("Comparing passwords...");
       const isMatch = await compare(password, user?.password ?? "");
-      console.log('Password match:', isMatch);
-      
+      console.log("Password match:", isMatch);
+
       if (!isMatch) throw new UnauthorizedException("Incorrect Password..");
-      
-      console.log('Password verified, creating tokens...');
+
+      console.log("Password verified, creating tokens...");
       await this.authRepo.saveFcm(fcmtoken, user?._id);
       if (seller_fcmtoken)
         await this.authRepo.saveSellerFcm(seller_fcmtoken, user.store_id);
       const [refresh, fid] = await this.tokenService.createToken(user._id);
       const token = await this.createToken(user, fid);
       let message = "Login Successfull";
-      console.log('Login successful, returning response');
+      console.log("Login successful, returning response");
       return new DataResponseDto(user, true, message, token, refresh);
     } catch (err) {
-      console.log('=== LOGIN ERROR ===');
-      console.log('Error type:', err.constructor.name);
-      console.log('Error message:', err.message);
-      console.log('Error stack:', err.stack);
-      
+      console.log("=== LOGIN ERROR ===");
+      console.log("Error type:", err.constructor.name);
+      console.log("Error message:", err.message);
+      console.log("Error stack:", err.stack);
+
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(getErrorMessage(err));
     }
@@ -145,10 +148,10 @@ export class AuthService {
         const newuser = await this.authRepo.createUserwithPhone(
           phoneNumber,
           body.code,
-          body?.fcmtoken
+          body?.fcmtoken,
         );
         const [refresh, fid] = await this.tokenService.createToken(
-          newuser?._id
+          newuser?._id,
         );
         const token = await this.createToken(newuser, fid);
         let message = "Login Successfull";
@@ -252,7 +255,7 @@ export class AuthService {
       if (verified) {
         const [status] = await User.update(
           { mail_verify: true },
-          { where: { _id: verified.data?.userId } }
+          { where: { _id: verified.data?.userId } },
         );
         if (status == 0) throw new NotFoundException();
         return new DataResponseDto({}, true, "Email verified successfully");
@@ -269,6 +272,8 @@ export class AuthService {
       const userDetails: any = await User.findOne({
         where: { email },
       });
+
+      console.log({ userDetails });
       if (!userDetails) throw new NotFoundException();
       const token = await this.createVerifyToken(userDetails?._id);
       let Mail = await RequestPasswdChangeTemplate(userDetails, token);
@@ -288,7 +293,7 @@ export class AuthService {
         let newPassword = await this.hashPassword(password?.password);
         const [status, [user]] = await User.update(
           { password: newPassword },
-          { where: { _id: verified.data?.userId }, returning: true }
+          { where: { _id: verified.data?.userId }, returning: true },
         );
         if (status == 0) throw new NotFoundException();
         const message = "Password Updated successfully";
@@ -323,7 +328,7 @@ export class AuthService {
       if (verified) {
         const [count, [user]] = await User.update(
           { status: false },
-          { where: { _id: verified.data?.userId }, returning: true }
+          { where: { _id: verified.data?.userId }, returning: true },
         );
         if (count == 0) throw new NotFoundException();
         let Mail = await DeactivateMail(user, {});
@@ -381,7 +386,7 @@ export class AuthService {
       const verified = this.jwtService.verify(oldToken);
       const [refresh, userId] = await this.tokenService.regenerateToken(
         verified?.otp,
-        verified?.fid
+        verified?.fid,
       );
       const user = await User.findOne({
         where: { _id: userId },
@@ -403,7 +408,7 @@ export class AuthService {
       return new DataResponseDto(
         {},
         true,
-        `You Are signed out from ${log?.length} Devices.`
+        `You Are signed out from ${log?.length} Devices.`,
       );
     } catch (err) {
       throw new InternalServerErrorException();
