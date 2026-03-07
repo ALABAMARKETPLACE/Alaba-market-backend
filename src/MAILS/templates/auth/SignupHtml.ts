@@ -91,9 +91,8 @@ const SignupHtml = (addUser, token) => {
               </span>
             </h2>
             <p>
-              Founded in 2023 by a group of businessmen in UAE, ${process.env.NAME} leverages the
-              power of marketing intelligence and e-commerce vision to deliver a
-              wide range of products that make your lifestyle more attractive.
+               Founded in 2026 by the Alaba Amalgamated Traders Union in partnership with Taxgoglobal Corporation, 
+              ${process.env.NAME} leverages the power of marketing intelligence and e-commerce vision to deliver a wide range of products that make your lifestyle more attractive.
             </p>
           </div>
         </div>
