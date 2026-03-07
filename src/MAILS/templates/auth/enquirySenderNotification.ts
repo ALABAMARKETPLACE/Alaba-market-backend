@@ -1,26 +1,30 @@
-const SignupHtml = (addUser, token) => {
+const EnquirySenderNotification = (Details: any) => {
+  const fromEmail = Details?.email || "unknown";
+  const message = Details?.message || "";
+
   return {
-    to: addUser?.email,
-    subject: "New Account Created",
+    to: Details?.to,
+    subject: `We received your enquiry on ${process.env.NAME}`,
     template: `<!DOCTYPE html>
     <html lang="en">
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
-      <body>
+      <body style="background-color: #f4f4f4">
         <div
           style="
             box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
             transition: 0.3s;
             border-radius: 10px;
             max-width: 600px;
-            background-color: #ffffff;
+            background-color: #fff;
             margin: 0 auto;
           "
         >
           <div style="text-align: center">
-            <div style="border-top: 20px solid ${process.env.COLOR}; background-color: #ececec;">
+            <br />
+            <div style="border-top: 20px solid ${process.env.COLOR}">
               <img
                 src="${process.env.LOGO}"
                 alt="logo"
@@ -29,47 +33,36 @@ const SignupHtml = (addUser, token) => {
             </div>
             <br />
             <div style="color: #262941; font-weight: bold; font-size: 20px">
-              Greetings from ${process.env.NAME}!
+              Enquiry Received
             </div>
             <br />
           </div>
-    
+
           <div style="padding: 20px">
-            <p style="font-size: 16px">Hello ${addUser?.name},</p>
+            <p style="font-size: 16px">Hello,</p>
             <p style="font-size: 13px; color: gray">
-              Congratulations ! You have just created a ${process.env.NAME} account. You can now
-              order products through ${process.env.NAME}. If you would like go through a wide
-              range of products, please visit ${process.env.WEBSITE}.
+              We have received your enquiry on ${process.env.NAME}. Our team
+              will review it and get back to you.
             </p>
-            <p>Best Regards,</p>
+            <p style="font-size: 14px">
+              <b>Email:</b> ${fromEmail}
+            </p>
+            <p style="font-size: 14px"><b>Your message:</b></p>
+            <div
+              style="
+                background: #f7f7f7;
+                padding: 12px;
+                border-radius: 8px;
+                white-space: pre-wrap;
+                font-size: 14px;
+              "
+            >
+              ${message}
+            </div>
+            <br />
             <p>Team ${process.env.NAME}</p>
-            <br />
-    
-            <br />
-            <hr />
-            <table>
-              <tr>
-                <td
-                  style="border-right: 1px dotted #000; width: 50%; padding: 10px"
-                >
-                  <div>
-                    <p>What Next?</p>
-                    <p>
-                      Enjoy your shopping! Visit the My Orders page to see your
-                      order history
-                    </p>
-                  </div>
-                </td>
-                <td style="width: 50%; padding: 10px">
-                  <div>
-                    <p>Want to become a Seller?</p>
-                    <p>Click on seller Registration on ${process.env.NAME}.com</p>
-                  </div>
-                </td>
-              </tr>
-            </table>
-            <br />
           </div>
+
           <div
             style="
               background-color: ${process.env.COLOR};
@@ -91,7 +84,7 @@ const SignupHtml = (addUser, token) => {
               </span>
             </h2>
             <p>
-               Founded in 2026 by the Alaba Amalgamated Traders Union in partnership with Taxgoglobal Corporation, 
+              Founded in 2026 by the Alaba Amalgamated Traders Union in partnership with Taxgoglobal Corporation, 
               ${process.env.NAME} leverages the power of marketing intelligence and e-commerce vision to deliver a wide range of products that make your lifestyle more attractive.
             </p>
           </div>
@@ -102,4 +95,4 @@ const SignupHtml = (addUser, token) => {
   };
 };
 
-module.exports = SignupHtml;
+module.exports = EnquirySenderNotification;

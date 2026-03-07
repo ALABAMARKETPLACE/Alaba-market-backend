@@ -1,8 +1,15 @@
+import { InjectQueue } from "@nestjs/bull";
 import { MailerService } from "@nestjs-modules/mailer";
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import axios from "axios";
+import { Queue } from "bull";
 import FormData from "form-data";
 import { MailtrapClient } from "mailtrap";
+import {
+  ENQUIRY_MAIL_JOB,
+  ENQUIRY_MAIL_QUEUE,
+  EnquiryMailJobData,
+} from "./mail-queue.constants";
 import { PdfService } from "./pdf.services";
 // import { DataResponseDto } from "../shared/dto/data-response-dto";
 
@@ -24,9 +31,13 @@ type MailProvider = "smtp" | "mailgun" | "mailtrap" | "mailtrap_api";
 
 @Injectable()
 export class MailService {
+  private readonly logger = new Logger(MailService.name);
+
   constructor(
     private mailerService: MailerService,
     private pdfService: PdfService,
+    @InjectQueue(ENQUIRY_MAIL_QUEUE)
+    private readonly enquiryMailQueue: Queue<EnquiryMailJobData>,
   ) {}
 
   private getConfiguredProvider(): MailProvider {
@@ -160,6 +171,11 @@ export class MailService {
       .map((item) => this.parseEmailAddress(item));
   }
 
+  private flattenRecipients(to: string | string[]) {
+    const list = Array.isArray(to) ? to : to.split(",");
+    return list.map((item) => item.trim()).filter(Boolean);
+  }
+
   private async sendWithMailgun(data: MailPayload) {
     const domain = process.env.MAILGUN_DOMAIN;
     const apiKey = process.env.MAILGUN_API_KEY;
@@ -252,12 +268,14 @@ export class MailService {
         throw primaryError;
       }
 
-      console.warn(
+      this.logger.warn(
         `Mail provider ${primary} failed. Attempting fallback providers.`,
-        {
+      );
+      this.logger.warn(
+        JSON.stringify({
           error: primaryError?.message || primaryError,
           fallbacks,
-        },
+        }),
       );
 
       let lastError = primaryError;
@@ -267,9 +285,12 @@ export class MailService {
           return await this.sendWithProvider(provider, data);
         } catch (fallbackError) {
           lastError = fallbackError;
-          console.error(`Mail fallback ${provider} FAILED:`, {
-            error: fallbackError?.message || fallbackError,
-          });
+          this.logger.error(
+            `Mail fallback ${provider} FAILED: ${
+              fallbackError?.message || fallbackError
+            }`,
+            fallbackError?.stack,
+          );
         }
       }
 
@@ -294,21 +315,19 @@ export class MailService {
 
   async AuthMail(data: any) {
     try {
-      console.log("Sending AuthMail to:", data?.to);
+      this.logger.log(`Sending AuthMail to: ${data?.to}`);
       await this.sendMail({
         to: data?.to,
         subject: data?.subject,
         text: `${process.env.NAME} notification`,
         html: data?.template,
       });
-      console.log("AuthMail sent to:", data?.to);
+      this.logger.log(`AuthMail sent to: ${data?.to}`);
     } catch (err) {
-      console.error("AuthMail FAILED:", {
-        to: data?.to,
-        subject: data?.subject,
-        error: err?.message || err,
-        stack: err?.stack,
-      });
+      this.logger.error(
+        `AuthMail FAILED for ${data?.to}: ${err?.message || err}`,
+        err?.stack,
+      );
     }
   }
 
@@ -320,62 +339,65 @@ export class MailService {
         text: `${process.env.NAME} notification`,
       });
     } catch (err) {
-      console.log("failed to send mail", err);
+      this.logger.error(
+        `InviteUserMail FAILED for ${data?.to}: ${err?.message || err}`,
+        err?.stack,
+      );
     }
   }
   async RequestDocumentMail(data: any) {
     try {
-      console.log("Sending RequestDocumentMail to:", data?.to);
+      this.logger.log(`Sending RequestDocumentMail to: ${data?.to}`);
       await this.sendMail({
         to: data?.to,
         subject: data?.subject,
         text: `${process.env.NAME} notification`,
         html: data?.template,
       });
-      console.log("RequestDocumentMail sent to:", data?.to);
+      this.logger.log(`RequestDocumentMail sent to: ${data?.to}`);
     } catch (err) {
-      console.error("RequestDocumentMail FAILED:", {
-        to: data?.to,
-        error: err?.message || err,
-      });
+      this.logger.error(
+        `RequestDocumentMail FAILED for ${data?.to}: ${err?.message || err}`,
+        err?.stack,
+      );
     }
   }
   async updateEmailNotify(data: any) {
     try {
-      console.log("Sending updateEmailNotify to:", data?.to);
+      this.logger.log(`Sending updateEmailNotify to: ${data?.to}`);
       await this.sendMail({
         to: data?.to,
         subject: data?.subject,
         html: data.template,
       });
-      console.log("updateEmailNotify sent to:", data?.to);
+      this.logger.log(`updateEmailNotify sent to: ${data?.to}`);
     } catch (err) {
-      console.error("updateEmailNotify FAILED:", {
-        to: data?.to,
-        error: err?.message || err,
-      });
+      this.logger.error(
+        `updateEmailNotify FAILED for ${data?.to}: ${err?.message || err}`,
+        err?.stack,
+      );
     }
   }
 
   async sellerEmails(data: any) {
     try {
-      console.log("Sending sellerEmails to:", data?.to);
+      this.logger.log(`Sending sellerEmails to: ${data?.to}`);
       await this.sendMail({
         to: data?.to,
         subject: data?.subject,
         html: data.template,
       });
-      console.log("sellerEmails sent to:", data?.to);
+      this.logger.log(`sellerEmails sent to: ${data?.to}`);
     } catch (err) {
-      console.error("sellerEmails FAILED:", {
-        to: data?.to,
-        error: err?.message || err,
-      });
+      this.logger.error(
+        `sellerEmails FAILED for ${data?.to}: ${err?.message || err}`,
+        err?.stack,
+      );
     }
   }
   async sendInvoiceMail(data: any, pdftem, inovice_id: string) {
     try {
-      console.log("Sending sendInvoiceMail to:", data?.to);
+      this.logger.log(`Sending sendInvoiceMail to: ${data?.to}`);
       let pdf: any = await this.pdfService.PdfGen(pdftem);
       await this.sendMail({
         to: data?.to,
@@ -390,30 +412,51 @@ export class MailService {
           },
         ],
       });
-      console.log("sendInvoiceMail sent to:", data?.to);
+      this.logger.log(`sendInvoiceMail sent to: ${data?.to}`);
     } catch (err) {
-      console.error("sendInvoiceMail FAILED:", {
-        to: data?.to,
-        error: err?.message || err,
-      });
+      this.logger.error(
+        `sendInvoiceMail FAILED for ${data?.to}: ${err?.message || err}`,
+        err?.stack,
+      );
     }
   }
 
   async sendEnquiryNotification(data: any) {
-    try {
-      console.log("Sending Enquiry notification to:", data?.to);
-      await this.sendMail({
-        to: data?.to,
-        subject: data?.subject || "New Enquiry",
-        text: `${process.env.NAME} notification`,
-        html: data?.template,
-      });
-      console.log("Enquiry notification sent to:", data?.to);
-    } catch (err) {
-      console.error("Enquiry notification FAILED:", {
-        to: data?.to,
-        error: err?.message || err,
-      });
+    await this.queueEnquiryNotification(data);
+  }
+
+  async queueEnquiryNotification(data: any) {
+    const recipients = this.flattenRecipients(data?.to || []);
+
+    if (recipients.length === 0) {
+      this.logger.warn("Enquiry notification skipped: no recipients configured");
+      return;
     }
+
+    await this.enquiryMailQueue.addBulk(
+      recipients.map((recipient) => ({
+        name: ENQUIRY_MAIL_JOB,
+        data: {
+          to: recipient,
+          subject: data?.subject || "New Enquiry",
+          template: data?.template,
+        },
+      })),
+    );
+
+    this.logger.log(
+      `Queued enquiry notifications for recipients: ${recipients.length}`,
+    );
+  }
+
+  async deliverEnquiryNotification(data: EnquiryMailJobData) {
+    this.logger.log(`Sending Enquiry notification to: ${data.to}`);
+    await this.sendMail({
+      to: data.to,
+      subject: data.subject || "New Enquiry",
+      text: `${process.env.NAME} notification`,
+      html: data.template,
+    });
+    this.logger.log(`Enquiry notification sent to: ${data.to}`);
   }
 }
