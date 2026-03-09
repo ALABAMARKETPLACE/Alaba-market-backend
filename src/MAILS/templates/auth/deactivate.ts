@@ -68,7 +68,7 @@ const DeactivateMail = (user, token) => {
               </span>
             </h2>
             <p>
-               Founded in 2026 by the Alaba Amalgamated Traders Union in partnership with Taxgoglobal Corporation, 
+               Founded in 2025 by the Alaba Amalgamated Traders Union in partnership with Taxgoglobal Corporation, 
               ${process.env.NAME} leverages the power of marketing intelligence and e-commerce vision to deliver a wide range of products that make your lifestyle more attractive.
             </p>
           </div>

@@ -1,6 +1,7 @@
 // banner/dto/update.dto.ts
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsOptional, IsUrl } from "class-validator";
+import { Type } from "class-transformer";
+import { IsInt, IsOptional, IsUrl, ValidateIf } from "class-validator";
 
 export class UpdateBannerDto {
   @ApiPropertyOptional()
@@ -8,12 +9,15 @@ export class UpdateBannerDto {
   readonly description?: string;
 
   @ApiPropertyOptional()
-  @IsUrl()
   @IsOptional()
+  @ValidateIf((_, value) => value !== undefined && value !== "")
+  @IsUrl()
   readonly img_desk?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @ValidateIf((_, value) => value !== undefined && value !== "")
+  @IsUrl()
   readonly img_mob?: string;
 
   @ApiPropertyOptional()
@@ -25,6 +29,7 @@ export class UpdateBannerDto {
     description: "Store ID (optional for admins, ignored for sellers)",
     example: 123,
   })
+  @Type(() => Number)
   @IsInt()
   @IsOptional()
   readonly storeId?: number;
