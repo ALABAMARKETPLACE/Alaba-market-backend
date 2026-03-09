@@ -64,6 +64,9 @@ export class BannerService {
           ],
           // no replacements - literals are built above to avoid unsupported replacement usage
         });
+
+      console.log({ pageOptions });
+      
       return new DataResponseDto(rows, true, "Successfull", pageOptions, count);
     } catch (err) {
       if (err instanceof HttpException) throw err;

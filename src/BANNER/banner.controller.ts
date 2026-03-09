@@ -41,7 +41,7 @@ export class BannerController {
   constructor(private readonly bannerService: BannerService) {}
 
   //get all banners for a store/ all banners for admiin
-  @Roles(Role.Admin, Role.Seller)
+  // @Roles(Role.Admin, Role.Seller)
   @UseGuards(AuthGuard)
   @Get("all")
   @UsePipes(new ValidationPipe({ transform: true }))
@@ -64,7 +64,8 @@ export class BannerController {
   create(
     @RRole() role: string,
     @StoreId() storeId: number, // From JWT token (sellers only)
-    @Body(new StripBodyPipe(["status", "position"])) body: CreateBannerDto,
+    @Body(new StripBodyPipe(["status", "position"], ["storeId", "store_id"]))
+    body: CreateBannerDto,
   ): Promise<DataResponseDto> {
     // ✅ For sellers: use storeId from JWT token
     // ✅ For admins: use storeId from body (if provided) or null
@@ -84,7 +85,7 @@ export class BannerController {
     @RRole() role: string,
     @StoreId() storeId: number,
     @Param("id", new ParseIntPipe()) id: number,
-    @Body(new StripBodyPipe(["position"]))
+    @Body(new StripBodyPipe(["position"], ["storeId", "store_id"]))
     createBannerDto: UpdateBannerDto,
   ): Promise<DataResponseDto> {
     // ✅ Same logic for update
