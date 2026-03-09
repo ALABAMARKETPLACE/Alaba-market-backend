@@ -16,12 +16,40 @@ import { Op, Sequelize } from "sequelize";
 import { UpdateBannerPositionDto } from "./dto/updatePosition.dto";
 import { UpdateBannerDto } from "./dto/update.dto";
 import { Role } from "../shared/enum/role.enum";
+import { ImgcompressService } from "../IMAGE_COMPRESS/img_compress.service";
+
+type BannerFiles = {
+  img_desk?: Express.Multer.File[];
+  img_mob?: Express.Multer.File[];
+};
 @Injectable()
 export class BannerService {
   constructor(
     @Inject("BannerRepository")
     private readonly BannerRepository: typeof Banner,
+    private readonly imgcompressService: ImgcompressService,
   ) {}
+
+  private async resolveBannerImages<T extends { img_desk?: string; img_mob?: string }>(
+    data: T,
+    files?: BannerFiles,
+  ): Promise<T> {
+    const nextData: T = { ...data };
+
+    if (files?.img_desk?.[0]) {
+      nextData.img_desk = await this.imgcompressService.uploadToS3(
+        files.img_desk[0],
+      );
+    }
+
+    if (files?.img_mob?.[0]) {
+      nextData.img_mob = await this.imgcompressService.uploadToS3(
+        files.img_mob[0],
+      );
+    }
+
+    return nextData;
+  }
 
   async findAll(
     pageOptions: PageOptionsDtoBanner,
@@ -74,7 +102,12 @@ export class BannerService {
     }
   }
 
-  async create(storeId: number | null, create: CreateBannerDto, role: string) {
+  async create(
+    storeId: number | null,
+    create: CreateBannerDto,
+    role: string,
+    files?: BannerFiles,
+  ) {
     try {
       // Validate: Sellers must have a storeId
       if (role === Role.Seller && !storeId) {
@@ -83,8 +116,16 @@ export class BannerService {
         );
       }
 
+      const bannerPayload = await this.resolveBannerImages(create, files);
+
+      if (!bannerPayload.img_desk) {
+        throw new BadRequestException(
+          "Desktop banner image is required as a URL or uploaded file",
+        );
+      }
+
       const banner = await Banner.create({
-        ...create,
+        ...bannerPayload,
         storeId: storeId, // ✅ Can be null for admin banners
         status: role === Role.Admin ? true : false, // Auto-approve admin banners
       });
@@ -101,8 +142,11 @@ export class BannerService {
     id: number,
     data: UpdateBannerDto,
     role: string,
+    files?: BannerFiles,
   ) {
     try {
+      const updatePayload = await this.resolveBannerImages(data, files);
+
       // Build where clause based on role
       const whereClause: any = { id };
 
@@ -118,7 +162,7 @@ export class BannerService {
       // ✅ Admins can update any banner (no storeId restriction)
 
       const [updated] = await this.BannerRepository.update(
-        { ...data },
+        { ...updatePayload },
         { where: whereClause },
       );
 

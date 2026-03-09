@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsInt, IsNotEmpty, IsOptional, IsUrl } from "class-validator";
+import { Type } from "class-transformer";
+import { IsInt, IsOptional, IsUrl, ValidateIf } from "class-validator";
 
 export class CreateBannerDto {
   @ApiProperty()
@@ -7,13 +8,15 @@ export class CreateBannerDto {
   readonly description: string;
 
   @ApiProperty()
+  @ValidateIf((_, value) => value !== undefined && value !== "")
   @IsUrl()
-  @IsNotEmpty()
-  readonly img_desk: string;
+  readonly img_desk?: string;
 
   @ApiProperty()
+  @ValidateIf((_, value) => value !== undefined && value !== "")
+  @IsUrl()
   @IsOptional()
-  readonly img_mob: string;
+  readonly img_mob?: string;
 
   @ApiProperty()
   @IsOptional()
@@ -24,6 +27,7 @@ export class CreateBannerDto {
     description: "Store ID (optional for admins, ignored for sellers)",
     example: 123,
   })
+  @Type(() => Number)
   @IsInt()
   @IsOptional()
   readonly storeId?: number;
