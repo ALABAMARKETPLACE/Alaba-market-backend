@@ -38,6 +38,7 @@ import {
 import { PaystackWebhookDto } from "./dto/paystack-webhook.dto";
 import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto";
 import { Public } from "../shared/decorator/optional.decorator";
+import { PaystackWebhookResponseDto } from "./dto/paystack-webhook.dto";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -178,14 +179,15 @@ export class PaystackController {
   @ApiOperation({ summary: "Handle Paystack webhook events" })
   @ApiOkResponse({
     description: "Webhook processed successfully",
+    type: PaystackWebhookResponseDto,
   })
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers("x-paystack-signature") signature: string,
     @Body() webhookData: PaystackWebhookDto,
-  ): Promise<any> {
+  ): Promise<PaystackWebhookResponseDto> {
     // Get raw body for signature verification
-    const rawBody = req.rawBody?.toString() || JSON.stringify(webhookData);
+    const rawBody = req.rawBody?.toString("utf8") || JSON.stringify(webhookData);
 
     return await this.paystackService.processWebhook(
       webhookData,
@@ -202,7 +204,7 @@ export class PaystackController {
   })
   getPublicKey(): { publicKey: string } {
     return {
-      publicKey: process.env.PAYSTACK_PUBLIC_KEY,
+      publicKey: this.paystackService.getPublicKey(),
     };
   }
 
