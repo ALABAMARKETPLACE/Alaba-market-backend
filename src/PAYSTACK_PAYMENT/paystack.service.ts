@@ -44,6 +44,7 @@ import { CreateGuestOrderDto } from "../ORDER/dto/create-guest-order.dto";
 import { OrderPlaceService } from "../ORDER/order.place";
 import { User } from "../USERS/user.entity";
 import { CreateOrderDto } from "../ORDER/dto/createOrder.dto";
+import { PaymentTypeEnum } from "../ORDER/dto/payment-type.enum";
 
 @Injectable()
 export class PaystackService {
@@ -928,7 +929,7 @@ export class PaystackService {
       payment: {
         ...(payload.payment || ({} as CreateOrderDto["payment"])),
         ref: reference,
-        type: payload?.payment?.type || "pay online",
+        type: payload?.payment?.type || PaymentTypeEnum.Paystack,
       },
     };
   }

@@ -4,6 +4,7 @@ import {
   HttpException,
   Injectable,
   InternalServerErrorException,
+  NotImplementedException,
   NotAcceptableException,
   NotFoundException,
   ServiceUnavailableException,
@@ -40,6 +41,7 @@ import { OrderLogService } from "./order.log";
 import { getErrorMessage } from "../shared/helpers/errormessage";
 import { JwtService } from "@nestjs/jwt";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
+import { PaymentTypeEnum } from "./dto/payment-type.enum";
 
 type CreateOrderOptions = {
   skipDeliveryTokenVerification?: boolean;
@@ -67,6 +69,10 @@ export class OrderPlaceService {
     options: CreateOrderOptions = {},
   ) {
     try {
+      if (this.shouldInitializeHostedCheckout(data, options)) {
+        return await this.initializeHostedCheckout(userId, data);
+      }
+
       const result = await this.orderRepository.sequelize.transaction(
         async (t) => {
           const newOrders = [];
@@ -197,13 +203,7 @@ export class OrderPlaceService {
     try {
       console.log("🔍 [basicCheck] Starting order validation...");
 
-      // 🚫 BLOCK CASH ON DELIVERY (FIX)
-      const paymentType = data?.payment?.type?.toString().toLowerCase()?.trim();
-
-      if (
-        paymentType === "cash on delivery" ||
-        paymentType === "cash-on-delivery"
-      ) {
+      if (data?.payment?.type === PaymentTypeEnum.CashOnDelivery) {
         throw new BadRequestException("Cash on delivery is not available");
       }
 
@@ -261,6 +261,53 @@ export class OrderPlaceService {
     } catch (err) {
       console.error("❌ [basicCheck] Error:", err.message);
       throw err;
+    }
+  }
+
+  private shouldInitializeHostedCheckout(
+    data: CreateOrderDto,
+    options: CreateOrderOptions,
+  ): boolean {
+    if (options.skipDeliveryTokenVerification) {
+      return false;
+    }
+
+    return !data?.payment?.ref && this.isOnlineGateway(data?.payment?.type);
+  }
+
+  private isOnlineGateway(paymentType?: PaymentTypeEnum): boolean {
+    return [
+      PaymentTypeEnum.Paystack,
+      PaymentTypeEnum.Stripe,
+      PaymentTypeEnum.Flutterwave,
+    ].includes(paymentType as PaymentTypeEnum);
+  }
+
+  private async initializeHostedCheckout(
+    userId: number,
+    data: CreateOrderDto,
+  ): Promise<DataResponseDto> {
+    switch (data.payment.type) {
+      case PaymentTypeEnum.Paystack: {
+        const result = await this.paystackService.initializeAuthenticatedCheckout(
+          userId,
+          {
+            order_payload: data,
+            callback_url: data.payment.callback_url,
+          },
+        );
+
+        return new DataResponseDto(result.data, true, result.message);
+      }
+
+      case PaymentTypeEnum.Stripe:
+      case PaymentTypeEnum.Flutterwave:
+        throw new NotImplementedException(
+          `${data.payment.type} checkout is not implemented yet.`,
+        );
+
+      default:
+        throw new BadRequestException("Unsupported payment type.");
     }
   }
 
@@ -407,11 +454,7 @@ export class OrderPlaceService {
           addressId: data.address?.id,
           storeId: product?.storeId,
           is_multi_seller: isMultiSeller,
-          paymentType: data.payment?.ref
-            ? "pay online"
-            : data?.payment?.type == "Pay On Credit"
-            ? "pay-on-credit"
-            : "cash-on-delivery",
+          paymentType: this.resolveOrderPaymentType(data.payment),
           tax: charges.tax,
           deliveryCharge: charges.deliveryCharge,
           discount: charges.discount,
@@ -588,17 +631,27 @@ export class OrderPlaceService {
     return await OrderPayments.create(
       {
         orderId,
-        paymentType: payment?.ref
-          ? "pay-online"
-          : payment?.type == "Pay On Credit"
-          ? "pay-on-credit"
-          : "cash-on-delivery",
+        paymentType: this.resolveOrderPaymentType(payment),
         status,
         ref: payment?.ref,
         amount: grandTotal * 100,
       },
       { transaction: t },
     );
+  }
+
+  private resolveOrderPaymentType(payment?: paymentType): string {
+    switch (payment?.type) {
+      case PaymentTypeEnum.Paystack:
+      case PaymentTypeEnum.Stripe:
+      case PaymentTypeEnum.Flutterwave:
+        return "pay-online";
+      case PaymentTypeEnum.PayOnCredit:
+        return "pay-on-credit";
+      case PaymentTypeEnum.CashOnDelivery:
+      default:
+        return "cash-on-delivery";
+    }
   }
   async orderStatus(orderId: number, status: string, t: Transaction) {
     try {

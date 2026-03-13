@@ -18,6 +18,7 @@ import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiParam,
   ApiTags,
 } from "@nestjs/swagger";
@@ -57,6 +58,11 @@ export class OrderController {
 
   @Post("guest")
   @Public()
+  @ApiOperation({
+    summary: "Create guest order",
+    description:
+      "Fallback guest order creation route. The preferred flow is calculate_delivery/public -> paystack/initialize-guest -> paystack/webhook, but this route remains available for frontend-driven verification flows.",
+  })
   @ApiCreatedResponse({ type: DataResponseDto })
   @HttpCode(201)
   async createGuestOrder(
@@ -67,6 +73,11 @@ export class OrderController {
 
   @Post("guest/orders")
   @Public()
+  @ApiOperation({
+    summary: "Fetch guest orders by email",
+    description:
+      "Returns guest orders for a supplied email address and supports the post-payment guest order lookup flow.",
+  })
   @ApiOkResponse({ type: DataResponseDto })
   @HttpCode(200)
   async getGuestOrders(
@@ -307,6 +318,11 @@ export class OrderController {
   @Post()
   @HttpCode(201)
   @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Create order or initialize hosted payment",
+    description:
+      "If payment.ref is provided, this route creates the order immediately using that existing transaction reference. If payment.ref is omitted for a supported online gateway such as paystack, the backend initializes hosted checkout and returns the authorization payload instead.",
+  })
   async create(
     @UserId() userId: number,
     @Body() create: CreateOrderDto,
