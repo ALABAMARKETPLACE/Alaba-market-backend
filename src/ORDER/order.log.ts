@@ -32,6 +32,7 @@ import { NotificationsService } from "../NOTIFICATIONS/notification.service";
 import { MailService } from "../MAILS/Mails.services";
 import { JwtService } from "@nestjs/jwt";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
+import { PaymentTypeEnum } from "./dto/payment-type.enum";
 
 @Injectable()
 export class OrderLogService {
@@ -161,11 +162,7 @@ export class OrderLogService {
           userId,
           addressId: data.address?.id,
           storeId: product.storeId,
-          paymentType: data.payment?.ref
-            ? "pay online"
-            : data?.payment?.type == "Pay On Credit"
-            ? "pay-on-credit"
-            : "cash-on-delivery",
+          paymentType: this.resolveOrderPaymentType(data.payment),
           tax: verified?.data?.tax ?? 0,
           deliveryCharge: verified?.data?.amount ?? 0,
           discount: verified?.data?.discount ?? 0,
@@ -363,11 +360,7 @@ export class OrderLogService {
       const newPayment = await OrderPayments.create(
         {
           orderId,
-          paymentType: payment?.ref
-            ? "pay-online"
-            : payment?.type == "Pay On Credit"
-            ? "pay-on-credit"
-            : "cash-on-delivery",
+          paymentType: this.resolveOrderPaymentType(payment),
           status: remark != "Payment is Failed." ? paymentStatus : "failed",
           ref:
             remark != "Payment is Failed."
@@ -383,15 +376,25 @@ export class OrderLogService {
     } catch (err) {
       return {
         orderId,
-        paymentType: payment?.ref
-          ? "pay-online"
-          : payment?.type == "Pay On Credit"
-          ? "pay-on-credit"
-          : "cash-on-delivery",
+        paymentType: this.resolveOrderPaymentType(payment),
         status: "pending",
         ref: null,
         amount: grandTotal * 100,
       };
+    }
+  }
+
+  private resolveOrderPaymentType(payment?: paymentType): string {
+    switch (payment?.type) {
+      case PaymentTypeEnum.Paystack:
+      case PaymentTypeEnum.Stripe:
+      case PaymentTypeEnum.Flutterwave:
+        return "pay-online";
+      case PaymentTypeEnum.PayOnCredit:
+        return "pay-on-credit";
+      case PaymentTypeEnum.CashOnDelivery:
+      default:
+        return "cash-on-delivery";
     }
   }
   async orderStatus(

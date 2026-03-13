@@ -21,7 +21,9 @@ export class PaystackUserInitializeDto {
   order_payload: CreateOrderDto;
 
   @ApiProperty({
-    description: "Callback URL for payment completion",
+    description:
+      "Browser redirect URL after payment. For backend-only testing, use /paystack/success on this API.",
+    example: "http://localhost:8000/paystack/success",
     required: false,
   })
   @IsOptional()

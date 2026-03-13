@@ -1,6 +1,11 @@
 import { Controller, Post, Body, UseGuards, HttpCode } from "@nestjs/common";
 import { CalculateDeliveryChargeService } from "./calculate_delivery.service";
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from "@nestjs/swagger";
 import { CalculateDeliveryChargeDto } from "./dto/calculateDelivery.dto";
 import { NewCalculateDeliveryDto } from "./dto/newCalculateDelivery.dto";
 import { AuthGuard } from "../shared/guards/auth.guard";
@@ -18,6 +23,12 @@ export class CalculateDeliveryController {
   @UseGuards(AuthGuard)
   @Post("")
   @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Calculate authenticated delivery charge",
+    description:
+      "Temporary behavior: the legacy distance-based fee is disabled. This endpoint currently returns only the configured product/order-value delivery charge and still issues the delivery token required for checkout.",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
   calculateDelivery(
     @Body() body: CalculateDeliveryChargeDto,
   ): Promise<DataResponseDto> {
@@ -28,6 +39,11 @@ export class CalculateDeliveryController {
   @UseGuards(AuthGuard)
   @Post("new")
   @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Calculate weight-based delivery charge",
+    description:
+      "Uses the newer weight and location configuration flow. This is separate from the legacy distance-based calculation.",
+  })
   @ApiOkResponse({ type: DataResponseDto })
   @HttpCode(200)
   calculateNewDelivery(
@@ -39,6 +55,11 @@ export class CalculateDeliveryController {
   // NEW: Public endpoint for guest checkout
   @Public()
   @Post("public")
+  @ApiOperation({
+    summary: "Calculate public delivery charge for guest checkout",
+    description:
+      "Uses the guest weight/state-country delivery flow and returns a guest delivery token for later guest checkout.",
+  })
   @ApiOkResponse({ type: DataResponseDto })
   @HttpCode(200)
   calculateDeliveryPublic(

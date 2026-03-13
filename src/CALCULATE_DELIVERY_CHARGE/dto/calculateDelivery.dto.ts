@@ -1,13 +1,20 @@
 import { ApiProperty } from "@nestjs/swagger";
 
 export class CalculateDeliveryChargeDto {
-  @ApiProperty()
+  @ApiProperty({
+    description: "Cart items to price for delivery.",
+  })
   readonly cart: CartItem[];
 
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      "Selected saved address. Lat/long may still be sent, but the legacy distance fee is temporarily disabled.",
+  })
   readonly address: AddressType;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: "Cart total before delivery charge is added.",
+  })
   readonly total: number;
 }
 export type CartItem = {

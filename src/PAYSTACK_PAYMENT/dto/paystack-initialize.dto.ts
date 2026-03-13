@@ -32,7 +32,11 @@ export class PaystackInitializeDto {
   @IsString()
   currency?: string;
 
-  @ApiProperty({ description: "Callback URL for payment completion" })
+  @ApiProperty({
+    description:
+      "Browser redirect URL after payment. For backend testing, use an existing route such as /paystack/success.",
+    example: "http://localhost:8000/paystack/success",
+  })
   @IsString()
   @IsNotEmpty()
   callback_url: string;
