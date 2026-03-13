@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   HttpException,
   Injectable,
   InternalServerErrorException,
@@ -7,6 +8,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
+  forwardRef,
 } from "@nestjs/common";
 import { CreateOrderDto } from "./dto/createOrder.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -39,12 +41,18 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { JwtService } from "@nestjs/jwt";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 
+type CreateOrderOptions = {
+  skipDeliveryTokenVerification?: boolean;
+  verifiedChargesData?: any;
+};
+
 @Injectable()
 export class OrderPlaceService {
   constructor(
     @InjectModel(Order)
     private readonly orderRepository: typeof Order,
     private readonly paymentGatewayService: PaymentGateWayService,
+    @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
     private readonly cartService: CartServices,
     private readonly notificationService: NotificationsService,
@@ -53,21 +61,27 @@ export class OrderPlaceService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async create(userId: number, data: CreateOrderDto) {
+  async create(
+    userId: number,
+    data: CreateOrderDto,
+    options: CreateOrderOptions = {},
+  ) {
     try {
       const result = await this.orderRepository.sequelize.transaction(
         async (t) => {
           const newOrders = [];
-          const verified = await this.basicCheck(data);
+          const verified = await this.basicCheck(data, options);
 
           const products = await this.groupProducts(data.cart, t);
           const address = await this.orderAddress(userId, data.address, t);
+          const isMultiSeller = products.length > 1;
           for (const item of products) {
             const order = await this.placeOrder(
               userId,
               data,
               item,
               verified,
+              isMultiSeller,
               t,
             );
             const [qnty, total, itms] = await this.createItems(
@@ -136,7 +150,7 @@ export class OrderPlaceService {
 
   async groupProducts(
     data: any[],
-    transaction: Transaction,
+    transaction?: Transaction,
   ): Promise<orderItemss[]> {
     try {
       const items: orderItemss[] = await data.reduce(
@@ -176,7 +190,10 @@ export class OrderPlaceService {
     }
   }
 
-  async basicCheck(data: CreateOrderDto) {
+  async basicCheck(
+    data: CreateOrderDto,
+    options: CreateOrderOptions = {},
+  ) {
     try {
       console.log("🔍 [basicCheck] Starting order validation...");
 
@@ -195,9 +212,14 @@ export class OrderPlaceService {
         throw new BadRequestException("No Products Selected");
       }
 
-      console.log("🔍 [basicCheck] Decoding delivery charge token...");
-      const verified: any = this.jwtService.decode(data?.charges?.token);
-      console.log("✅ [basicCheck] Decoded token:", verified);
+      let verified: any = options.verifiedChargesData;
+
+      if (!options.skipDeliveryTokenVerification) {
+        console.log("🔍 [basicCheck] Verifying delivery charge token...");
+        verified = await this.jwtService.verifyAsync(data?.charges?.token);
+      }
+
+      console.log("✅ [basicCheck] Verified token:", verified);
 
       if (!verified || isNaN(Number(verified?.data?.amount))) {
         throw new BadRequestException("Failed to Calculate Delivery charge.");
@@ -242,6 +264,102 @@ export class OrderPlaceService {
     }
   }
 
+  async prepareAuthenticatedCheckout(userId: number, data: CreateOrderDto) {
+    const verified = await this.basicCheck(data);
+
+    return this.orderRepository.sequelize.transaction(async (t) => {
+      const products = await this.groupProducts(data.cart, t);
+      await this.orderAddress(userId, data.address, t);
+
+      let grandTotal = 0;
+
+      for (const groupedProduct of products) {
+        const itemsTotal = await this.calculateItemsTotal(groupedProduct, t);
+        const charges = this.getStoreChargeBreakdown(
+          verified,
+          groupedProduct.storeId,
+        );
+        grandTotal +=
+          itemsTotal +
+          charges.tax +
+          charges.deliveryCharge -
+          charges.discount;
+      }
+
+      return {
+        verified,
+        amount: grandTotal,
+        amount_kobo: Math.round(grandTotal * 100),
+        store_ids: products.map((item) => item.storeId),
+      };
+    });
+  }
+
+  private getStoreChargeBreakdown(verified: any, storeId: number) {
+    const getStoreValue = (value: any, key: string, fallback = 0) => {
+      if (Array.isArray(value)) {
+        return value.find((item: any) => item?.storeId === storeId)?.[key] ?? 0;
+      }
+
+      return value ?? fallback;
+    };
+
+    return {
+      discount: getStoreValue(verified?.data?.discount, "discount", 0),
+      deliveryCharge: Array.isArray(verified?.data?.deliveryCharges)
+        ? verified?.data?.deliveryCharges?.find(
+            (item: any) => item?.storeId === storeId,
+          )?.totalCharge ?? 0
+        : verified?.data?.amount ?? 0,
+      tax: getStoreValue(verified?.data?.tax, "tax", 0),
+    };
+  }
+
+  private async calculateItemsTotal(
+    items: orderItemss,
+    transaction: Transaction,
+  ): Promise<number> {
+    let total = 0;
+
+    for (const item of items.products) {
+      const product = await Products.findOne({
+        where: { _id: item?.productId },
+        transaction,
+      });
+
+      if (!product) throw new NotFoundException("Product not found.");
+      if (product.status == false)
+        throw new ServiceUnavailableException("Product is Not Available");
+      if (product.store_id != items.storeId)
+        throw new ServiceUnavailableException(
+          "Product is Not Available on this store.",
+        );
+      if (product.unit == 0 || product.unit < item?.quantity)
+        throw new ServiceUnavailableException("Product out of stock");
+
+      let unitPrice = Number(product.retail_rate || 0);
+
+      if (item?.variantId) {
+        const variant = await ProductVariant.findOne({
+          where: { id: item?.variantId },
+          transaction,
+        });
+
+        if (!variant) throw new NotFoundException("Variant is Not Available");
+        if (variant.productId != item?.productId)
+          throw new ServiceUnavailableException("Variant is Not Available");
+        if (variant.units == 0 || variant.units < item?.quantity)
+          throw new ServiceUnavailableException("Variant is out of stock");
+
+        unitPrice = Number(variant.price || 0);
+      }
+
+      total += unitPrice * Number(item.quantity || 0);
+    }
+
+    return total;
+  }
+
   // async placeOrder(
   //   userId: number,
   //   data: CreateOrderDto,
@@ -277,44 +395,28 @@ export class OrderPlaceService {
     data: CreateOrderDto,
     product: orderItemss,
     verified: any,
+    isMultiSeller: boolean,
     transaction: Transaction,
   ) {
     try {
-      // Handle both array and single value discount structures
-      let storeDiscount = 0;
-      if (Array.isArray(verified?.data?.discount)) {
-        storeDiscount =
-          verified?.data?.discount?.find(
-            (item: any) => item?.storeId === product?.storeId,
-          )?.discount ?? 0;
-      } else {
-        storeDiscount = verified?.data?.discount ?? 0;
-      }
-
-      // Handle both array and single value delivery charge structures
-      let storeDeliveryCharge = 0;
-      if (Array.isArray(verified?.data?.deliveryCharges)) {
-        storeDeliveryCharge =
-          verified?.data?.deliveryCharges?.find(
-            (item: any) => item?.storeId === product?.storeId,
-          )?.totalCharge ?? 0;
-      } else {
-        storeDeliveryCharge = verified?.data?.amount ?? 0;
-      }
+      const charges = this.getStoreChargeBreakdown(verified, product?.storeId);
 
       const newOrder = await Order.create(
         {
           userId,
           addressId: data.address?.id,
           storeId: product?.storeId,
+          is_multi_seller: isMultiSeller,
           paymentType: data.payment?.ref
             ? "pay online"
             : data?.payment?.type == "Pay On Credit"
             ? "pay-on-credit"
             : "cash-on-delivery",
-          tax: verified?.data?.tax ?? 0,
-          deliveryCharge: storeDeliveryCharge,
-          discount: storeDiscount,
+          tax: charges.tax,
+          deliveryCharge: charges.deliveryCharge,
+          discount: charges.discount,
+          payment_reference: data?.payment?.ref || null,
+          transaction_reference: data?.payment?.ref || null,
         },
         { transaction },
       );

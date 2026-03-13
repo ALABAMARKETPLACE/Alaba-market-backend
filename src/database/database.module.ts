@@ -61,6 +61,7 @@ import { DriverInvitation } from "../DELIVERY_COMPANY/driver_invitation.entity";
 import { DriverOrder } from "../DELIVERY_COMPANY/driver_order.entity";
 import { PaystackSubaccount } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.entity";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
+import { UserCheckout } from "../PAYSTACK_PAYMENT/user-checkout.entity";
 
 @Global()
 @Module({
@@ -130,6 +131,7 @@ import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
           DriverOrder,
           PaystackSubaccount,
           GuestCheckout,
+          UserCheckout,
         ],
 
         // ✅ REMOVED - these were causing the sync errors:

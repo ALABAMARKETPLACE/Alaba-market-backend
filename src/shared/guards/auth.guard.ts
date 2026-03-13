@@ -32,6 +32,17 @@ export class AuthGuard implements CanActivate {
 
     const token = this.extractTokenFromHeader(request);
 
+    console.log("AuthGuard: Extracted Token:", token);
+    console.log("AuthGuard: Is Public:", isPublic);
+    console.log("AuthGuard: Request User:", request.user);
+    console.log(
+      "AuthGuard: Required Roles:",
+      this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]),
+    );
+
     /**
      * PUBLIC ROUTES
      */

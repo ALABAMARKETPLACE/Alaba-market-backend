@@ -82,6 +82,7 @@ export class DistanceChargeService {
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
+
   async upsertCharge(data: UpsertDistanceChargeDto) {
     try {
       const result = await this.distanceChargeRepository.sequelize.transaction(
@@ -141,6 +142,7 @@ export class DistanceChargeService {
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
+  
   async getDistanceCharge(data: GetTotalChargeDto, transaction: Transaction) {
     try {
       const inputDistance = data.distance;
