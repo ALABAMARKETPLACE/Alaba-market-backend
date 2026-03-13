@@ -6,13 +6,12 @@ import { Products } from "../PRODUCTS/products.entity";
 import { Store } from "../STORE/store.entity";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 import { CreateCartDto } from "./dto/cart_create.dto";
-import { escape } from "querystring";
 
 @Injectable()
 export class CartRepository {
   constructor(
     @InjectModel(CartTable)
-    private readonly cartRepository: typeof CartTable
+    private readonly cartRepository: typeof CartTable,
   ) {}
   async deleteCart(userId: number, id: number) {
     try {
@@ -32,7 +31,7 @@ export class CartRepository {
           userId,
         },
         order: [["createdAt", "DESC"]],
-        limit:20,
+        limit: 20,
         attributes: [
           "id",
           "productId",
@@ -41,19 +40,19 @@ export class CartRepository {
           [Sequelize.col("productDetails.store_id"), "storeId"],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."image", "productDetails"."image")`
+              `COALESCE("variantDetails"."image", "productDetails"."image")`,
             ),
             "image",
           ],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")`
+              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")`,
             ),
             "price",
           ],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")* "quantity"`
+              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")* "quantity"`,
             ),
             "totalPrice",
           ],
@@ -61,7 +60,7 @@ export class CartRepository {
           [Sequelize.col("productDetails.slug"), "slug"],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."units", "productDetails"."unit")`
+              `COALESCE("variantDetails"."units", "productDetails"."unit")`,
             ),
             "unit",
           ],
@@ -100,41 +99,56 @@ export class CartRepository {
   }
   async create(userId: number, data: CreateCartDto) {
     try {
+      const product = await Products.findOne({
+        where: { pid: data.productId },
+        attributes: ["_id"],
+      });
+
+      if (!product) {
+        throw new NotFoundException("Product not found");
+      }
+
+      const normalizedVariantId =
+        data?.variantId && Number(data.variantId) > 0
+          ? Number(data.variantId)
+          : null;
+
+      if (normalizedVariantId) {
+        const variant = await ProductVariant.findOne({
+          where: {
+            id: normalizedVariantId,
+            productId: product._id,
+          },
+          attributes: ["id"],
+        });
+
+        if (!variant) {
+          throw new NotFoundException(
+            "Variant not found for the selected product",
+          );
+        }
+      }
+
       const [cart, created] = await this.cartRepository.findOrCreate({
         where: {
-          productId: Sequelize.literal(
-            `"productId" = (SELECT "_id" FROM "PRODUCTS" WHERE "pid" = '${escape(
-              data.productId
-            )}')`
-          ),
+          productId: product._id,
           userId,
-          ...(data?.variantId && { variantId: data.variantId }),
+          ...(normalizedVariantId && { variantId: normalizedVariantId }),
         },
         defaults: {
-          userId: userId,
-          productId: Sequelize.literal(
-            `(SELECT "_id" FROM "PRODUCTS" WHERE "pid" = '${escape(
-              data.productId
-            )}')`
-          ),
+          userId,
+          productId: product._id,
           quantity: data.quantity,
           buyPrice: 0,
-          //  Sequelize.literal(
-          //   `CASE
-          //   WHEN ${data.variantId ?? "NULL"} IS NOT NULL
-          //   THEN (SELECT "price" FROM "PRODUCT_VARIANT" WHERE "id" = ${
-          //     data.variantId ?? "NULL"
-          //   })
-          //   ELSE (SELECT "retail_rate" FROM "PRODUCTS" WHERE "pid" = '${escape(
-          //     data.productId
-          //   )}')
-          // END`
-          // ),
-          variantId: data?.variantId,
+          variantId: normalizedVariantId,
         },
       });
+
       if (created == false) {
-        cart.quantity += 1;
+        cart.quantity = Math.min(
+          25,
+          Number(cart.quantity) + Number(data.quantity || 1),
+        );
         await cart.save({});
       }
       return { cart, created };
@@ -153,7 +167,7 @@ export class CartRepository {
       AND "CART"."userId" = ?
       RETURNING *;
       `,
-        { replacements: [quantity, where.id, where.userId], transaction }
+        { replacements: [quantity, where.id, where.userId], transaction },
       );
       return { count: 1, data: data };
     } catch (err) {

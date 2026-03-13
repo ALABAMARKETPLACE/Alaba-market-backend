@@ -37,8 +37,10 @@ import {
 } from "./dto/paystack-refund.dto";
 import { PaystackWebhookDto } from "./dto/paystack-webhook.dto";
 import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto";
+import { PaystackUserInitializeDto } from "./dto/paystack-user-initialize.dto";
 import { Public } from "../shared/decorator/optional.decorator";
 import { PaystackWebhookResponseDto } from "./dto/paystack-webhook.dto";
+import { UserId } from "../shared/decorator/userId_decorator";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -58,6 +60,28 @@ export class PaystackController {
     @Body() initData: PaystackInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
     return await this.paystackService.initializePayment(initData);
+  }
+
+  @Post("initialize-checkout")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Initialize a single Paystack checkout for a logged-in cart. The webhook finalizes one order per store.",
+  })
+  @ApiOkResponse({
+    description: "Checkout payment initialized successfully",
+    type: PaystackInitializeResponseDto,
+  })
+  async initializeAuthenticatedCheckout(
+    @UserId() userId: number,
+    @Body() initData: PaystackUserInitializeDto,
+  ): Promise<PaystackInitializeResponseDto> {
+    return await this.paystackService.initializeAuthenticatedCheckout(
+      userId,
+      initData,
+    );
   }
 
   // GUEST USER INITIALIZATION STARTS HERE

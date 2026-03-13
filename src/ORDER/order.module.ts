@@ -39,6 +39,6 @@ import { Order } from "./order.entity";
     GuestOrderService,
     OrderLogService, 
   ],
-  exports: [OrderService, GuestOrderService],
+  exports: [OrderService, GuestOrderService, OrderPlaceService],
 })
 export class OrderModule {}

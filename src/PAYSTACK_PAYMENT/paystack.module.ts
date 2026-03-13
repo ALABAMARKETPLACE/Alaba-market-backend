@@ -9,7 +9,9 @@ import { Store } from "../STORE/store.entity";
 import { StoreModule } from "../STORE/store.module";
 import { PaymentSplitModule } from "../PAYMENT_SPLITS/payment-split.module";
 import { GuestCheckout } from "./guest-checkout.entity";
+import { UserCheckout } from "./user-checkout.entity";
 import { OrderModule } from "../ORDER/order.module";
+import { User } from "../USERS/user.entity";
 
 @Module({
   imports: [
@@ -20,7 +22,7 @@ import { OrderModule } from "../ORDER/order.module";
     }),
 
     // Sequelize model needed by PaystackService
-    SequelizeModule.forFeature([Store, GuestCheckout]),
+    SequelizeModule.forFeature([Store, GuestCheckout, UserCheckout, User]),
 
     // StoreModule (non-circular)
     StoreModule,

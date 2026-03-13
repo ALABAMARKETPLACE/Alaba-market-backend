@@ -1,17 +1,13 @@
 import {
   BadRequestException,
   HttpException,
-  Inject,
   Injectable,
   InternalServerErrorException,
 } from "@nestjs/common";
-import { getDistanceFromLatLonInKm } from "../shared/helpers/calculateDistance";
 import { groupProductsByStore } from "../shared/helpers/groupProductsbystore";
 import { CalculateDeliveryChargeDto } from "./dto/calculateDelivery.dto";
 import { NewCalculateDeliveryDto } from "./dto/newCalculateDelivery.dto";
-import { Store } from "../STORE/store.entity";
 import { getErrorMessage } from "../shared/helpers/errormessage";
-import { DistanceChargeService } from "../DISTANCE_CHARGE/distancecharge.service";
 import { DistanceCharge } from "../DISTANCE_CHARGE/distancecharge.entity";
 import { NewDistanceCharge } from "../NEW_DISTANCE_CHARGE/newdistancecharge.entity";
 import { Transaction } from "sequelize";
@@ -23,7 +19,6 @@ import { CalculateDeliveryPublicDto } from "./dto/calculateDeliveryPublic.dto";
 @Injectable()
 export class CalculateDeliveryChargeService {
   constructor(
-    private readonly distanceChargeService: DistanceChargeService,
     private readonly deliveryChargeService: DeliveryChargeService,
     private readonly jwtService: JwtService,
   ) {}
@@ -129,73 +124,28 @@ export class CalculateDeliveryChargeService {
     try {
       const groupedProducts = groupProductsByStore(data.cart);
       let amount: number = 0;
-      const chargeDetails: any = {};
-      //total delivery charge will be the sum of distance based charge + total product based charge for each order
+      const chargeDetails = {
+        distanceCharge: 0,
+        productCharge: 0,
+        totalCharge: 0,
+      };
+      // Temporary behavior: ignore distance-based charging and use only the
+      // product/order-value delivery charge so checkout remains available.
       const result = await DistanceCharge.sequelize.transaction(
         async (transaction: Transaction) => {
-          if (data.address?.lat && data.address?.long) {
-            //this will work only if the user's address has lat and long info
-            for (const store of groupedProducts) {
-              const storeLocation = await Store.findByPk(store?.storeId, {
-                attributes: ["lat", "long", "store_name", "default"],
+          for (const _store of groupedProducts) {
+            const productCharge =
+              await this.deliveryChargeService.getDeliveryCharge(
+                { amount: data.total ?? 0 },
                 transaction,
-              });
-              if (storeLocation?.lat && storeLocation?.long) {
-                const distance = getDistanceFromLatLonInKm(
-                  data.address?.lat,
-                  data.address?.long,
-                  storeLocation.lat,
-                  storeLocation.long,
-                );
-                // Get maximum configured distance from distance charges
-                const maxDistanceCharge = await DistanceCharge.findOne({
-                  attributes: ["distance"],
-                  order: [["distance", "DESC"]],
-                  transaction,
-                });
-                const maxDistance = maxDistanceCharge?.distance || 100000; // Default to 100000km if no charges configured
+              );
 
-                if (distance > maxDistance && storeLocation.default == true) {
-                  throw new Error(
-                    `Please Select your Dubai Address For Delivery to ${storeLocation.store_name}@@`,
-                  );
-                } else if (distance > maxDistance) {
-                  throw new Error(
-                    `Please select your nearest store location for ${storeLocation.store_name}.@@`,
-                  );
-                }
-
-                //calculating delvery charge based on distance between seller and user
-                const charge =
-                  await this.distanceChargeService.getDistanceCharge(
-                    {
-                      distance,
-                    },
-                    transaction,
-                  );
-                //calculating delivery charge based on product total amount;
-                const charge2 =
-                  await this.deliveryChargeService.getDeliveryCharge(
-                    { amount: data.total ?? 0 },
-                    transaction,
-                  );
-                //calculating the sum of both
-                amount += charge + charge2;
-                chargeDetails["distanceCharge"] = charge;
-                chargeDetails["productCharge"] = charge2;
-                chargeDetails["totalCharge"] = amount;
-              } else {
-                throw new Error(
-                  "Unable to Calculate Delivery charge, Location is missing for Store@@",
-                );
-              }
-            }
-
-            return { amount, chargeDetails };
+            amount += productCharge;
+            chargeDetails.productCharge += productCharge;
+            chargeDetails.totalCharge = amount;
           }
-          throw new Error(
-            "Unable to Calculate Delivery charge, Location is missing in Address@@",
-          );
+
+          return { amount, chargeDetails };
         },
       );
       const discount = data.total > 100 ? (data.total / 100) * 10 : 0;

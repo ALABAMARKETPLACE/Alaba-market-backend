@@ -35,10 +35,15 @@ export const UserProviders: any[] = [
   },
   {
     provide: "CreateVerifyToken",
-    useFactory: (jwtService: JwtService) => async (userId: number) => {
+    useFactory:
+      (jwtService: JwtService) =>
+      async (
+        userId: number,
+        purpose?: "email_verification" | "password_reset" | "account_deactivation",
+      ) => {
       try {
         const token = jwtService.sign(
-          { data: { userId } },
+          { data: { userId, ...(purpose ? { purpose } : {}) } },
           {
             expiresIn: process.env.VERIFY_EXPIRY,
           }

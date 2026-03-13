@@ -315,6 +315,7 @@ export class OrderController {
     // this.orderLogger.create(userId, create).catch(console.error);
 
     // Create the actual order
+    console.log({create})
     return this.placeOrder.create(userId, create);
   }
 
