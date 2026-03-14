@@ -49,6 +49,7 @@ export class CalculateDeliveryController {
   calculateNewDelivery(
     @Body() body: NewCalculateDeliveryDto,
   ): Promise<DataResponseDto> {
+    console.log({body})
     return this.deliveryService.getNewDeliveryCharge(body);
   }
 

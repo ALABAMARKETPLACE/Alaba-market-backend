@@ -3,6 +3,6 @@ import { createParamDecorator, ExecutionContext } from "@nestjs/common";
 export const Fid = createParamDecorator(
   (data: unknown, ctx: ExecutionContext) => {
     const request = ctx.switchToHttp().getRequest();
-    return request.fid ?? null;
+    return request.user?.fid ?? request.fid ?? null;
   }
 );

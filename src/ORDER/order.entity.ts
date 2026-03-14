@@ -121,8 +121,7 @@ export class Order extends Model<Order> {
       const totalPrice: number = this.getDataValue("total") || 0;
       const discount: number = this.getDataValue("discount") || 0;
       const tax: number = this.getDataValue("tax") || 0;
-      const delivery: number = this.getDataValue("deliveryCharge") || 0;
-      const total = totalPrice + tax + delivery - discount;
+      const total = totalPrice + tax - discount;
       this.setDataValue("grandTotal", total);
     },
   })

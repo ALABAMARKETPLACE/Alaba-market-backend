@@ -16,10 +16,10 @@ export class FeaturedRotationScheduler {
   @Cron(CronExpression.EVERY_MINUTE)
   async handleRotationTick(): Promise<void> {
     const timestamp = new Date().toISOString();
-    console.log(
-      "[FeaturedRotationScheduler] Tick",
-      JSON.stringify({ timestamp })
-    );
+    // console.log(
+    //   "[FeaturedRotationScheduler] Tick",
+    //   JSON.stringify({ timestamp })
+    // );
 
     for (const position of this.positions) {
       try {
@@ -34,19 +34,19 @@ export class FeaturedRotationScheduler {
         );
 
         if (result.rotated) {
-          console.log(
-            "[FeaturedRotationScheduler] Rotated",
-            JSON.stringify({
-              position,
-              activeProductIds: result.state.active_product_ids,
-              fallbackCount: result.state.fallback_product_ids?.length ?? 0,
-              queueLength: result.context.queueLength,
-              batchIndex: result.context.batchIndex,
-              nextRotationAt:
-                result.state.next_rotation_at?.toISOString() ?? null,
-              timestamp,
-            })
-          );
+          // console.log(
+          //   "[FeaturedRotationScheduler] Rotated",
+          //   JSON.stringify({
+          //     position,
+          //     activeProductIds: result.state.active_product_ids,
+          //     fallbackCount: result.state.fallback_product_ids?.length ?? 0,
+          //     queueLength: result.context.queueLength,
+          //     batchIndex: result.context.batchIndex,
+          //     nextRotationAt:
+          //       result.state.next_rotation_at?.toISOString() ?? null,
+          //     timestamp,
+          //   })
+          // );
         }
       } catch (error) {
         console.error(
