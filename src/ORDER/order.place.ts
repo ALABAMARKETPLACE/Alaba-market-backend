@@ -68,13 +68,8 @@ export class OrderPlaceService {
     data: CreateOrderDto,
     options: CreateOrderOptions = {},
   ) {
-    const isHostedCheckoutAttempt = this.shouldInitializeHostedCheckout(
-      data,
-      options,
-    );
-
     try {
-      if (isHostedCheckoutAttempt) {
+      if (this.shouldInitializeHostedCheckout(data, options)) {
         return await this.initializeHostedCheckout(userId, data);
       }
 
@@ -144,17 +139,6 @@ export class OrderPlaceService {
       return new DataResponseDto(result);
     } catch (err) {
       console.log(err);
-
-      if (isHostedCheckoutAttempt) {
-        if (err instanceof HttpException) {
-          throw err;
-        }
-
-        throw new InternalServerErrorException(
-          "Failed to initialize checkout.",
-        );
-      }
-
       try {
         return await this.orderLogService.create(
           userId,
@@ -232,17 +216,7 @@ export class OrderPlaceService {
 
       if (!options.skipDeliveryTokenVerification) {
         console.log("🔍 [basicCheck] Verifying delivery charge token...");
-        try {
-          verified = await this.jwtService.verifyAsync(data?.charges?.token);
-        } catch (err: any) {
-          if (err?.name === "TokenExpiredError") {
-            throw new BadRequestException(
-              "Delivery charge token has expired. Recalculate delivery and try again.",
-            );
-          }
-
-          throw err;
-        }
+        verified = await this.jwtService.verifyAsync(data?.charges?.token);
       }
 
       console.log("✅ [basicCheck] Verified token:", verified);
@@ -352,11 +326,7 @@ export class OrderPlaceService {
           verified,
           groupedProduct.storeId,
         );
-        grandTotal +=
-          itemsTotal +
-          charges.tax +
-          charges.deliveryCharge -
-          charges.discount;
+        grandTotal += itemsTotal + charges.tax - charges.discount;
       }
 
       return {
@@ -777,4 +747,4 @@ export class OrderPlaceService {
       return null;
     }
   }
-} 
+}

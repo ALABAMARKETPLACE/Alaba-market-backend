@@ -133,6 +133,7 @@ export class CalculateDeliveryChargeService {
       // product/order-value delivery charge so checkout remains available.
       const result = await DistanceCharge.sequelize.transaction(
         async (transaction: Transaction) => {
+          console.log({ transaction });
           for (const _store of groupedProducts) {
             const productCharge =
               await this.deliveryChargeService.getDeliveryCharge(
@@ -140,10 +141,13 @@ export class CalculateDeliveryChargeService {
                 transaction,
               );
 
-            amount += productCharge;
-            chargeDetails.productCharge += productCharge;
+            console.log({ productCharge });
+            amount += 0;
+            chargeDetails.productCharge += 0;
             chargeDetails.totalCharge = amount;
           }
+
+          console.log({ amount, chargeDetails });
 
           return { amount, chargeDetails };
         },
@@ -155,16 +159,29 @@ export class CalculateDeliveryChargeService {
             amount: result.amount,
             status: true,
             addressId: data?.address?.id,
-            discount,
+            discount: 0,
             tax: 0,
           },
         },
         { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY },
       );
-      return {
+
+      console.log({
         data: {
           amount: result.amount,
           discount,
+        },
+        status: true,
+        message: "Success",
+        details: result.chargeDetails,
+        statusCode: 200,
+        token,
+      });
+
+      return {
+        data: {
+          amount: result.amount,
+          discount: 0,
         },
         status: true,
         message: "Success",
@@ -256,7 +273,7 @@ export class CalculateDeliveryChargeService {
           state_id: data.address.state_id,
           country_id: data.address.country_id,
           totalWeight,
-          deliveryCharge,
+          deliveryCharge: 0,
           hasConfig: !!deliveryChargeRecord,
         },
       );

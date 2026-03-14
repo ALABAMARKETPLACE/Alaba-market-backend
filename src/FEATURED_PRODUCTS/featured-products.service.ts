@@ -512,18 +512,18 @@ export class FeaturedProductsService {
       };
     }
 
-    console.log(
-      "[FeaturedProducts] Rotation start=======================",
-      JSON.stringify({
-        context: options.logContext ?? "[Service]",
-        position,
-        queueLength: queue.length,
-        planName: queueInfo.planName,
-        queueProductIds: queue,
-        timestamp: now.toISOString(),
-      }),
-      "everythign is end and you can ",
-    );
+    // console.log(
+    //   "[FeaturedProducts] Rotation start=======================",
+    //   JSON.stringify({
+    //     context: options.logContext ?? "[Service]",
+    //     position,
+    //     queueLength: queue.length,
+    //     planName: queueInfo.planName,
+    //     queueProductIds: queue,
+    //     timestamp: now.toISOString(),
+    //   }),
+    //   "everythign is end and you can ",
+    // );
 
     let activeIds: number[] = [];
     let fallbackIds: number[] = [];
@@ -576,22 +576,22 @@ export class FeaturedProductsService {
 
     await state.save();
 
-    console.log(
-      "[FeaturedProducts] Rotation complete",
-      JSON.stringify({
-        context: options.logContext ?? "[Service]",
-        position,
-        queueLength: queue.length,
-        totalBatches,
-        batchIndex: nextBatchIndex,
-        activeIds,
-        fallbackIds,
-        queueProductIds: queue,
-        nextRotationAt: state.next_rotation_at?.toISOString() ?? null,
-        timestamp: new Date().toISOString(),
-      }),
-      "=============================end========================",
-    );
+    // console.log(
+    //   "[FeaturedProducts] Rotation complete",
+    //   JSON.stringify({
+    //     context: options.logContext ?? "[Service]",
+    //     position,
+    //     queueLength: queue.length,
+    //     totalBatches,
+    //     batchIndex: nextBatchIndex,
+    //     activeIds,
+    //     fallbackIds,
+    //     queueProductIds: queue,
+    //     nextRotationAt: state.next_rotation_at?.toISOString() ?? null,
+    //     timestamp: new Date().toISOString(),
+    //   }),
+    //   "=============================end========================",
+    // );
 
     return {
       rotated: true,

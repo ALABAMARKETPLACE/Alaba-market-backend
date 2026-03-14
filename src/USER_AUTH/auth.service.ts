@@ -34,6 +34,7 @@ import { RefreshTokenDto } from "./dto/refresh_token.dto";
 import { AuthRepository } from "./auth.repository";
 import { FirebaseService } from "../FIREBASE/firebase.service";
 import { JwtService } from "@nestjs/jwt";
+import { Op } from "sequelize";
 
 type VerifyTokenPurpose =
   | "email_verification"
@@ -85,6 +86,10 @@ export class AuthService {
     }
 
     return verified;
+  }
+
+  private normalizeEmail(email: string): string {
+    return String(email || "").trim().toLowerCase();
   }
 
   async signup(body: signup_Request) {
@@ -311,8 +316,13 @@ export class AuthService {
 
   async forgotPassword({ email }: ForgotPasswordDto) {
     try {
+      const normalizedEmail = this.normalizeEmail(email);
       const userDetails: any = await User.findOne({
-        where: { email },
+        where: {
+          email: {
+            [Op.iLike]: normalizedEmail,
+          },
+        },
       });
 
       if (!userDetails) throw new NotFoundException();
@@ -340,8 +350,14 @@ export class AuthService {
         "password_reset",
       );
       if (verified) {
+        const user = await User.findByPk(verified.data?.userId);
+        if (!user) throw new NotFoundException();
+        if (user.status !== true) {
+          throw new UnauthorizedException("Your Account is Deactivated");
+        }
+
         let newPassword = await this.hashPassword(password?.password);
-        const [status, [user]] = await User.update(
+        const [status] = await User.update(
           { password: newPassword },
           { where: { _id: verified.data?.userId }, returning: true },
         );

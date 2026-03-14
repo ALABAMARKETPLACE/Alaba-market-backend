@@ -157,8 +157,7 @@ export class GuestOrderService {
             order.delivery_date = deliveryDate;
             order.totalItems = totalQuantity;
             order.total = totalAmount;
-            order.grandTotal =
-              totalAmount + order.deliveryCharge - order.discount + order.tax;
+            order.grandTotal = totalAmount - order.discount + order.tax;
             await order.save({ transaction: t });
 
             // Create payment record
@@ -638,13 +637,11 @@ export class GuestOrderService {
       return sum;
     }, 0);
 
-    const deliveryCharge =
-      Number(verified?.data?.amount) || Number(data.delivery?.delivery_charge) || 0;
     const tax = Number(verified?.data?.tax ?? data.order_summary?.tax ?? 0);
     const discount = this.getDiscountAmount(
       verified?.data?.discount ?? data.order_summary?.discount,
     );
-    const total = subtotal + deliveryCharge + tax - discount;
+    const total = subtotal + tax - discount;
 
     return total > 0 ? Math.round(total * 100) : null;
   }

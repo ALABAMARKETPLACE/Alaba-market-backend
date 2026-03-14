@@ -161,9 +161,9 @@ export class GuestCartItemDto {
 
 // Payment Info
 export class GuestPaymentDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   payment_reference: string;
 
   @ApiPropertyOptional() // ✅ Changed to optional
@@ -171,9 +171,9 @@ export class GuestPaymentDto {
   @IsOptional()
   payment_method?: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   transaction_reference: string;
 
   @ApiPropertyOptional() // ✅ Changed to optional
