@@ -1,5 +1,6 @@
 import {
   Injectable,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   InternalServerErrorException,
@@ -18,6 +19,13 @@ import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
+import { Role } from "../shared/enum/role.enum";
+
+type PaymentSplitActor = {
+  userId?: number;
+  storeId?: number;
+  role?: string;
+};
 
 @Injectable()
 export class PaymentSplitService {
@@ -31,10 +39,101 @@ export class PaymentSplitService {
     @InjectModel(Order)
     private readonly orderRepository: typeof Order,
 
-    // 🔁 FIX: circular dependency
     @Inject(forwardRef(() => PaystackService))
-    private readonly paystackService: PaystackService
+    private readonly paystackService: PaystackService,
   ) {}
+
+  private toKobo(amount: number | string | null | undefined): number {
+    return Math.round(Number(amount || 0) * 100);
+  }
+
+  private toPlainJson<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+  }
+
+  private assertActorCanManageOrder(order: Order, actor?: PaymentSplitActor) {
+    if (!actor?.role) {
+      return;
+    }
+
+    const role = actor.role.toLowerCase();
+
+    if (role === Role.Admin) {
+      return;
+    }
+
+    if (role === Role.Seller) {
+      if (!actor.storeId || Number(order.storeId) !== Number(actor.storeId)) {
+        throw new ForbiddenException(
+          "You do not have access to manage split payments for this order",
+        );
+      }
+      return;
+    }
+
+    if (role === Role.User) {
+      if (!actor.userId || Number(order.userId) !== Number(actor.userId)) {
+        throw new ForbiddenException(
+          "You do not have access to manage split payments for this order",
+        );
+      }
+      return;
+    }
+
+    throw new ForbiddenException(
+      "You do not have access to manage split payments for this order",
+    );
+  }
+
+  private buildSplitAmounts(order: Order) {
+    const split = computeSplit({
+      product_total_kobo: this.toKobo(order.total),
+      delivery_kobo: this.toKobo(order.deliveryCharge),
+      tax_kobo: this.toKobo(order.tax),
+      discount_kobo: this.toKobo(order.discount),
+    });
+
+    return {
+      total_amount: Number(
+        (
+          (split.admin_amount_kobo + split.seller_amount_kobo) /
+          100
+        ).toFixed(2),
+      ),
+      admin_amount: Number((split.admin_amount_kobo / 100).toFixed(2)),
+      seller_amount: Number((split.seller_amount_kobo / 100).toFixed(2)),
+      admin_percentage: split.admin_percentage,
+      seller_percentage: split.seller_percentage,
+    };
+  }
+
+  private async getOrderWithStore(
+    orderId: number,
+    transaction: Transaction,
+  ): Promise<Order> {
+    const order = await this.orderRepository.findByPk(orderId, {
+      include: [{ model: Store }],
+      transaction,
+    });
+
+    if (!order) {
+      throw new HttpException("Order not found", HttpStatus.NOT_FOUND);
+    }
+
+    const store = order.storeDetails;
+    if (
+      !store ||
+      store.subaccount_status !== "active" ||
+      !store.paystack_subaccount_code
+    ) {
+      throw new HttpException(
+        "Store subaccount is not active",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return order;
+  }
 
   /* ============================================
      SELLER: own payment splits
@@ -42,7 +141,7 @@ export class PaymentSplitService {
   async getStorePaymentSplits(
     storeId: number,
     page = 1,
-    limit = 20
+    limit = 20,
   ): Promise<DataResponseDto> {
     try {
       const offset = (page - 1) * limit;
@@ -71,7 +170,7 @@ export class PaymentSplitService {
         true,
         "Payment splits fetched successfully",
         pageOptions,
-        count
+        count,
       );
     } catch (err) {
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -83,7 +182,7 @@ export class PaymentSplitService {
   ============================================ */
   async getAdminPaymentSplits(
     page = 1,
-    limit = 50
+    limit = 50,
   ): Promise<DataResponseDto> {
     try {
       const offset = (page - 1) * limit;
@@ -101,12 +200,12 @@ export class PaymentSplitService {
 
       const totalAdminEarnings = rows.reduce(
         (sum, r) => sum + Number(r.admin_amount),
-        0
+        0,
       );
 
       const totalSellerPayouts = rows.reduce(
         (sum, r) => sum + Number(r.seller_amount),
-        0
+        0,
       );
 
       const pageOptions = Object.assign(new PageOptionsDto(), {
@@ -126,7 +225,7 @@ export class PaymentSplitService {
         true,
         "Admin payment splits fetched successfully",
         pageOptions,
-        count
+        count,
       );
     } catch (err) {
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -136,44 +235,51 @@ export class PaymentSplitService {
   /* ============================================
      CREATE SPLIT (order creation)
   ============================================ */
-  async createPaymentSplit(orderId: number, totalAmount: number) {
+  async createPaymentSplit(orderId: number, actor?: PaymentSplitActor) {
     try {
       return await this.paymentSplitRepository.sequelize.transaction(
         async (transaction: Transaction) => {
-          const order = await this.orderRepository.findByPk(orderId, {
-            include: [{ model: Store }],
-            transaction,
-          });
+          const order = await this.getOrderWithStore(orderId, transaction);
+          this.assertActorCanManageOrder(order, actor);
 
-          if (!order) {
-            throw new HttpException("Order not found", HttpStatus.NOT_FOUND);
-          }
+          const existingPaymentSplit =
+            await this.paymentSplitRepository.findOne({
+              where: { order_id: orderId },
+              transaction,
+            });
 
-          const store = order.storeDetails;
-          if (!store || store.subaccount_status !== "active") {
-            throw new HttpException(
-              "Store subaccount is not active",
-              HttpStatus.BAD_REQUEST
+          const splitAmounts = this.buildSplitAmounts(order);
+
+          if (existingPaymentSplit) {
+            if (
+              existingPaymentSplit.split_status === "completed" ||
+              existingPaymentSplit.paystack_transaction_id
+            ) {
+              return existingPaymentSplit;
+            }
+
+            await existingPaymentSplit.update(
+              {
+                store_id: order.storeId,
+                split_status: existingPaymentSplit.split_status || "pending",
+                ...splitAmounts,
+              },
+              { transaction },
             );
-          }
 
-          const product_total_kobo = Math.round(totalAmount * 100);
-          const split = computeSplit({ product_total_kobo });
+            return existingPaymentSplit;
+          }
 
           return await this.paymentSplitRepository.create(
             {
               order_id: orderId,
-              store_id: store.id,
-              total_amount: product_total_kobo / 100,
-              admin_amount: split.admin_amount_kobo / 100,
-              seller_amount: split.seller_amount_kobo / 100,
-              admin_percentage: split.admin_percentage,
-              seller_percentage: split.seller_percentage,
+              store_id: order.storeId,
               split_status: "pending",
+              ...splitAmounts,
             },
-            { transaction }
+            { transaction },
           );
-        }
+        },
       );
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -184,82 +290,88 @@ export class PaymentSplitService {
   /* ============================================
      INITIALIZE PAYSTACK SPLIT PAYMENT
   ============================================ */
-  async processPaymentWithSplit(orderId: number, paymentData: any) {
+  async processPaymentWithSplit(
+    orderId: number,
+    paymentData: any,
+    actor?: PaymentSplitActor,
+  ) {
     try {
       return await this.paymentSplitRepository.sequelize.transaction(
         async (transaction: Transaction) => {
-          const paymentSplit = await this.paymentSplitRepository.findOne({
-            where: { order_id: orderId },
-            include: [{ model: Store }, { model: Order }],
-            transaction,
-          });
+          const order = await this.getOrderWithStore(orderId, transaction);
+          this.assertActorCanManageOrder(order, actor);
+
+          const existingPaymentSplit =
+            await this.paymentSplitRepository.findOne({
+              where: { order_id: orderId },
+              include: [{ model: Store }, { model: Order }],
+              transaction,
+            });
+
+          const paymentSplit =
+            existingPaymentSplit ||
+            (await this.createPaymentSplit(orderId));
 
           if (!paymentSplit) {
             throw new HttpException(
               "Payment split not found",
-              HttpStatus.NOT_FOUND
+              HttpStatus.NOT_FOUND,
             );
           }
 
-          if (!paymentSplit.store?.paystack_subaccount_code) {
+          if (paymentSplit.split_status === "completed") {
+            throw new HttpException(
+              "Payment has already been completed for this order",
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+
+          if (
+            paymentSplit.split_status === "pending" &&
+            paymentSplit.paystack_transaction_id
+          ) {
+            throw new HttpException(
+              "Payment has already been initialized for this order",
+              HttpStatus.BAD_REQUEST,
+            );
+          }
+
+          const store = paymentSplit.store || order.storeDetails;
+          if (!store?.paystack_subaccount_code) {
             throw new HttpException(
               "Store subaccount not configured",
-              HttpStatus.BAD_REQUEST
+              HttpStatus.BAD_REQUEST,
             );
           }
 
-          const initData = {
-            email: paymentData.email,
-            amount: Math.round(paymentSplit.total_amount * 100),
-            callback_url: paymentData.callback_url,
-            reference: paymentData.reference,
-            store_id: paymentSplit.store_id,
-            order_id: paymentSplit.order_id,
-            split_payment: true,
-          };
-
-          //RAW Paystack response (CORRECT)
-          // const paystackData =
-          //   await this.paystackService.initializePayment(initData);
-
-          // const reference = paystackData.reference;
-
-          // await paymentSplit.update(
-          //   {
-          //     paystack_transaction_id: reference,
-          //     paystack_split_response: JSON.parse(
-          //       JSON.stringify(paystackData)
-          //     ) as any,
-          //     split_status: "pending",
-          //   },
-          //   { transaction }
-          // );
-
-          const paystackResponse =
-            await this.paystackService.initializePayment(initData);
-
-          // PaystackService still returns DataResponseDto
-          const paystackData = paystackResponse.data;
-          const reference = paystackData.reference;
+          const paystackData =
+            await this.paystackService.initializeSplitTransaction({
+              email: paymentData.email,
+              amount: this.toKobo(paymentSplit.total_amount),
+              admin_amount: this.toKobo(paymentSplit.admin_amount),
+              callback_url: paymentData.callback_url,
+              reference: paymentData.reference,
+              store_id: paymentSplit.store_id,
+              order_id: paymentSplit.order_id,
+            });
 
           await paymentSplit.update(
             {
-              paystack_transaction_id: reference,
-              paystack_split_response: JSON.parse(
-                JSON.stringify(paystackData)
-              ),
+              paystack_transaction_id: paystackData.reference,
+              paystack_split_response: this.toPlainJson(paystackData),
               split_status: "pending",
             },
-            { transaction }
+            { transaction },
           );
 
           return {
             paymentSplit,
             paystack: paystackData,
           };
-        }
+        },
       );
     } catch (err) {
+      if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
@@ -274,16 +386,16 @@ export class PaymentSplitService {
 
       const transactionData = verification?.data ?? verification;
 
-      await this.updatePaymentSplitStatus(reference, transactionData);
+      await this.syncPaymentStatusFromWebhook(reference, transactionData);
 
       return new DataResponseDto(
         transactionData,
         true,
-        "Payment verified successfully"
+        "Payment verified successfully",
       );
     } catch (err) {
       throw new InternalServerErrorException(
-        `Payment verification failed: ${err.message}`
+        `Payment verification failed: ${err.message}`,
       );
     }
   }
@@ -302,13 +414,11 @@ export class PaymentSplitService {
 
     await paymentSplit.update({
       split_status: success ? "completed" : "failed",
-      admin_settled: success,
-      seller_settled: success,
-      admin_settled_at: success ? new Date() : null,
-      seller_settled_at: success ? new Date() : null,
-            paystack_split_response: JSON.parse(
-              JSON.stringify(data)
-            ) as any,
+      paystack_split_response: this.toPlainJson(data),
     });
+  }
+
+  async syncPaymentStatusFromWebhook(reference: string, data: any) {
+    await this.updatePaymentSplitStatus(reference, data);
   }
 }

@@ -37,7 +37,10 @@ import {
 } from "./dto/paystack-refund.dto";
 import { PaystackWebhookDto } from "./dto/paystack-webhook.dto";
 import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto";
+import { PaystackUserInitializeDto } from "./dto/paystack-user-initialize.dto";
 import { Public } from "../shared/decorator/optional.decorator";
+import { PaystackWebhookResponseDto } from "./dto/paystack-webhook.dto";
+import { UserId } from "../shared/decorator/userId_decorator";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -48,7 +51,11 @@ export class PaystackController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Initialize Paystack payment transaction" })
+  @ApiOperation({
+    summary: "Initialize Paystack payment transaction",
+    description:
+      "Returns a Paystack authorization URL and reference. callback_url should point to an existing browser redirect route such as /paystack/success.",
+  })
   @ApiOkResponse({
     description: "Payment initialized successfully",
     type: PaystackInitializeResponseDto,
@@ -59,6 +66,30 @@ export class PaystackController {
     return await this.paystackService.initializePayment(initData);
   }
 
+  @Post("initialize-checkout")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Initialize a single Paystack checkout for a logged-in cart. The webhook finalizes one order per store.",
+    description:
+      "Backend-driven checkout initializer. The backend validates the order payload, creates one Paystack transaction for the full cart, and the Paystack webhook creates the final per-store orders after successful payment.",
+  })
+  @ApiOkResponse({
+    description: "Checkout payment initialized successfully",
+    type: PaystackInitializeResponseDto,
+  })
+  async initializeAuthenticatedCheckout(
+    @UserId() userId: number,
+    @Body() initData: PaystackUserInitializeDto,
+  ): Promise<PaystackInitializeResponseDto> {
+    return await this.paystackService.initializeAuthenticatedCheckout(
+      userId,
+      initData,
+    );
+  }
+
   // GUEST USER INITIALIZATION STARTS HERE
 
   @Post("initialize-guest")
@@ -66,6 +97,8 @@ export class PaystackController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Initialize Paystack payment for guest checkout",
+    description:
+      "Returns a Paystack authorization URL for guest checkout. If order_payload is provided, the webhook can create guest orders without frontend verification.",
   })
   @ApiOkResponse({
     description: "Guest payment initialized successfully",
@@ -178,14 +211,15 @@ export class PaystackController {
   @ApiOperation({ summary: "Handle Paystack webhook events" })
   @ApiOkResponse({
     description: "Webhook processed successfully",
+    type: PaystackWebhookResponseDto,
   })
   async handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers("x-paystack-signature") signature: string,
     @Body() webhookData: PaystackWebhookDto,
-  ): Promise<any> {
+  ): Promise<PaystackWebhookResponseDto> {
     // Get raw body for signature verification
-    const rawBody = req.rawBody?.toString() || JSON.stringify(webhookData);
+    const rawBody = req.rawBody?.toString("utf8") || JSON.stringify(webhookData);
 
     return await this.paystackService.processWebhook(
       webhookData,
@@ -202,7 +236,7 @@ export class PaystackController {
   })
   getPublicKey(): { publicKey: string } {
     return {
-      publicKey: process.env.PAYSTACK_PUBLIC_KEY,
+      publicKey: this.paystackService.getPublicKey(),
     };
   }
 
@@ -254,7 +288,11 @@ export class PaystackController {
 
   @Get("success")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Payment success callback endpoint" })
+  @ApiOperation({
+    summary: "Payment success callback endpoint",
+    description:
+      "Simple browser redirect target after Paystack payment. This is not the webhook endpoint.",
+  })
   @ApiOkResponse({
     description: "Payment success page",
   })
@@ -269,7 +307,11 @@ export class PaystackController {
 
   @Get("cancel")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Payment cancellation callback endpoint" })
+  @ApiOperation({
+    summary: "Payment cancellation callback endpoint",
+    description:
+      "Simple browser redirect target when a Paystack payment is cancelled. This is not the webhook endpoint.",
+  })
   @ApiOkResponse({
     description: "Payment cancellation page",
   })
@@ -283,7 +325,11 @@ export class PaystackController {
 
   @Get("failed")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Payment failure callback endpoint" })
+  @ApiOperation({
+    summary: "Payment failure callback endpoint",
+    description:
+      "Simple browser redirect target when a Paystack payment fails. This is not the webhook endpoint.",
+  })
   @ApiOkResponse({
     description: "Payment failure page",
   })

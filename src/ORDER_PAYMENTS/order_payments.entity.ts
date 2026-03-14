@@ -44,7 +44,7 @@ export class OrderPayments extends Model<OrderPayments> {
   @Column({ type: DataType.STRING })
   currency: string;
 
-  @Column({ type: DataType.STRING, unique: true, allowNull: true })
+  @Column({ type: DataType.STRING, allowNull: true })
   ref: string;
 
   @Column({

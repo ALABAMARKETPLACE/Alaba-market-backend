@@ -34,6 +34,12 @@ import { RefreshTokenDto } from "./dto/refresh_token.dto";
 import { AuthRepository } from "./auth.repository";
 import { FirebaseService } from "../FIREBASE/firebase.service";
 import { JwtService } from "@nestjs/jwt";
+import { Op } from "sequelize";
+
+type VerifyTokenPurpose =
+  | "email_verification"
+  | "password_reset"
+  | "account_deactivation";
 
 @Injectable()
 export class AuthService {
@@ -42,7 +48,10 @@ export class AuthService {
     @Inject("CreateToken")
     private createToken: (user: User, fid: number) => Promise<string | null>,
     @Inject("CreateVerifyToken")
-    private createVerifyToken: (userId: number) => Promise<string | null>,
+    private createVerifyToken: (
+      userId: number,
+      purpose?: VerifyTokenPurpose,
+    ) => Promise<string | null>,
     @Inject("hashPassword")
     private hashPassword: (password: string) => Promise<string>,
     private readonly tokenService: TokenManagementService,
@@ -50,6 +59,38 @@ export class AuthService {
     private readonly firebaseService: FirebaseService,
     private readonly jwtService: JwtService,
   ) {}
+
+  private async createScopedVerifyToken(
+    userId: number,
+    purpose: VerifyTokenPurpose,
+  ): Promise<string> {
+    const token = await this.createVerifyToken(userId, purpose);
+
+    if (!token) {
+      throw new InternalServerErrorException("Failed to create verification token");
+    }
+
+    return token;
+  }
+
+  private verifyScopedToken(token: string, expectedPurpose: VerifyTokenPurpose) {
+    const verified: any = this.jwtService.verify(token);
+    const actualPurpose = verified?.data?.purpose;
+
+    if (actualPurpose && actualPurpose !== expectedPurpose) {
+      throw new UnauthorizedException("Invalid token for requested action");
+    }
+
+    if (!verified?.data?.userId) {
+      throw new UnauthorizedException("Invalid token payload");
+    }
+
+    return verified;
+  }
+
+  private normalizeEmail(email: string): string {
+    return String(email || "").trim().toLowerCase();
+  }
 
   async signup(body: signup_Request) {
     try {
@@ -239,7 +280,10 @@ export class AuthService {
       if (userDetails?.mail_verify == true) {
         return new DataResponseDto({}, false, "Email is already verified");
       }
-      const token = await this.createVerifyToken(userDetails?._id);
+      const token = await this.createScopedVerifyToken(
+        userDetails?._id,
+        "email_verification",
+      );
       let Mail = await VerifyMail(userDetails, token);
       this.mailService.AuthMail(Mail);
       return new DataResponseDto({}, true, "Verification Email is sent");
@@ -251,7 +295,10 @@ export class AuthService {
 
   async verifyEmailToken(user: VerifyUserTokenDto) {
     try {
-      const verified = this.jwtService.verify(user?.token);
+      const verified = this.verifyScopedToken(
+        user?.token,
+        "email_verification",
+      );
       if (verified) {
         const [status] = await User.update(
           { mail_verify: true },
@@ -269,16 +316,26 @@ export class AuthService {
 
   async forgotPassword({ email }: ForgotPasswordDto) {
     try {
+      const normalizedEmail = this.normalizeEmail(email);
       const userDetails: any = await User.findOne({
-        where: { email },
+        where: {
+          email: {
+            [Op.iLike]: normalizedEmail,
+          },
+        },
       });
 
-      console.log({ userDetails });
       if (!userDetails) throw new NotFoundException();
-      const token = await this.createVerifyToken(userDetails?._id);
+      if (userDetails?.status !== true) {
+        throw new UnauthorizedException("Your Account is Deactivated");
+      }
+      const token = await this.createScopedVerifyToken(
+        userDetails?._id,
+        "password_reset",
+      );
       let Mail = await RequestPasswdChangeTemplate(userDetails, token);
       this.mailService.AuthMail(Mail);
-      const message = "Password Resest Email has been sent";
+      const message = "Password reset email has been sent";
       return new DataResponseDto({}, true, message);
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -288,10 +345,19 @@ export class AuthService {
 
   async resetPassword(password: ChangePasswordDto) {
     try {
-      const verified = this.jwtService.verify(password?.token);
+      const verified = this.verifyScopedToken(
+        password?.token,
+        "password_reset",
+      );
       if (verified) {
+        const user = await User.findByPk(verified.data?.userId);
+        if (!user) throw new NotFoundException();
+        if (user.status !== true) {
+          throw new UnauthorizedException("Your Account is Deactivated");
+        }
+
         let newPassword = await this.hashPassword(password?.password);
-        const [status, [user]] = await User.update(
+        const [status] = await User.update(
           { password: newPassword },
           { where: { _id: verified.data?.userId }, returning: true },
         );
@@ -310,7 +376,10 @@ export class AuthService {
     try {
       const userDetails = await User.findByPk(userId);
       if (!userDetails) throw new NotFoundException();
-      const token = await this.createVerifyToken(userDetails?._id);
+      const token = await this.createScopedVerifyToken(
+        userDetails?._id,
+        "account_deactivation",
+      );
       let Mail = await DeactivateAccountViaMail(userDetails, token);
       this.mailService.AuthMail(Mail);
       const message = "Deactivation link has been sent to your Email id";
@@ -324,7 +393,10 @@ export class AuthService {
   //to deactivate account via email
   async deactivateAccount(input: DeactivateAccountDto) {
     try {
-      const verified = this.jwtService.verify(input?.token);
+      const verified = this.verifyScopedToken(
+        input?.token,
+        "account_deactivation",
+      );
       if (verified) {
         const [count, [user]] = await User.update(
           { status: false },

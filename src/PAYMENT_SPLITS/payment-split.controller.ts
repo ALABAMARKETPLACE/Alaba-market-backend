@@ -24,6 +24,8 @@ import { Roles } from "../shared/decorator/roles.decorator";
 import { Role } from "../shared/enum/role.enum";
 import { AuthGuard } from "../shared/guards/auth.guard";
 import { StoreId } from "../shared/decorator/storeId_decorator";
+import { UserId } from "../shared/decorator/userId_decorator";
+import { RRole } from "../shared/decorator/role_decorator";
 
 @ApiTags("payment-splits")
 @Controller("payment-splits")
@@ -37,32 +39,43 @@ export class PaymentSplitController {
    * (Internal – typically after order creation)
    */
   @Post("create/:orderId")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @ApiCreatedResponse({ type: DataResponseDto })
   @HttpCode(201)
   createPaymentSplit(
     @Param("orderId", ParseIntPipe) orderId: number,
-    @Body("totalAmount") totalAmount: number
+    @UserId() userId: number,
+    @StoreId() storeId: number,
+    @RRole() role: string,
   ) {
-    return this.paymentSplitService.createPaymentSplit(
-      orderId,
-      Number(totalAmount)
-    );
+    return this.paymentSplitService.createPaymentSplit(orderId, {
+      userId,
+      storeId,
+      role,
+    });
   }
 
   /**
    * Initialize Paystack payment with split
    */
   @Post("process/:orderId")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
   @ApiCreatedResponse({ type: DataResponseDto })
   @HttpCode(201)
   processPaymentWithSplit(
     @Param("orderId", ParseIntPipe) orderId: number,
-    @Body() paymentData: any
+    @Body() paymentData: any,
+    @UserId() userId: number,
+    @StoreId() storeId: number,
+    @RRole() role: string,
   ) {
-    return this.paymentSplitService.processPaymentWithSplit(
-      orderId,
-      paymentData
-    );
+    return this.paymentSplitService.processPaymentWithSplit(orderId, paymentData, {
+      userId,
+      storeId,
+      role,
+    });
   }
 
   /**

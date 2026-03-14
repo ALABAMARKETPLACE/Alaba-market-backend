@@ -12,6 +12,7 @@ import {
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { CreateGuestOrderDto } from "../../ORDER/dto/create-guest-order.dto";
 
 /* =========================
    NESTED DTOs
@@ -100,7 +101,9 @@ export class PaystackGuestInitializeDto {
   currency?: string;
 
   @ApiProperty({
-    description: "Callback URL for payment completion",
+    description:
+      "Browser redirect URL after payment. For backend-only testing, use /paystack/success on this API.",
+    example: "http://localhost:8000/paystack/success",
     required: false,
   })
   @IsOptional()
@@ -113,4 +116,15 @@ export class PaystackGuestInitializeDto {
   })
   @IsOptional()
   metadata?: Record<string, any>;
+
+  @ApiProperty({
+    description:
+      "Optional full guest order payload. When provided, the Paystack webhook can finalize the guest order without waiting for frontend verification.",
+    required: false,
+    type: CreateGuestOrderDto,
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateGuestOrderDto)
+  order_payload?: CreateGuestOrderDto;
 }

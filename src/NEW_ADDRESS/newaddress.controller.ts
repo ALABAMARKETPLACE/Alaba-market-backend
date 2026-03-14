@@ -15,6 +15,7 @@ import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
+  ApiOperation,
   ApiParam,
   ApiTags,
 } from "@nestjs/swagger";
@@ -38,6 +39,9 @@ export class NewAddressController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @HttpCode(200)
+  @ApiOperation({
+    summary: "List saved addresses for the logged-in user",
+  })
   @ApiOkResponse({ type: NewAddressDto })
   findAll(
     @UserId() userId: number,
@@ -51,6 +55,9 @@ export class NewAddressController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @HttpCode(200)
+  @ApiOperation({
+    summary: "Get one saved address by ID",
+  })
   @ApiParam({ name: "id", required: true })
   @ApiOkResponse({ type: NewAddressDto })
   findOne(
@@ -63,6 +70,11 @@ export class NewAddressController {
   // Create new address
   @Post()
   @UseGuards(AuthGuard)
+  @ApiOperation({
+    summary: "Create a saved address",
+    description:
+      "Required fields are address_type, full_address, pincode, phone_no, and at least one of state_id or country_id.",
+  })
   @ApiCreatedResponse({ type: NewAddress })
   @HttpCode(201)
   @ApiBearerAuth()
@@ -76,6 +88,11 @@ export class NewAddressController {
   // Update address
   @Put(":id")
   @UseGuards(AuthGuard)
+  @ApiOperation({
+    summary: "Update a saved address",
+    description:
+      "You may update any address fields, but the final saved record must still contain at least one of state_id or country_id.",
+  })
   @ApiOkResponse({ type: NewAddress })
   @ApiParam({ name: "id", required: true })
   @ApiBearerAuth()
@@ -91,6 +108,9 @@ export class NewAddressController {
   // Delete address (soft delete)
   @Delete(":id")
   @UseGuards(AuthGuard)
+  @ApiOperation({
+    summary: "Delete a saved address",
+  })
   @ApiOkResponse({ type: NewAddress })
   @ApiParam({ name: "id", required: true })
   @ApiBearerAuth()

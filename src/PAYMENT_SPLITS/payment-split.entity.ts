@@ -19,7 +19,10 @@ export class PaymentSplit extends Model<PaymentSplit> {
   @Column(DataType.BIGINT)
   id: number;
 
-  @Index
+  @Index({
+    name: "ux_payment_splits_order_id",
+    unique: true,
+  })
   @Column({
     type: DataType.BIGINT,
     allowNull: false,

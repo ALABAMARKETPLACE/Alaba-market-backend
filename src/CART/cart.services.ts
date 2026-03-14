@@ -62,6 +62,8 @@ export class CartServices {
         ]
       });
 
+      console.log({existingCartItems})
+
       // If there are existing items, check the store
       if (existingCartItems && existingCartItems.length > 0) {
         // Get all unique store IDs from existing cart items
@@ -93,6 +95,7 @@ export class CartServices {
 
       // Proceed with normal cart creation regardless of store check
       const { cart, created }: any = await this.cartRepo.create(userId, data);
+      console.log("userId, data", {userId, data});
       const message = created
         ? (warningMessage ? warningMessage : "Successfully Added to cart")
         : (warningMessage ? warningMessage : `Changed Product Quantity to ${cart?.quantity}`);
@@ -108,6 +111,7 @@ export class CartServices {
     } catch (err) {
       console.log('error', err);
       if (err instanceof HttpException) throw err;
+
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }

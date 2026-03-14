@@ -1,3 +1,5 @@
+import { PaymentTypeEnum } from "./payment-type.enum";
+
 type OrderItemsType = {
   id: number;
   productId: number;
@@ -11,8 +13,9 @@ type OrderItems = {
 };
 
 type paymentType = {
-  ref: string;
-  type: string;
+  ref?: string;
+  type: PaymentTypeEnum;
+  callback_url?: string;
 };
 
 type AddressType = {
