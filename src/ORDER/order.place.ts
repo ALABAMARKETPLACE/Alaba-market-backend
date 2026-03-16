@@ -740,8 +740,8 @@ export class OrderPlaceService {
         };
         let userMail = await ToUserOrderPlaced(datass);
         let storeMail = await ToSellerOrderPlaced(datass);
-        this.mailService.sellerEmails(userMail);
-        this.mailService.sellerEmails(storeMail);
+        await this.mailService.sellerEmails(userMail);
+        await this.mailService.sellerEmails(storeMail);
       });
     } catch (err) {
       return null;

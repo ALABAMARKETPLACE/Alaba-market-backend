@@ -35,6 +35,12 @@ export class DashboardService {
       });
       response.orderCount = await this.orderRepository.count({ where: where2 });
       if (role == Role.Seller) return new DataResponseDto(response);
+      response.guestOrderCount = await this.orderRepository.count({
+        where: {
+          ...where2,
+          is_guest_order: true,
+        },
+      });
       response.userCount = await this.userRepository.count();
       response.sellerCount = await this.storeRepository.count();
       return new DataResponseDto(response);
