@@ -199,21 +199,21 @@ export class GuestOrderService {
               address: guestAddressObject,
               store: store,
             });
-
-            // Schedule post-commit actions
-            await this.afterCommit(
-              t,
-              data,
-              order,
-              store,
-              orderItems,
-              guestAddressObject,
-            );
           }
 
           return newOrders;
         },
       );
+
+      for (const createdOrder of result) {
+        await this.afterCommit(
+          data,
+          createdOrder.newOrder,
+          createdOrder.store,
+          createdOrder.orderItems,
+          createdOrder.address,
+        );
+      }
 
       console.log("=== GUEST ORDER CREATED SUCCESSFULLY ===");
       console.log("Total Orders:", result.length);
@@ -918,7 +918,6 @@ export class GuestOrderService {
   // ==================== POST-COMMIT ====================
 
   private async afterCommit(
-    t: Transaction,
     data: CreateGuestOrderDto,
     order: any,
     store: Store,
@@ -926,44 +925,42 @@ export class GuestOrderService {
     guestAddressObject: any,
   ) {
     try {
-      t.afterCommit(async () => {
-        console.log("📧 Sending notifications...");
+      console.log("📧 Sending notifications...");
 
-        await store.increment("order_count", { by: 1 });
+      await store.increment("order_count", { by: 1 });
 
-        const guestUser = {
-          name: `${data.guest_info.first_name} ${data.guest_info.last_name}`,
-          email: data.guest_info.email,
-          phone: data.guest_info.phone,
-          fcmtoken: null,
-        };
+      const guestUser = {
+        name: `${data.guest_info.first_name} ${data.guest_info.last_name}`,
+        email: data.guest_info.email,
+        phone: data.guest_info.phone,
+        fcmtoken: null,
+      };
 
-        await this.sendGuestOrderConfirmation(
-          guestUser,
-          order,
-          store,
-          orderItems,
-          guestAddressObject,
-        );
+      await this.sendGuestOrderConfirmation(
+        guestUser,
+        order,
+        store,
+        orderItems,
+        guestAddressObject,
+      );
 
-        await this.sendSellerNotification(
-          guestUser,
-          order,
-          store,
-          orderItems,
-          guestAddressObject,
-        );
+      await this.sendSellerNotification(
+        guestUser,
+        order,
+        store,
+        orderItems,
+        guestAddressObject,
+      );
 
-        if (store.fcmtoken) {
-          await this.notificationService.sendPushNotification({
-            to: store.fcmtoken,
-            message: `New order #${order.order_id} from guest customer`,
-            title: "New Order Received",
-          });
-        }
+      if (store.fcmtoken) {
+        await this.notificationService.sendPushNotification({
+          to: store.fcmtoken,
+          message: `New order #${order.order_id} from guest customer`,
+          title: "New Order Received",
+        });
+      }
 
-        console.log("✅ Notifications sent");
-      });
+      console.log("✅ Notifications sent");
     } catch (err) {
       console.error("Failed to send notifications:", err);
     }
@@ -979,18 +976,52 @@ export class GuestOrderService {
     address: any,
   ) {
     try {
+      const recipientEmail = String(guestUser?.email || "")
+        .trim()
+        .toLowerCase();
+
+      if (!recipientEmail) {
+        throw new BadRequestException(
+          "Guest email is missing for order confirmation.",
+        );
+      }
+
       const emailData = {
-        user: guestUser,
+        user: {
+          ...guestUser,
+          email: recipientEmail,
+          name:
+            guestUser?.name ||
+            `${order?.guest_first_name || ""} ${order?.guest_last_name || ""}`.trim(),
+        },
         newOrder: order,
         store: store,
-        address: address,
+        address: {
+          ...address,
+          street: address?.full_address || address?.street || "",
+          pin_code: address?.pincode || address?.pin_code || "",
+          alt_phone: address?.phone || address?.phone_no || "",
+          code: address?.country_code || address?.code || "",
+        },
         products: orderItems,
       };
 
-      const userMail = await ToUserOrderPlaced(emailData);
+      const userMail = (await ToUserOrderPlaced(emailData)) as {
+        to?: string;
+        subject?: string;
+        template?: string;
+      };
+
+      if (!userMail?.template) {
+        throw new InternalServerErrorException(
+          "Failed to build guest order confirmation email.",
+        );
+      }
+
+      userMail.to = recipientEmail;
       await this.mailService.sellerEmails(userMail);
 
-      console.log("📧 Confirmation sent to:", guestUser.email);
+      console.log("📧 Confirmation sent to:", recipientEmail);
     } catch (err) {
       console.error("Failed to send confirmation:", err);
     }
