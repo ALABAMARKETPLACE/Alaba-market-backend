@@ -19,6 +19,9 @@ export class CreateProductsDto {
   readonly brand: string;
 
   @ApiProperty()
+  readonly slug: string;
+
+  @ApiProperty()
   readonly bulk_order: boolean;
 
   @ApiProperty()

@@ -3,6 +3,8 @@ import {
   Injectable,
   InternalServerErrorException,
   BadRequestException,
+  NotFoundException,
+  HttpException,
 } from "@nestjs/common";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
@@ -27,24 +29,38 @@ export class ProductServiceMain extends ProductAttributes {
   ) {
     super();
   }
-  async fetchOneProduct(pid: UUID, userId: number) {
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
+  async fetchOneProduct(identifier: string, userId: number) {
     try {
       if (userId) {
-        const data = await this.findProduct(pid, userId);
+        const data = await this.findProduct(identifier, userId);
         return new DataResponseDto(data, true, "Success");
       } else {
-        const data = await this.findProduct(pid, null);
+        const data = await this.findProduct(identifier, null);
         return new DataResponseDto(data, true, "Success");
       }
     } catch (err) {
+      if (err instanceof HttpException) {
+        throw err;
+      }
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
 
-  async findProduct(pid: UUID, userId: number | null | undefined) {
+  async findProduct(identifier: string, userId: number | null | undefined) {
     try {
+      const normalizedIdentifier = String(identifier || "").trim();
+      const where = this.isUuid(normalizedIdentifier)
+        ? { pid: normalizedIdentifier as unknown as UUID }
+        : { slug: this.slugify(normalizedIdentifier) };
+
       const data: any = await Products.findOne({
-        where: { pid },
+        where,
         include: [
           ...this.modalsToInclude,
           ...(userId ? this.loggedUserModels(userId) : []),
@@ -55,6 +71,11 @@ export class ProductServiceMain extends ProductAttributes {
         },
         order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
+
+      if (!data) {
+        throw new NotFoundException("Product not found");
+      }
+
       if (userId) this.addtoHistory(userId, data?._id);
       return data;
     } catch (err) {
