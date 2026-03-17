@@ -24,7 +24,6 @@ import { ProductSearchServiceMulti } from "./product_search_multi";
 import { ProductSearchServiceSingle } from "./product_search_single";
 import { ProductSearchSingleDto } from "./dto/productSearchSingle.dto";
 import { ApiDataObjectResponse } from "../shared/decorator/dto-dataObject.decorator";
-import { UUID } from "crypto";
 import { ProductServiceMain } from "./product_service_main";
 import { ProductSearchStoreDto } from "./dto/product_search_store.dto";
 import { ProductSearchStoreService } from "./product_search_store";
@@ -103,7 +102,7 @@ export class ProductSearchController {
   @ApiDataObjectResponse(ProductsDto)
   @UsePipes(new ValidationPipe({ transform: true }))
   findOne(
-    @Param("id") id: UUID,
+    @Param("id") id: string,
     @UserId() userId: number
   ): Promise<DataResponseDto> {
     return this.productServiceMain.fetchOneProduct(id, userId);
