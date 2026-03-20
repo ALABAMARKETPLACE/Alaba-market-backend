@@ -109,6 +109,26 @@ export class OrderService {
         ),
         "review",
       ],
+      [
+        Sequelize.literal(
+          `CASE
+            WHEN "Order"."is_guest_order" = TRUE
+            THEN TRIM(COALESCE("Order"."guest_first_name", '') || ' ' || COALESCE("Order"."guest_last_name", ''))
+            ELSE (SELECT "name" FROM "USER" WHERE "USER"."_id" = "Order"."userId")
+          END`,
+        ),
+        "customer_name",
+      ],
+      [
+        Sequelize.literal(
+          `CASE
+            WHEN "Order"."is_guest_order" = TRUE
+            THEN "Order"."guest_email"
+            ELSE (SELECT "email" FROM "USER" WHERE "USER"."_id" = "Order"."userId")
+          END`,
+        ),
+        "customer_email",
+      ],
     ],
   };
 
@@ -282,6 +302,8 @@ export class OrderService {
           "deliveryCharge",
           "tax",
           "discount",
+          "is_guest_order",
+          "guest_email",
           "delivery_date",
           "storeId",
           "userId",
@@ -298,12 +320,33 @@ export class OrderService {
           ],
           [
             Sequelize.literal(`(
-              SELECT "name"
-              FROM "USER" AS "user"
-              WHERE "user"."_id" = "Order"."userId"
-              LIMIT 1
+              SELECT CASE
+                WHEN "Order"."is_guest_order" = TRUE
+                THEN TRIM(COALESCE("Order"."guest_first_name", '') || ' ' || COALESCE("Order"."guest_last_name", ''))
+                ELSE (
+                  SELECT "name"
+                  FROM "USER" AS "user"
+                  WHERE "user"."_id" = "Order"."userId"
+                  LIMIT 1
+                )
+              END
             )`),
-            "name",
+            "customer_name",
+          ],
+          [
+            Sequelize.literal(`(
+              SELECT CASE
+                WHEN "Order"."is_guest_order" = TRUE
+                THEN "Order"."guest_email"
+                ELSE (
+                  SELECT "email"
+                  FROM "USER" AS "user"
+                  WHERE "user"."_id" = "Order"."userId"
+                  LIMIT 1
+                )
+              END
+            )`),
+            "customer_email",
           ],
         ],
         where: whereConditions,

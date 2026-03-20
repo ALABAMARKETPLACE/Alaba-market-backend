@@ -22,6 +22,9 @@ export class ProductsDto {
   readonly brand: string;
 
   @ApiProperty()
+  readonly slug: string;
+
+  @ApiProperty()
   readonly bulk_order: boolean;
 
   @ApiProperty()
@@ -77,6 +80,7 @@ export class ProductsDto {
     this.image = products.image;
     this.bar_code = products.bar_code;
     this.sku = products.sku;
+    this.slug = products.slug;
     this.brand = products.brand;
     this.bulk_order = products.bulk_order;
     this.category = products.category;
