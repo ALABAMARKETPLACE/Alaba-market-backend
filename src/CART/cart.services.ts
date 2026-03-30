@@ -4,7 +4,6 @@ import {
   NotFoundException,
   HttpException,
   InternalServerErrorException,
-  ServiceUnavailableException,
 } from "@nestjs/common";
 import { CartTable } from "./cart.entity";
 import { CreateCartDto } from "./dto/cart_create.dto";
@@ -15,7 +14,6 @@ import { CartRepository } from "./cart.repository";
 import { Products } from "../PRODUCTS/products.entity";
 import { CartDataResponseDto } from "./dto/cart.dto";
 import { InjectModel } from "@nestjs/sequelize";
-import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 
 @Injectable()
 export class CartServices {
@@ -126,46 +124,6 @@ export class CartServices {
         async (transaction: Transaction) => {
           let message = "";
           if (action == "add") {
-            const currentCartItem = await CartTable.findOne({
-              where,
-              include: [
-                {
-                  model: Products,
-                  as: "productDetails",
-                  attributes: ["name", "status", "unit"],
-                },
-                {
-                  model: ProductVariant,
-                  as: "variantDetails",
-                  attributes: ["id", "units"],
-                  required: false,
-                },
-              ],
-              transaction,
-            });
-
-            if (!currentCartItem) {
-              throw new NotFoundException();
-            }
-
-            if (currentCartItem.productDetails?.status === false) {
-              throw new ServiceUnavailableException("Product is not available");
-            }
-
-            const availableUnits = Number(
-              currentCartItem.variantId
-                ? currentCartItem.variantDetails?.units
-                : currentCartItem.productDetails?.unit,
-            );
-
-            if (
-              !Number.isFinite(availableUnits) ||
-              availableUnits <= 0 ||
-              Number(currentCartItem.quantity || 0) >= Math.min(25, availableUnits)
-            ) {
-              throw new ServiceUnavailableException("Product is out of stock");
-            }
-
             const { count, data }: any = await this.cartRepo.updateCart(
               where,
               1,
