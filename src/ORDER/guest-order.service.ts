@@ -2,9 +2,7 @@
 
 import {
   BadRequestException,
-  forwardRef,
   HttpException,
-  Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -26,22 +24,17 @@ import { Store } from "../STORE/store.entity";
 import { NotificationsService } from "../NOTIFICATIONS/notification.service";
 import { MailService } from "../MAILS/Mails.services";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
+import { getErrorMessage } from "../shared/helpers/errormessage";
 import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced";
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
-
-type GuestOrderCreationOptions = {
-  skipPaymentVerification?: boolean;
-  verifiedPaymentData?: any;
-};
 
 @Injectable()
 export class GuestOrderService {
   constructor(
     @InjectModel(Order)
     private readonly orderRepository: typeof Order,
-    @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
@@ -50,28 +43,12 @@ export class GuestOrderService {
 
   // ==================== MAIN ORDER CREATION ====================
 
-  async createGuestOrder(
-    data: CreateGuestOrderDto,
-    options: GuestOrderCreationOptions = {},
-  ) {
+  async createGuestOrder(data: CreateGuestOrderDto) {
     try {
       console.log("=== GUEST ORDER CREATION STARTED ===");
       console.log("Guest Email:", data.guest_info.email);
       console.log("Cart Items:", data.cart_items.length);
       console.log("Payment Reference:", data.payment.payment_reference);
-
-      const existingOrders = await this.orderRepository.findAll({
-        where: { payment_reference: data.payment.payment_reference },
-        order: [["createdAt", "ASC"]],
-      });
-
-      if (existingOrders.length > 0) {
-        return new DataResponseDto(
-          this.formatOrderSummary(existingOrders),
-          true,
-          "Guest order already exists for this payment reference",
-        );
-      }
 
       // Detect multi-seller
       const storeIds = new Set(data.cart_items.map((item) => item.store_id));
@@ -90,23 +67,11 @@ export class GuestOrderService {
 
           // ✅ Step 2: Verify payment with Paystack (CRITICAL)
           if (data.payment.payment_reference) {
-            const expectedAmountInKobo =
-              this.getExpectedGuestPaymentAmountInKobo(data, verified);
-
-            if (options.skipPaymentVerification) {
-              this.assertVerifiedPaymentData(
-                options.verifiedPaymentData,
-                data.payment.payment_reference,
-                expectedAmountInKobo,
-                data.guest_info.email,
-              );
-            } else {
-              await this.verifyPaymentReference(
-                data.payment.payment_reference,
-                expectedAmountInKobo,
-                data.guest_info.email,
-              );
-            }
+            await this.verifyPaymentReference(
+              data.payment.payment_reference,
+              data.order_summary.total,
+              data.guest_info.email,
+            );
           } else {
             throw new BadRequestException(
               "Payment reference is required. Please complete payment first.",
@@ -220,9 +185,20 @@ export class GuestOrderService {
       console.log("Total Orders:", result.length);
 
       // Format response
-      const formattedOrders = this.formatOrderSummary(
-        result.map((r) => r.newOrder),
-      );
+      const formattedOrders = result.map((r) => ({
+        id: r.newOrder.id,
+        order_id: r.newOrder.order_id,
+        status: r.newOrder.status,
+        storeId: r.newOrder.storeId,
+        grandTotal: r.newOrder.grandTotal,
+        deliveryCharge: r.newOrder.deliveryCharge,
+        totalItems: r.newOrder.totalItems,
+        is_multi_seller: r.newOrder.is_multi_seller,
+        payment_reference: r.newOrder.payment_reference,
+        guest_email: r.newOrder.guest_email,
+        delivery_date: r.newOrder.delivery_date,
+        createdAt: r.newOrder.createdAt,
+      }));
 
       return new DataResponseDto(
         formattedOrders,
@@ -428,28 +404,12 @@ export class GuestOrderService {
 
       // 5. Decode delivery token
       console.log("🔍 [basicCheck] Verifying delivery token...");
-      const verified: any = await this.jwtService.verifyAsync(
+      const verified: any = this.jwtService.decode(
         data.delivery.delivery_token,
       );
 
       if (!verified || !verified?.data) {
         throw new BadRequestException("Invalid delivery token");
-      }
-
-      if (
-        verified?.data?.isGuest != null &&
-        verified.data.isGuest !== true
-      ) {
-        throw new BadRequestException("Invalid guest delivery token");
-      }
-
-      if (
-        data.delivery_address?.id &&
-        String(verified?.data?.addressId) !== String(data.delivery_address.id)
-      ) {
-        throw new BadRequestException(
-          "Delivery token does not match the selected address.",
-        );
       }
 
       // 6. Check token expiry
@@ -464,12 +424,7 @@ export class GuestOrderService {
       return verified;
     } catch (err) {
       console.error("❌ [basicCheck] Error:", err.message);
-      if (err instanceof HttpException) {
-        throw err;
-      }
-      throw new BadRequestException(
-        "Invalid or expired delivery token. Please recalculate delivery.",
-      );
+      throw err;
     }
   }
 
@@ -477,7 +432,7 @@ export class GuestOrderService {
 
   private async verifyPaymentReference(
     paymentReference: string,
-    expectedAmountInKobo: number | null,
+    expectedAmount: number,
     guestEmail: string,
   ): Promise<void> {
     try {
@@ -486,12 +441,38 @@ export class GuestOrderService {
       const paystackResponse: any = await this.paystackService.verifyPayment({
         reference: paymentReference,
       });
-      this.assertVerifiedPaymentData(
-        paystackResponse.data,
-        paymentReference,
-        expectedAmountInKobo,
-        guestEmail,
-      );
+
+      // Check if payment was successful
+      if (
+        !paystackResponse.status ||
+        paystackResponse.data?.status !== "success"
+      ) {
+        throw new BadRequestException(
+          "Payment verification failed. Payment not successful.",
+        );
+      }
+
+      // Verify email matches
+      const paymentEmail =
+        paystackResponse.data?.customer?.email?.toLowerCase();
+      if (paymentEmail !== guestEmail.toLowerCase()) {
+        throw new BadRequestException(
+          "Payment email does not match guest email.",
+        );
+      }
+
+      // Verify amount
+      const amountInKobo = paystackResponse.data?.amount;
+      const expectedAmountInKobo = expectedAmount * 100;
+
+      if (amountInKobo !== expectedAmountInKobo) {
+        console.warn(
+          `⚠️  Amount mismatch: Expected ${expectedAmount}, got ${
+            amountInKobo / 100
+          }`,
+        );
+        // Don't throw - just log warning (payment was still successful)
+      }
 
       console.log("✅ Payment verified successfully");
     } catch (err) {
@@ -503,43 +484,6 @@ export class GuestOrderService {
     }
   }
 
-  private assertVerifiedPaymentData(
-    paymentData: any,
-    paymentReference: string,
-    expectedAmountInKobo: number | null,
-    guestEmail: string,
-  ) {
-    if (!paymentData || paymentData.status !== "success") {
-      throw new BadRequestException(
-        "Payment verification failed. Payment not successful.",
-      );
-    }
-
-    if (paymentData.reference && paymentData.reference !== paymentReference) {
-      throw new BadRequestException("Payment reference mismatch.");
-    }
-
-    const paymentEmail = paymentData.customer?.email?.toLowerCase();
-    if (paymentEmail !== guestEmail.toLowerCase()) {
-      throw new BadRequestException(
-        "Payment email does not match guest email.",
-      );
-    }
-
-    const amountInKobo = Number(paymentData.amount);
-    if (
-      expectedAmountInKobo != null &&
-      amountInKobo !== expectedAmountInKobo
-    ) {
-      console.warn(
-        `⚠️  Amount mismatch: Expected ${
-          expectedAmountInKobo / 100
-        }, got ${amountInKobo / 100}`,
-      );
-      throw new BadRequestException("Payment amount does not match order total.");
-    }
-  }
-
   // ==================== GROUPING ====================
 
   private async groupProducts(cartItems: any[], transaction: Transaction) {
@@ -547,6 +491,14 @@ export class GuestOrderService {
       const grouped = new Map();
 
       for (const item of cartItems) {
+        const storeId = item.store_id;
+
+        if (!storeId) {
+          throw new BadRequestException(
+            `Missing store_id for product ${item.product_id}`,
+          );
+        }
+
         // Verify product exists
         const product = await Products.findOne({
           attributes: ["_id", "store_id", "status", "name"],
@@ -565,8 +517,6 @@ export class GuestOrderService {
             `Product "${product.name}" is not available`,
           );
         }
-
-        const storeId = item.store_id ?? product.store_id;
 
         // Verify store matches
         if (product.store_id !== storeId) {
@@ -597,85 +547,6 @@ export class GuestOrderService {
     } catch (err) {
       throw err;
     }
-  }
-
-  private getExpectedGuestPaymentAmountInKobo(
-    data: CreateGuestOrderDto,
-    verified: any,
-  ): number | null {
-    const orderSummaryTotal = Number(data.order_summary?.total);
-    if (Number.isFinite(orderSummaryTotal) && orderSummaryTotal > 0) {
-      return Math.round(orderSummaryTotal * 100);
-    }
-
-    const canCalculateSubtotal = data.cart_items.every((item) => {
-      const hasTotalPrice =
-        Number.isFinite(Number(item.total_price)) &&
-        Number(item.total_price) >= 0;
-      const hasUnitPrice =
-        Number.isFinite(Number(item.unit_price)) &&
-        Number.isFinite(Number(item.quantity));
-
-      return hasTotalPrice || hasUnitPrice;
-    });
-
-    if (!canCalculateSubtotal) {
-      return null;
-    }
-
-    const subtotal = data.cart_items.reduce((sum, item) => {
-      const itemTotal = Number(item.total_price);
-      if (Number.isFinite(itemTotal) && itemTotal >= 0) {
-        return sum + itemTotal;
-      }
-
-      const unitPrice = Number(item.unit_price);
-      const quantity = Number(item.quantity);
-      if (Number.isFinite(unitPrice) && Number.isFinite(quantity)) {
-        return sum + unitPrice * quantity;
-      }
-
-      return sum;
-    }, 0);
-
-    const deliveryCharge =
-      Number(verified?.data?.amount) || Number(data.delivery?.delivery_charge) || 0;
-    const tax = Number(verified?.data?.tax ?? data.order_summary?.tax ?? 0);
-    const discount = this.getDiscountAmount(
-      verified?.data?.discount ?? data.order_summary?.discount,
-    );
-    const total = subtotal + deliveryCharge + tax - discount;
-
-    return total > 0 ? Math.round(total * 100) : null;
-  }
-
-  private getDiscountAmount(discount: unknown): number {
-    if (Array.isArray(discount)) {
-      return discount.reduce(
-        (sum, item) => sum + Number(item?.discount ?? 0),
-        0,
-      );
-    }
-
-    const numericDiscount = Number(discount);
-    return Number.isFinite(numericDiscount) ? numericDiscount : 0;
-  }
-
-  private formatOrderSummary(orders: Array<Partial<Order>>) {
-    return orders.map((order: any) => ({
-      id: order.id,
-      order_id: order.order_id,
-      status: order.status,
-      storeId: order.storeId,
-      grandTotal: order.grandTotal,
-      deliveryCharge: order.deliveryCharge,
-      totalItems: order.totalItems,
-      is_multi_seller: order.is_multi_seller,
-      payment_reference: order.payment_reference,
-      guest_email: order.guest_email,
-      delivery_date: order.delivery_date,
-      createdAt: order.createdAt,
-    }));
   }
 
   // ==================== ORDER CREATION ====================

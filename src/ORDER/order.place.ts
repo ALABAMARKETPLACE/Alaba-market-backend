@@ -420,8 +420,11 @@ export class OrderPlaceService {
         reference: paymentRef,
       });
 
-      if (paystackResponse.status && paystackResponse.data?.status === "success") {
-        const amountInKobo = paystackResponse.data?.amount; // Paystack amount is in kobo
+      if (
+        paystackResponse.status &&
+        paystackResponse.data?.data?.status === "success"
+      ) {
+        const amountInKobo = paystackResponse.data?.data?.amount; // Paystack amount is in kobo
         const expectedAmountInKobo = grandTotal * 100;
 
         return {
@@ -429,7 +432,7 @@ export class OrderPlaceService {
           status:
             amountInKobo === expectedAmountInKobo ? "success" : "incomplete",
           amount: amountInKobo,
-          currency: paystackResponse.data?.currency,
+          currency: paystackResponse.data.currency,
           email: paystackResponse.data.customer?.email,
           gateway: "paystack",
         };

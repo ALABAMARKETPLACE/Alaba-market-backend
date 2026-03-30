@@ -42,11 +42,6 @@ export class GuestInfoDto {
 
 // Delivery Address
 export class GuestDeliveryAddressDto {
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  id?: string;
-
   @ApiProperty()
   @IsString()
   @IsNotEmpty()

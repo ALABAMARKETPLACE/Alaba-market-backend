@@ -594,8 +594,6 @@ VERIFY_EXPIRY=24h
 # Paystack
 PAYSTACK_SECRET_KEY=sk_test_xxxxx
 PAYSTACK_PUBLIC_KEY=pk_test_xxxxx
-PAYSTACK_TEST_SECRET_KEY=sk_test_xxxxx
-PAYSTACK_TEST_PUBLIC_KEY=pk_test_xxxxx
 
 # Email (Brevo)
 BREVO_SMTP_HOST=smtp-relay.brevo.com
@@ -638,79 +636,6 @@ FIREBASE_CLIENT_EMAIL=email@firebase.com
 ✅ Verify error responses
 ✅ Test pagination boundaries
 ✅ Test concurrent requests
-
-### Guest Paystack Webhook Flow
-Use this sequence for guest checkout if you want the webhook to create the order:
-
-1. Call `POST /calculate_delivery/public`
-2. Call `POST /paystack/initialize-guest` with `order_payload`
-3. Redirect customer to Paystack checkout
-4. Let Paystack call `POST /paystack/webhook`
-5. Optionally keep `POST /paystack/verify-guest` and `POST /order/guest/orders` on the frontend as fallback/read model
-
-Example `POST /paystack/initialize-guest` payload:
-
-```json
-{
-  "guest_info": {
-    "email": "guest@example.com",
-    "first_name": "John",
-    "last_name": "Doe",
-    "phone": "08000000000"
-  },
-  "cart_items": [
-    {
-      "product_id": 123,
-      "store_id": 7,
-      "quantity": 1,
-      "unit_price": 50000
-    }
-  ],
-  "amount": 50000,
-  "delivery_charge": 2500,
-  "callback_url": "https://your-frontend-domain.com/guest/payment/result",
-  "order_payload": {
-    "guest_info": {
-      "email": "guest@example.com",
-      "first_name": "John",
-      "last_name": "Doe",
-      "phone": "08000000000"
-    },
-    "delivery_address": {
-      "id": "guest_address_1",
-      "full_name": "John Doe",
-      "phone_no": "08000000000",
-      "full_address": "123 Test Street",
-      "city": "Lagos",
-      "state": "Lagos",
-      "state_id": 1,
-      "country": "Nigeria",
-      "country_id": 1
-    },
-    "cart_items": [
-      {
-        "product_id": 123,
-        "store_id": 7,
-        "product_name": "Sample Product",
-        "quantity": 1,
-        "unit_price": 500,
-        "total_price": 500
-      }
-    ],
-    "payment": {
-      "payment_reference": "",
-      "transaction_reference": "",
-      "payment_status": "success"
-    },
-    "delivery": {
-      "delivery_token": "SIGNED_DELIVERY_TOKEN"
-    },
-    "order_summary": {
-      "total": 525
-    }
-  }
-}
-```
 
 ---
 

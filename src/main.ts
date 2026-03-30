@@ -73,12 +73,6 @@ async function bootstrap() {
   const logger = fileLogger;
   app.useLogger(fileLogger);
 
-  const captureRawBody = (req: any, _res: any, buf: Buffer) => {
-    if (buf?.length) {
-      req.rawBody = Buffer.from(buf);
-    }
-  };
-
   // ================= GLOBAL FILTERS =================
   app.useGlobalFilters(new AllExceptionsFilter());
   // ==================================================
@@ -94,14 +88,8 @@ async function bootstrap() {
   // ==================================================
 
   // /================= BODY LIMITS ====================
-  app.use(bodyParser.json({ limit: "50mb", verify: captureRawBody }));
-  app.use(
-    bodyParser.urlencoded({
-      limit: "50mb",
-      extended: true,
-      verify: captureRawBody,
-    }),
-  );
+  app.use(bodyParser.json({ limit: '50mb' }));
+  app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
   // ==================================================
 
   // ================= CORS ===========================

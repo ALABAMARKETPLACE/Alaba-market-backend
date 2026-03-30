@@ -1,6 +1,5 @@
 // order.module.ts
-import { Module, forwardRef } from "@nestjs/common";
-import { SequelizeModule } from "@nestjs/sequelize";
+import { Module } from "@nestjs/common";
 import { OrderController } from "./order.controller";
 import { OrderService } from "./order.service";
 import { OrderProvider } from "./order.provider";
@@ -16,18 +15,16 @@ import { NotificationsModule } from "../NOTIFICATIONS/notifications.module";
 import { OrderPlaceService } from "./order.place";
 import { OrderLogService } from "./order.log";
 import { GuestOrderService } from "./guest-order.service";
-import { Order } from "./order.entity";
 
 @Module({
   imports: [
-    SequelizeModule.forFeature([Order]),
     OrderItemsModule,
     OrderPaymentsModule,
     OrderStatusModule,
     EmailModule,
     CartModule,
     PaymentGatewayModule,
-    forwardRef(() => PaystackModule),
+    PaystackModule,
     OrderLogModule, 
     NotificationsModule,
   ],
@@ -39,6 +36,6 @@ import { Order } from "./order.entity";
     GuestOrderService,
     OrderLogService, 
   ],
-  exports: [OrderService, GuestOrderService],
+  exports: [OrderService],
 })
 export class OrderModule {}

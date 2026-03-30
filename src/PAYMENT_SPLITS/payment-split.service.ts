@@ -235,8 +235,11 @@ export class PaymentSplitService {
           //   { transaction }
           // );
 
-          const paystackData =
+          const paystackResponse =
             await this.paystackService.initializePayment(initData);
+
+          // PaystackService still returns DataResponseDto
+          const paystackData = paystackResponse.data;
           const reference = paystackData.reference;
 
           await paymentSplit.update(
@@ -271,7 +274,7 @@ export class PaymentSplitService {
 
       const transactionData = verification?.data ?? verification;
 
-      await this.syncPaymentStatusFromWebhook(reference, transactionData);
+      await this.updatePaymentSplitStatus(reference, transactionData);
 
       return new DataResponseDto(
         transactionData,
@@ -307,9 +310,5 @@ export class PaymentSplitService {
               JSON.stringify(data)
             ) as any,
     });
-  }
-
-  async syncPaymentStatusFromWebhook(reference: string, data: any) {
-    await this.updatePaymentSplitStatus(reference, data);
   }
 }
