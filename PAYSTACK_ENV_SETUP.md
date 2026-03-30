@@ -9,6 +9,8 @@ Add these environment variables to your `.env` file for Paystack integration:
 # Paystack Test Configuration
 PAYSTACK_PUBLIC_KEY=pk_test_your_test_public_key_here
 PAYSTACK_SECRET_KEY=sk_test_your_test_secret_key_here
+PAYSTACK_TEST_PUBLIC_KEY=pk_test_your_test_public_key_here
+PAYSTACK_TEST_SECRET_KEY=sk_test_your_test_secret_key_here
 PAYSTACK_WEBHOOK_SECRET=whsec_your_webhook_secret_here
 
 # Application URLs for callbacks
@@ -45,6 +47,8 @@ WEB_URL=https://your-frontend-domain.com
 |----------|-------------|----------|
 | `PAYSTACK_PUBLIC_KEY` | Public key for frontend Paystack integration | Yes |
 | `PAYSTACK_SECRET_KEY` | Secret key for backend API calls | Yes |
+| `PAYSTACK_TEST_PUBLIC_KEY` | Preferred public key in development; backend will force test keys outside production | Recommended |
+| `PAYSTACK_TEST_SECRET_KEY` | Preferred secret key in development; backend will force test keys outside production | Recommended |
 | `PAYSTACK_WEBHOOK_SECRET` | Secret for verifying webhook signatures | No (but recommended) |
 | `HOSTED_URL` | Backend server URL for API calls | Yes |
 | `WEB_URL` | Frontend application URL for redirects | Yes |
@@ -111,6 +115,7 @@ const handler = PaystackPop.setup({
 2. **"Invalid key" errors**
    - Verify you're using the correct key for your environment (test vs live)
    - Ensure the key is copied completely without extra spaces
+   - In development, this backend now rejects live Paystack keys on purpose
 
 3. **Webhook verification failed**
    - Check that `PAYSTACK_WEBHOOK_SECRET` matches the one in your Paystack dashboard

@@ -1,6 +1,12 @@
 import {
+  Inject,
+  Injectable,
+  BadRequestException,
+  Logger,
   HttpException,
   HttpStatus,
+  forwardRef,
+  InternalServerErrorException,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { catchError, lastValueFrom, map } from "rxjs";
@@ -13,6 +19,7 @@ import {
 } from "./dto/paystack-initialize.dto";
 import {
   PaystackVerifyDto,
+  PaystackVerificationResponseDto,
 } from "./dto/paystack-verify.dto";
 import {
   PaystackRefundDto,
@@ -26,13 +33,12 @@ import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 import { Order } from "../ORDER/order.entity";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
-
-// GUEST USER IMPORTS
-
-import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
 import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto";
+import { GuestCheckout } from "./guest-checkout.entity";
+import { GuestOrderService } from "../ORDER/guest-order.service";
+import { CreateGuestOrderDto } from "../ORDER/dto/create-guest-order.dto";
 
 @Injectable()
 export class PaystackService {
@@ -45,7 +51,13 @@ export class PaystackService {
     @InjectModel(Store)
     private readonly storeRepository: typeof Store,
 
+    @InjectModel(GuestCheckout)
+    private readonly guestCheckoutRepository: typeof GuestCheckout,
+
     private readonly paymentSplitService: PaymentSplitService,
+
+    @Inject(forwardRef(() => GuestOrderService))
+    private readonly guestOrderService: GuestOrderService,
   ) {}
 
   /* ----------------------------------
@@ -53,9 +65,50 @@ export class PaystackService {
   ---------------------------------- */
   private getHeaders() {
     return {
-      Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+      Authorization: `Bearer ${this.getPaystackSecretKey()}`,
       "Content-Type": "application/json",
     };
+  }
+
+  getPublicKey(): string {
+    return this.resolvePaystackKey("public");
+  }
+
+  private getPaystackSecretKey(): string {
+    return this.resolvePaystackKey("secret");
+  }
+
+  private resolvePaystackKey(type: "public" | "secret"): string {
+    const nodeEnv = (process.env.NODE_ENV || "development").replace(/"/g, "");
+    const isDevelopmentLike = nodeEnv !== "production";
+    const isSecret = type === "secret";
+    const primaryKey = isSecret
+      ? process.env.PAYSTACK_SECRET_KEY
+      : process.env.PAYSTACK_PUBLIC_KEY;
+    const testKey = isSecret
+      ? process.env.PAYSTACK_TEST_SECRET_KEY
+      : process.env.PAYSTACK_TEST_PUBLIC_KEY;
+    const expectedTestPrefix = isSecret ? "sk_test_" : "pk_test_";
+
+    const resolvedKey = isDevelopmentLike
+      ? testKey || primaryKey
+      : primaryKey || testKey;
+
+    if (!resolvedKey) {
+      throw new InternalServerErrorException(
+        `Missing Paystack ${type} key configuration.`,
+      );
+    }
+
+    if (isDevelopmentLike && !resolvedKey.startsWith(expectedTestPrefix)) {
+      throw new InternalServerErrorException(
+        `Development must use Paystack test ${type} keys. Set ${
+          isSecret ? "PAYSTACK_TEST_SECRET_KEY" : "PAYSTACK_TEST_PUBLIC_KEY"
+        } or switch PAYSTACK_${type.toUpperCase()}_KEY to a test key.`,
+      );
+    }
+
+    return resolvedKey;
   }
 
   /* ----------------------------------
@@ -63,7 +116,7 @@ export class PaystackService {
   ---------------------------------- */
   async initializePayment(
     initData: PaystackInitializeDto,
-  ): Promise<PaystackInitializeResponseDto> {
+  ): Promise<any> {
     const amountInKobo = Number(initData.amount);
     if (amountInKobo < 100) {
       throw new HttpException(
@@ -113,7 +166,7 @@ export class PaystackService {
   ---------------------------------- */
   private async initializeWithSplit(
     initData: PaystackInitializeDto,
-  ): Promise<PaystackInitializeResponseDto> {
+  ): Promise<any> {
     const store = await this.storeRepository.findByPk(initData.store_id);
     if (!store || !store.paystack_subaccount_code) {
       throw new HttpException(
@@ -160,7 +213,9 @@ export class PaystackService {
   /* ----------------------------------
      VERIFY PAYMENT
   ---------------------------------- */
-  async verifyPayment(verifyData: PaystackVerifyDto): Promise<any> {
+  async verifyPayment(
+    verifyData: PaystackVerifyDto,
+  ): Promise<PaystackVerificationResponseDto> {
     const response = await lastValueFrom(
       this.httpService
         .get(`${this.baseUrl}/transaction/verify/${verifyData.reference}`, {
@@ -169,7 +224,7 @@ export class PaystackService {
         .pipe(map((r) => r.data)),
     );
 
-    return response.data;
+    return response;
   }
 
   /* ----------------------------------
@@ -177,7 +232,7 @@ export class PaystackService {
   ---------------------------------- */
   verifyWebhookSignature(payload: string, signature: string): boolean {
     const hash = crypto
-      .createHmac("sha512", process.env.PAYSTACK_SECRET_KEY)
+      .createHmac("sha512", this.getPaystackSecretKey())
       .update(payload)
       .digest("hex");
 
@@ -191,7 +246,7 @@ export class PaystackService {
     webhookData: PaystackWebhookDto,
     signature: string,
     rawPayload: string,
-  ): Promise<void> {
+  ): Promise<{ status: string; message: string }> {
     if (!this.verifyWebhookSignature(rawPayload, signature)) {
       throw new HttpException(
         "Invalid webhook signature",
@@ -206,75 +261,29 @@ export class PaystackService {
     if (webhookData.event === "charge.failed") {
       await this.handleFailedPayment(webhookData.data);
     }
+
+    this.logger.log(
+      `Processed Paystack webhook event "${webhookData.event}" for ${webhookData.data?.reference ?? "unknown-reference"}`,
+    );
+
+    return {
+      status: "ok",
+      message: "Webhook processed",
+    };
   }
 
   /* ----------------------------------
      SUCCESS HANDLER
   ---------------------------------- */
   private async handleSuccessfulPayment(paymentData: any): Promise<void> {
-    await OrderPayments.sequelize.transaction(async (t: Transaction) => {
-      const payment = await OrderPayments.findOne({
-        where: { ref: paymentData.reference },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (!payment || payment.status === "success") return;
-
-      await payment.update(
-        {
-          status: "success",
-          currency: paymentData.currency,
-          cardHolder: paymentData.customer?.email,
-        },
-        { transaction: t },
-      );
-
-      await Order.update(
-        { status: "paid" },
-        { where: { id: payment.orderId }, transaction: t },
-      );
-
-      await OrderStatus.create(
-        {
-          orderId: payment.orderId,
-          status: "paid",
-          remark: "Payment confirmed via Paystack",
-        },
-        { transaction: t },
-      );
-    });
+    await this.handlePaymentWebhookEvent(paymentData, "success");
   }
 
   /* ----------------------------------
      FAILED HANDLER
   ---------------------------------- */
   private async handleFailedPayment(paymentData: any): Promise<void> {
-    await OrderPayments.sequelize.transaction(async (t: Transaction) => {
-      const payment = await OrderPayments.findOne({
-        where: { ref: paymentData.reference },
-        transaction: t,
-        lock: t.LOCK.UPDATE,
-      });
-
-      if (!payment) return;
-
-      await payment.update({ status: "failed" }, { transaction: t });
-
-      await Order.update(
-        { status: "failed" },
-        { where: { id: payment.orderId }, transaction: t },
-      );
-
-      await OrderStatus.create(
-        {
-          orderId: payment.orderId,
-          status: "failed",
-          remark: "Payment failed via Paystack",
-        },
-        { transaction: t },
-      );
-    });
+    await this.handlePaymentWebhookEvent(paymentData, "failed");
   }
 
   /* ----------------------------------------------------
@@ -290,7 +299,7 @@ export class PaystackService {
     );
 
     return new DataResponseDto(
-      response.data,
+      response,
       true,
       "Transaction details retrieved",
     );
@@ -350,6 +359,349 @@ export class PaystackService {
     return this.verifyPayment({ reference });
   }
 
+  private async handlePaymentWebhookEvent(
+    paymentData: any,
+    paymentStatus: "success" | "failed",
+  ): Promise<void> {
+    const reference = paymentData?.reference;
+
+    if (!reference) {
+      this.logger.warn("Received Paystack webhook without a transaction reference");
+      return;
+    }
+
+    await this.syncGuestCheckoutFromWebhook(reference, paymentData, paymentStatus);
+
+    await OrderPayments.sequelize.transaction(async (t: Transaction) => {
+      const payment = await this.findOrCreatePaymentForWebhook(
+        reference,
+        paymentData,
+        t,
+      );
+
+      if (!payment) {
+        this.logger.warn(
+          `No order/payment record found for Paystack reference ${reference}`,
+        );
+        return;
+      }
+
+      const order = await Order.findByPk(payment.orderId, {
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!order) {
+        this.logger.warn(
+          `Payment ${reference} is linked to a missing order ${payment.orderId}`,
+        );
+        return;
+      }
+
+      if (payment.status === "success") {
+        return;
+      }
+
+      if (payment.status === paymentStatus) {
+        return;
+      }
+
+      await payment.update(
+        {
+          status: paymentStatus,
+          ref: payment.ref || reference,
+          currency: paymentData.currency || payment.currency || "NGN",
+          cardHolder:
+            paymentData.customer?.email ||
+            payment.cardHolder ||
+            order.guest_email ||
+            null,
+          amount:
+            typeof paymentData.amount === "number"
+              ? paymentData.amount
+              : Math.round(Number(order.grandTotal || 0) * 100),
+        },
+        { transaction: t },
+      );
+
+      const nextOrderStatus = this.getOrderStatusForPayment(order, paymentStatus);
+      if (nextOrderStatus && nextOrderStatus !== order.status) {
+        await order.update({ status: nextOrderStatus }, { transaction: t });
+      }
+
+      await this.createOrderStatusIfNeeded(
+        order.id,
+        nextOrderStatus || order.status,
+        this.getOrderStatusRemark(paymentStatus),
+        t,
+      );
+    });
+
+    await this.paymentSplitService.syncPaymentStatusFromWebhook(
+      reference,
+      paymentData,
+    );
+  }
+
+  private async findOrCreatePaymentForWebhook(
+    reference: string,
+    paymentData: any,
+    transaction: Transaction,
+  ): Promise<OrderPayments | null> {
+    const existingPayment = await OrderPayments.findOne({
+      where: { ref: reference },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (existingPayment) {
+      return existingPayment;
+    }
+
+    const order = await this.findOrderForWebhook(paymentData, transaction);
+    if (!order) {
+      return null;
+    }
+
+    const orderPayment = await OrderPayments.findOne({
+      where: { orderId: order.id },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (orderPayment) {
+      if (!orderPayment.ref) {
+        await orderPayment.update({ ref: reference }, { transaction });
+      }
+      return orderPayment;
+    }
+
+    return OrderPayments.create(
+      {
+        orderId: order.id,
+        paymentType: order.paymentType || "pay-online",
+        status: "pending",
+        ref: reference,
+        currency: paymentData.currency || "NGN",
+        amount:
+          typeof paymentData.amount === "number"
+            ? paymentData.amount
+            : Math.round(Number(order.grandTotal || 0) * 100),
+        cardHolder:
+          paymentData.customer?.email || order.guest_email || null,
+      },
+      { transaction },
+    );
+  }
+
+  private async findOrderForWebhook(
+    paymentData: any,
+    transaction: Transaction,
+  ): Promise<Order | null> {
+    const metadataOrderId = Number(paymentData?.metadata?.order_id);
+
+    if (Number.isFinite(metadataOrderId) && metadataOrderId > 0) {
+      const orderByPrimaryKey = await Order.findByPk(metadataOrderId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      if (orderByPrimaryKey) {
+        return orderByPrimaryKey;
+      }
+
+      const orderByBusinessId = await Order.findOne({
+        where: { order_id: metadataOrderId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      if (orderByBusinessId) {
+        return orderByBusinessId;
+      }
+    }
+
+    if (paymentData?.reference) {
+      const orderByReference = await Order.findOne({
+        where: { payment_reference: paymentData.reference },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      if (orderByReference) {
+        return orderByReference;
+      }
+    }
+
+    return null;
+  }
+
+  private getOrderStatusForPayment(
+    order: Order,
+    paymentStatus: "success" | "failed",
+  ): string | null {
+    const terminalStatuses = new Set([
+      "cancelled",
+      "delivered",
+      "rejected",
+      "picked_up",
+    ]);
+
+    if (terminalStatuses.has(order.status)) {
+      return null;
+    }
+
+    if (paymentStatus === "success") {
+      return "processing";
+    }
+
+    return "failed";
+  }
+
+  private getOrderStatusRemark(paymentStatus: "success" | "failed"): string {
+    return paymentStatus === "success"
+      ? "Payment confirmed via Paystack webhook."
+      : "Payment failed via Paystack webhook.";
+  }
+
+  private async createOrderStatusIfNeeded(
+    orderId: number,
+    status: string,
+    remark: string,
+    transaction: Transaction,
+  ): Promise<void> {
+    const latestStatus = await OrderStatus.findOne({
+      where: { orderId },
+      order: [["createdAt", "DESC"]],
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (latestStatus?.status === status && latestStatus?.remark === remark) {
+      return;
+    }
+
+    await OrderStatus.create(
+      {
+        orderId,
+        status,
+        remark,
+      },
+      { transaction },
+    );
+  }
+
+  private async syncGuestCheckoutFromWebhook(
+    reference: string,
+    paymentData: any,
+    paymentStatus: "success" | "failed",
+  ): Promise<void> {
+    const guestCheckout = await this.guestCheckoutRepository.findOne({
+      where: { reference },
+    });
+
+    if (!guestCheckout) {
+      return;
+    }
+
+    if (paymentStatus === "failed") {
+      await guestCheckout.update({
+        payment_status: "failed",
+        status:
+          guestCheckout.status === "completed" ? guestCheckout.status : "failed",
+        webhook_payload: paymentData,
+        error: paymentData?.gateway_response || "Payment failed via webhook",
+      });
+      return;
+    }
+
+    if (guestCheckout.status === "completed") {
+      await guestCheckout.update({
+        payment_status: "success",
+        webhook_payload: paymentData,
+        error: null,
+      });
+      return;
+    }
+
+    if (!guestCheckout.payload) {
+      await guestCheckout.update({
+        payment_status: "success",
+        status: "payment_confirmed",
+        webhook_payload: paymentData,
+        error: null,
+      });
+      return;
+    }
+
+    await guestCheckout.update({
+      payment_status: "success",
+      status: "processing",
+      webhook_payload: paymentData,
+      error: null,
+    });
+
+    try {
+      const payload = this.buildGuestOrderPayload(
+        guestCheckout.payload,
+        reference,
+      );
+      const result = await this.guestOrderService.createGuestOrder(payload, {
+        skipPaymentVerification: true,
+        verifiedPaymentData: paymentData,
+      });
+      const orders = Array.isArray(result?.data) ? result.data : [];
+
+      await guestCheckout.update({
+        status: "completed",
+        processed_at: new Date(),
+        order_ids: orders.map((order: any) => order.id),
+        error: null,
+      });
+    } catch (error) {
+      await guestCheckout.update({
+        status: "failed",
+        error: error?.message || "Guest checkout finalization failed",
+      });
+      throw error;
+    }
+  }
+
+  private buildGuestOrderPayload(
+    payload: CreateGuestOrderDto,
+    reference: string,
+  ): CreateGuestOrderDto {
+    return {
+      ...payload,
+      payment: {
+        ...payload.payment,
+        payment_reference: reference,
+        transaction_reference:
+          payload.payment?.transaction_reference || reference,
+        payment_status: "success",
+      },
+    };
+  }
+
+  private async persistGuestCheckoutInitialization(
+    reference: string,
+    guestData: PaystackGuestInitializeDto,
+    amountInKobo: number,
+  ) {
+    const payload = guestData.order_payload
+      ? this.buildGuestOrderPayload(guestData.order_payload, reference)
+      : null;
+
+    await this.guestCheckoutRepository.create({
+      reference,
+      guest_email: guestData.guest_info.email.toLowerCase().trim(),
+      amount_kobo: amountInKobo,
+      payload,
+      status: payload ? "ready_for_webhook" : "awaiting_frontend_confirmation",
+      payment_status: "pending",
+    });
+  }
+
   // ==================== GUEST PAYMENT INITIALIZATION ====================
 
   /* ==================== GUEST PAYMENT INITIALIZATION ==================== */
@@ -372,7 +724,11 @@ export class PaystackService {
 
       // Extract store IDs for split payment (if multi-seller)
       const storeIds = [
-        ...new Set(guestData.cart_items.map((item) => item.store_id)),
+        ...new Set(
+          guestData.cart_items
+            .map((item) => item.store_id)
+            .filter((value) => value != null),
+        ),
       ];
       const isMultiSeller = storeIds.length > 1;
 
@@ -436,6 +792,12 @@ export class PaystackService {
         );
       }
 
+      await this.persistGuestCheckoutInitialization(
+        reference,
+        guestData,
+        totalAmount,
+      );
+
       this.logger.log(`Guest payment initialized: ${reference}`); // ✅ FIXED: Added opening parenthesis
 
       return {
@@ -468,5 +830,3 @@ export class PaystackService {
 
   // GUEST USER DATA ENDS HERE
 }
-
-
