@@ -13,6 +13,11 @@ import { Role } from "../enum/role.enum";
 import { ROLES_KEY } from "../decorator/roles.decorator";
 import { Cache } from "cache-manager";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
+import { User } from "../../USERS/user.entity";
+import {
+  normalizeRoles,
+  resolveActiveRole,
+} from "../helpers/user-role.helper";
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -32,24 +37,27 @@ export class AuthGuard implements CanActivate {
 
     const token = this.extractTokenFromHeader(request);
 
-    console.log("AuthGuard: Extracted Token:", token);
-    console.log("AuthGuard: Is Public:", isPublic);
-    console.log("AuthGuard: Request User:", request.user);
-    console.log(
-      "AuthGuard: Required Roles:",
-      this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]),
-    );
-
     /**
      * PUBLIC ROUTES
      */
     if (isPublic) {
       if (token) {
         const decoded: any = this.jwtService.decode(token);
-        request.user = decoded?.data ?? null;
+        const decodedRoles = normalizeRoles(
+          decoded?.data?.roles,
+          decoded?.data?.role,
+        );
+        request.user = {
+          id: decoded?.data?.id ?? null,
+          storeId: decoded?.data?.storeId ?? null,
+          role: resolveActiveRole(
+            decodedRoles,
+            decoded?.data?.activeRole,
+            decoded?.data?.role,
+          ),
+          roles: decodedRoles,
+          fid: decoded?.data?.fid ?? null,
+        };
       }
       return true;
     }
@@ -68,14 +76,34 @@ export class AuthGuard implements CanActivate {
        * VERIFY TOKEN
        */
       const payload: any = await this.jwtService.verifyAsync(token);
+      const dbUser = await User.findByPk(payload?.data?.id);
+
+      if (!dbUser || dbUser.is_deleted) {
+        throw new UnauthorizedException("This account is no longer available.");
+      }
+
+      const isActive = dbUser.is_active ?? dbUser.status;
+      if (isActive !== true || dbUser.status !== true) {
+        throw new ForbiddenException(
+          "This account has been disabled. Please contact support.",
+        );
+      }
+
+      const roles = normalizeRoles(dbUser.roles, dbUser.role);
+      const activeRole = resolveActiveRole(
+        roles,
+        dbUser.active_role,
+        dbUser.role,
+      );
 
       /**
        * ATTACH USER TO REQUEST
        */
       request.user = {
-        id: payload?.data?.id ?? null,
-        storeId: payload?.data?.storeId ?? null,
-        role: payload?.data?.role ?? null,
+        id: dbUser._id ?? payload?.data?.id ?? null,
+        storeId: dbUser.store_id ?? payload?.data?.storeId ?? null,
+        role: activeRole,
+        roles,
         fid: payload?.data?.fid ?? null,
       };
 
@@ -103,7 +131,6 @@ export class AuthGuard implements CanActivate {
           throw new ForbiddenException("Unauthorized role");
         }
 
-        // FIX: case-insensitive role comparison
         const hasRole = requiredRoles.some(
           (role) => role.toLowerCase() === request.user.role.toLowerCase(),
         );
