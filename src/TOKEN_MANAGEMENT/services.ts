@@ -72,6 +72,7 @@ export class TokenManagementService {
       }
       return new DataResponseDto({}, false, "failed to sigout");
     } catch (err) {
+      console.log(err)
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }

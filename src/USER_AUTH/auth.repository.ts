@@ -6,8 +6,6 @@ import { generateFromEmail } from "unique-username-generator";
 import { signup_Request } from "./dto/signup.dto";
 import { Role } from "../shared/enum/role.enum";
 import { Store } from "../STORE/store.entity";
-import { DeliveryCompany } from "../DELIVERY_COMPANY/delivery_company.entity";
-import { Driver } from "../DELIVERY_COMPANY/driver.entity";
 
 @Injectable()
 export class AuthRepository {
@@ -120,9 +118,13 @@ export class AuthRepository {
         email: data?.email,
         type: Role.User,
         role: Role.User,
+        roles: [Role.User],
+        active_role: Role.User,
         image: data?.picture,
         mail_verify: data?.email_verified,
         status: true,
+        is_active: true,
+        is_deleted: false,
       });
       return user;
     } catch (error) {
@@ -140,9 +142,13 @@ export class AuthRepository {
         email: data?.email,
         type: Role.User,
         role: Role.User,
+        roles: [Role.User],
+        active_role: Role.User,
         image: data?.picture,
         mail_verify: data?.email_verified,
         status: true,
+        is_active: true,
+        is_deleted: false,
       });
       return user;
     } catch (error) {
@@ -164,16 +170,21 @@ export class AuthRepository {
         phone: phoneNumber,
         type: Role.User,
         role: Role.User,
+        roles: [Role.User],
+        active_role: Role.User,
         mail_verify: false,
         phone_verify: false, // CHANGED: No phone verification without Firebase OTP
         image:
           "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/profileicon.png",
         status: true,
+        is_active: true,
+        is_deleted: false,
         fcmtoken: data?.fcmtoken,
       });
       return user;
     } catch (error) {
-      return null;
+      console.log(error)
+      return error;
     }
   }
 
@@ -212,7 +223,11 @@ export class AuthRepository {
         name: code + number,
         type: Role.User,
         role: Role.User,
+        roles: [Role.User],
+        active_role: Role.User,
         status: true,
+        is_active: true,
+        is_deleted: false,
         phone_verify: true,
         fcmtoken: fcmToken,
       });
