@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -98,6 +99,31 @@ export class OrderController {
     @Query() pageOptions: PageOptionsGetOrdersDto,
   ): Promise<DataResponseDto> {
     return this.orderService.findAll(userId, pageOptions);
+  }
+
+  //get all guest order
+  @Get("guest/all")
+  @Roles(Role.Admin)
+  async getAllGuestOrders(@Query() pageOptions: PageOptionsGetOrdersDto) {
+    return this.guestOrderService.getAllGuestOrders(pageOptions);
+  }
+
+  @Get("guest/store")
+  @Roles(Role.Seller, Role.Admin)
+  async getGuestOrdersByStore(
+    @Req() req: any,
+    @Query() pageOptions: PageOptionsGetOrdersDto,
+  ) {
+    const role = req.user?.active_role || req.user?.role;
+    const storeId = req.user?.store_id || req.user?.storeId;
+
+    if (role === Role.Admin) {
+      if (!storeId && storeId !== 0) {
+        return this.guestOrderService.getAllGuestOrders(pageOptions);
+      }
+    }
+
+    return this.guestOrderService.getGuestOrdersByStore(storeId, pageOptions);
   }
 
   //DEBUG: Get ALL orders without any filtering (for testing)
@@ -331,7 +357,7 @@ export class OrderController {
     // this.orderLogger.create(userId, create).catch(console.error);
 
     // Create the actual order
-    console.log({create})
+    console.log({ create });
     return this.placeOrder.create(userId, create);
   }
 
