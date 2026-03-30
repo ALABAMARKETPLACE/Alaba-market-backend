@@ -13,8 +13,8 @@ module.exports = {
           "roles",
           {
             type: Sequelize.JSONB,
-            allowNull: false,
-            defaultValue: ["user"],
+            allowNull: true,
+            defaultValue: null,
           },
           { transaction },
         );
@@ -26,8 +26,8 @@ module.exports = {
           "active_role",
           {
             type: Sequelize.STRING,
-            allowNull: false,
-            defaultValue: "user",
+            allowNull: true,
+            defaultValue: null,
           },
           { transaction },
         );
@@ -83,26 +83,39 @@ module.exports = {
         );
       }
 
+      // Backfill role only if missing
+      await queryInterface.sequelize.query(
+        `
+          UPDATE "USER"
+          SET "role" = CASE
+            WHEN "role" = 'Seller' OR  "store_id" IS NOT NULL THEN '["seller"]'::jsonb
+            ELSE 'user'::jsonb
+          END
+        `,
+        { transaction },
+      );
+
+      // Backfill roles only if missing
       await queryInterface.sequelize.query(
         `
           UPDATE "USER"
           SET "roles" = CASE
             WHEN "role" = 'admin' THEN '["admin"]'::jsonb
-            WHEN "role" = 'seller' THEN '["user", "seller"]'::jsonb
+            WHEN "role" = 'seller' OR ("type" = 'seller' AND "store_id" IS NOT NULL) THEN '["seller"]'::jsonb
             ELSE '["user"]'::jsonb
           END
-          WHERE "roles" IS NULL
-             OR jsonb_typeof("roles") <> 'array';
+          WHERE "roles" IS NULL;
         `,
         { transaction },
       );
 
+      // Backfill active_role only if missing
       await queryInterface.sequelize.query(
         `
           UPDATE "USER"
           SET "active_role" = CASE
             WHEN "role" IN ('admin', 'seller', 'user') THEN "role"
-            WHEN "type" = 'seller' AND "store_id" IS NOT NULL THEN 'user'
+            WHEN "type" = 'seller' AND "store_id" IS NOT NULL THEN 'seller'
             ELSE 'user'
           END
           WHERE "active_role" IS NULL
@@ -129,26 +142,63 @@ module.exports = {
         { transaction },
       );
 
-      await queryInterface.sequelize.query(
-        `
-          UPDATE "USER"
-          SET "role" = COALESCE("active_role", "role", 'user');
-        `,
+      // Do NOT sync active_role back into role
+      // That line is what causes destructive overwrite
+
+      await queryInterface.changeColumn(
+        "USER",
+        "roles",
+        {
+          type: Sequelize.JSONB,
+          allowNull: false,
+          defaultValue: ["user"],
+        },
         { transaction },
       );
 
-      await queryInterface.addIndex("USER", ["active_role"], {
-        name: "idx_user_active_role",
-        transaction,
-      });
-      await queryInterface.addIndex("USER", ["is_active"], {
-        name: "idx_user_is_active",
-        transaction,
-      });
-      await queryInterface.addIndex("USER", ["is_deleted"], {
-        name: "idx_user_is_deleted",
-        transaction,
-      });
+      await queryInterface.changeColumn(
+        "USER",
+        "active_role",
+        {
+          type: Sequelize.STRING,
+          allowNull: false,
+          defaultValue: "user",
+        },
+        { transaction },
+      );
+
+      const indexes = await queryInterface.showIndex("USER");
+
+      const hasActiveRoleIndex = indexes.some(
+        (idx) => idx.name === "idx_user_active_role",
+      );
+      const hasIsActiveIndex = indexes.some(
+        (idx) => idx.name === "idx_user_is_active",
+      );
+      const hasIsDeletedIndex = indexes.some(
+        (idx) => idx.name === "idx_user_is_deleted",
+      );
+
+      if (!hasActiveRoleIndex) {
+        await queryInterface.addIndex("USER", ["active_role"], {
+          name: "idx_user_active_role",
+          transaction,
+        });
+      }
+
+      if (!hasIsActiveIndex) {
+        await queryInterface.addIndex("USER", ["is_active"], {
+          name: "idx_user_is_active",
+          transaction,
+        });
+      }
+
+      if (!hasIsDeletedIndex) {
+        await queryInterface.addIndex("USER", ["is_deleted"], {
+          name: "idx_user_is_deleted",
+          transaction,
+        });
+      }
 
       await transaction.commit();
     } catch (error) {
@@ -161,22 +211,51 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
-      await queryInterface.removeIndex("USER", "idx_user_is_deleted", {
-        transaction,
-      });
-      await queryInterface.removeIndex("USER", "idx_user_is_active", {
-        transaction,
-      });
-      await queryInterface.removeIndex("USER", "idx_user_active_role", {
-        transaction,
-      });
+      const indexes = await queryInterface.showIndex("USER");
 
-      await queryInterface.removeColumn("USER", "deleted_at", { transaction });
-      await queryInterface.removeColumn("USER", "disabled_at", { transaction });
-      await queryInterface.removeColumn("USER", "is_deleted", { transaction });
-      await queryInterface.removeColumn("USER", "is_active", { transaction });
-      await queryInterface.removeColumn("USER", "active_role", { transaction });
-      await queryInterface.removeColumn("USER", "roles", { transaction });
+      if (indexes.some((idx) => idx.name === "idx_user_is_deleted")) {
+        await queryInterface.removeIndex("USER", "idx_user_is_deleted", {
+          transaction,
+        });
+      }
+
+      if (indexes.some((idx) => idx.name === "idx_user_is_active")) {
+        await queryInterface.removeIndex("USER", "idx_user_is_active", {
+          transaction,
+        });
+      }
+
+      if (indexes.some((idx) => idx.name === "idx_user_active_role")) {
+        await queryInterface.removeIndex("USER", "idx_user_active_role", {
+          transaction,
+        });
+      }
+
+      const tableInfo = await queryInterface.describeTable("USER");
+
+      if (tableInfo.deleted_at) {
+        await queryInterface.removeColumn("USER", "deleted_at", { transaction });
+      }
+
+      if (tableInfo.disabled_at) {
+        await queryInterface.removeColumn("USER", "disabled_at", { transaction });
+      }
+
+      if (tableInfo.is_deleted) {
+        await queryInterface.removeColumn("USER", "is_deleted", { transaction });
+      }
+
+      if (tableInfo.is_active) {
+        await queryInterface.removeColumn("USER", "is_active", { transaction });
+      }
+
+      if (tableInfo.active_role) {
+        await queryInterface.removeColumn("USER", "active_role", { transaction });
+      }
+
+      if (tableInfo.roles) {
+        await queryInterface.removeColumn("USER", "roles", { transaction });
+      }
 
       await transaction.commit();
     } catch (error) {

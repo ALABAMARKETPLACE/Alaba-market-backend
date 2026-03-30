@@ -240,6 +240,287 @@ export class GuestOrderService {
     }
   }
 
+  /** Get all Guest Orders */
+  async getAllGuestOrders(
+    pageOptions: PageOptionsGetOrdersDto,
+  ): Promise<DataResponseDto> {
+    try {
+      console.log("=== FETCHING ALL GUEST ORDERS ===");
+
+      const whereClause: any = {
+        is_guest_order: true,
+      };
+
+      if (pageOptions.status) {
+        whereClause.status = pageOptions.status;
+      }
+
+      const limit = pageOptions.take || 10;
+      const offset = ((pageOptions.page || 1) - 1) * limit;
+
+      const { count, rows: orders } =
+        await this.orderRepository.findAndCountAll({
+          where: whereClause,
+          include: [
+            {
+              model: OrderItems,
+              as: "orderItems",
+              attributes: [
+                "id",
+                "productId",
+                "variantId",
+                "quantity",
+                "price",
+                "totalPrice",
+                "image",
+                "name",
+                "sku",
+                "combination",
+              ],
+            },
+            {
+              model: OrderPayments,
+              as: "orderPayment",
+              attributes: ["id", "paymentType", "status", "ref", "amount"],
+            },
+            {
+              model: OrderStatus,
+              as: "orderStatus",
+              attributes: ["id", "status", "remark", "createdAt"],
+              separate: true,
+              order: [["createdAt", "DESC"]],
+            },
+            {
+              model: Store,
+              as: "storeDetails",
+              attributes: [
+                "id",
+                "name",
+                "store_name",
+                "email",
+                "phone",
+                "business_address",
+                "logo_upload",
+                "slug",
+              ],
+            },
+          ],
+          limit,
+          offset,
+          order: [["createdAt", "DESC"]],
+          distinct: true,
+        });
+
+      const formattedOrders = orders.map((order: any) => {
+        const normalizedAddress = {
+          full_name: order.delivery_full_name,
+          phone: order.delivery_phone,
+          phone_no: order.delivery_phone,
+          address: order.delivery_address,
+          full_address: order.delivery_address,
+          fullAddress: order.delivery_address,
+          street: order.delivery_address,
+          city: order.delivery_city,
+          state: order.delivery_state,
+          state_id: order.delivery_state_id,
+          country: order.delivery_country,
+          country_id: order.delivery_country_id,
+          landmark: order.delivery_landmark,
+          address_type: order.delivery_address_type,
+          type: order.delivery_address_type,
+          pin_code: "",
+          pincode: "",
+          code: order.guest_country_code || "",
+          country_code: order.guest_country_code || "",
+          alt_phone: order.delivery_phone,
+        };
+
+        return {
+          id: order.id,
+          order_id: order.order_id,
+          status: order.status,
+          guest_email: order.guest_email,
+          guest_first_name: order.guest_first_name,
+          guest_last_name: order.guest_last_name,
+          guest_phone: order.guest_phone,
+          address: normalizedAddress,
+          shipping_address: normalizedAddress,
+          delivery_address: normalizedAddress,
+          store: order.storeDetails,
+          items: order.orderItems,
+          totalItems: order.totalItems,
+          total: order.total,
+          deliveryCharge: order.deliveryCharge,
+          discount: order.discount,
+          tax: order.tax,
+          grandTotal: order.grandTotal,
+          payment: order.orderPayment,
+          delivery_date: order.delivery_date,
+          createdAt: order.createdAt,
+          orderStatus: order.orderStatus,
+          order_notes: order.order_notes,
+          is_guest_order: order.is_guest_order,
+        };
+      });
+
+      return new DataResponseDto(
+        formattedOrders,
+        true,
+        "All guest orders retrieved successfully",
+        pageOptions,
+        count,
+      );
+    } catch (err) {
+      console.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
+      console.error("Error:", err.message);
+
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException("Failed to retrieve guest orders");
+    }
+  }
+
+  async getGuestOrdersByStore(
+    storeId: number,
+    pageOptions: PageOptionsGetOrdersDto,
+  ): Promise<DataResponseDto> {
+    try {
+      console.log("=== FETCHING STORE GUEST ORDERS ===");
+
+      const whereClause: any = {
+        is_guest_order: true,
+        storeId,
+      };
+
+      if (pageOptions.status) {
+        whereClause.status = pageOptions.status;
+      }
+
+      const limit = pageOptions.take || 10;
+      const offset = ((pageOptions.page || 1) - 1) * limit;
+
+      const { count, rows: orders } =
+        await this.orderRepository.findAndCountAll({
+          where: whereClause,
+          include: [
+            {
+              model: OrderItems,
+              as: "orderItems",
+              attributes: [
+                "id",
+                "productId",
+                "variantId",
+                "quantity",
+                "price",
+                "totalPrice",
+                "image",
+                "name",
+                "sku",
+                "combination",
+              ],
+            },
+            {
+              model: OrderPayments,
+              as: "orderPayment",
+              attributes: ["id", "paymentType", "status", "ref", "amount"],
+            },
+            {
+              model: OrderStatus,
+              as: "orderStatus",
+              attributes: ["id", "status", "remark", "createdAt"],
+              separate: true,
+              order: [["createdAt", "DESC"]],
+            },
+            {
+              model: Store,
+              as: "storeDetails",
+              attributes: [
+                "id",
+                "name",
+                "store_name",
+                "email",
+                "phone",
+                "business_address",
+                "logo_upload",
+                "slug",
+              ],
+            },
+          ],
+          limit,
+          offset,
+          order: [["createdAt", "DESC"]],
+          distinct: true,
+        });
+
+      const formattedOrders = orders.map((order: any) => {
+        const normalizedAddress = {
+          full_name: order.delivery_full_name,
+          phone: order.delivery_phone,
+          phone_no: order.delivery_phone,
+          address: order.delivery_address,
+          full_address: order.delivery_address,
+          fullAddress: order.delivery_address,
+          street: order.delivery_address,
+          city: order.delivery_city,
+          state: order.delivery_state,
+          state_id: order.delivery_state_id,
+          country: order.delivery_country,
+          country_id: order.delivery_country_id,
+          landmark: order.delivery_landmark,
+          address_type: order.delivery_address_type,
+          type: order.delivery_address_type,
+          pin_code: "",
+          pincode: "",
+          code: order.guest_country_code || "",
+          country_code: order.guest_country_code || "",
+          alt_phone: order.delivery_phone,
+        };
+
+        return {
+          id: order.id,
+          order_id: order.order_id,
+          status: order.status,
+          guest_email: order.guest_email,
+          guest_first_name: order.guest_first_name,
+          guest_last_name: order.guest_last_name,
+          guest_phone: order.guest_phone,
+          address: normalizedAddress,
+          shipping_address: normalizedAddress,
+          delivery_address: normalizedAddress,
+          store: order.storeDetails,
+          items: order.orderItems,
+          totalItems: order.totalItems,
+          total: order.total,
+          deliveryCharge: order.deliveryCharge,
+          discount: order.discount,
+          tax: order.tax,
+          grandTotal: order.grandTotal,
+          payment: order.orderPayment,
+          delivery_date: order.delivery_date,
+          createdAt: order.createdAt,
+          orderStatus: order.orderStatus,
+          order_notes: order.order_notes,
+          is_guest_order: order.is_guest_order,
+        };
+      });
+
+      return new DataResponseDto(
+        formattedOrders,
+        true,
+        "Store guest orders retrieved successfully",
+        pageOptions,
+        count,
+      );
+    } catch (err) {
+      console.error("=== FAILED TO FETCH STORE GUEST ORDERS ===");
+      console.error("Error:", err.message);
+
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(
+        "Failed to retrieve store guest orders",
+      );
+    }
+  }
+
   // ==================== GET GUEST ORDERS ====================
 
   async getGuestOrders(
@@ -453,10 +734,7 @@ export class GuestOrderService {
         throw new BadRequestException("Invalid delivery token");
       }
 
-      if (
-        verified?.data?.isGuest != null &&
-        verified.data.isGuest !== true
-      ) {
+      if (verified?.data?.isGuest != null && verified.data.isGuest !== true) {
         throw new BadRequestException("Invalid guest delivery token");
       }
 
@@ -544,16 +822,15 @@ export class GuestOrderService {
     }
 
     const amountInKobo = Number(paymentData.amount);
-    if (
-      expectedAmountInKobo != null &&
-      amountInKobo !== expectedAmountInKobo
-    ) {
+    if (expectedAmountInKobo != null && amountInKobo !== expectedAmountInKobo) {
       console.warn(
-        `⚠️  Amount mismatch: Expected ${
-          expectedAmountInKobo / 100
-        }, got ${amountInKobo / 100}`,
+        `⚠️  Amount mismatch: Expected ${expectedAmountInKobo / 100}, got ${
+          amountInKobo / 100
+        }`,
       );
-      throw new BadRequestException("Payment amount does not match order total.");
+      throw new BadRequestException(
+        "Payment amount does not match order total.",
+      );
     }
   }
 
@@ -1010,7 +1287,9 @@ export class GuestOrderService {
           email: recipientEmail,
           name:
             guestUser?.name ||
-            `${order?.guest_first_name || ""} ${order?.guest_last_name || ""}`.trim(),
+            `${order?.guest_first_name || ""} ${
+              order?.guest_last_name || ""
+            }`.trim(),
         },
         newOrder: order,
         store: store,
