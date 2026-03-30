@@ -31,7 +31,7 @@ import { StoreSearchPaginationDto } from "./dto/store_search_dto";
 import { StoreId } from "../shared/decorator/storeId_decorator";
 import { CreateNewStoreDto } from "./dto/createNewStore.dto";
 import { UserId } from "../shared/decorator/userId_decorator";
-import { BecomeASellerDto } from "./dto/createStore.dto";
+import { UpgradeToSellerDto } from "./dto/upgradeToSeller.dto";
 import { StoreAccountDetailsDto } from "./dto/storeAccountDetails.dto";
 import { UpdateAccountDetailsDto } from "./dto/updateAccountDetails.dto";
 
@@ -174,7 +174,7 @@ export class StoreController {
   @ApiBearerAuth()
   becomeSeller(
     @UserId() userId: number,
-    @Body() create: BecomeASellerDto
+    @Body() create: UpgradeToSellerDto
   ): Promise<DataResponseDto> {
     return this.storeService.becomeSeller(userId, create);
   }

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   HttpException,
   Inject,
   Injectable,
@@ -8,6 +9,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { compare } from "bcrypt";
+import { JwtService } from "@nestjs/jwt";
 import { Op, Sequelize, Transaction } from "sequelize";
 
 import { User } from "./user.entity";
@@ -32,6 +34,16 @@ import { generateFromEmail } from "unique-username-generator";
 import { UserNameUpdateDto } from "./dto/user_name.update.dto";
 import { FirebaseService } from "../FIREBASE/firebase.service";
 import { Role } from "../shared/enum/role.enum";
+import { Store } from "../STORE/store.entity";
+import {
+  deriveUserType,
+  normalizeRole,
+  normalizeRoles,
+  resolveActiveRole,
+} from "../shared/helpers/user-role.helper";
+import { SendAdminInviteDto } from "./dto/send-admin-invite.dto";
+import { AcceptAdminInviteDto } from "./dto/accept-admin-invite.dto";
+const AdminInviteMail = require("../MAILS/templates/auth/adminInvite");
 
 @Injectable()
 export class UserService {
@@ -39,29 +51,74 @@ export class UserService {
     @Inject("UserRepository")
     private readonly UserRepository: typeof User,
     private readonly mailService: MailService,
+    @Inject("CreateToken")
+    private createToken: (user: User, fid: number) => Promise<string | null>,
+    @Inject("CreateVerifyToken")
+    private createVerifyToken: (
+      userId: number,
+      purpose?:
+        | "email_verification"
+        | "password_reset"
+        | "account_deactivation"
+        | "admin_invitation",
+    ) => Promise<string | null>,
     @Inject("hashPassword")
     private hashPassword: (password: string) => Promise<string>,
-    private readonly firebaseService: FirebaseService
+    private readonly firebaseService: FirebaseService,
+    private readonly jwtService: JwtService,
   ) {}
+
+  private syncRoleState(
+    user: User,
+    roles: string[],
+    activeRole?: string,
+  ): User {
+    const normalizedRoles = normalizeRoles(roles, user.role);
+    const resolvedActiveRole = resolveActiveRole(
+      normalizedRoles,
+      activeRole,
+      user.role,
+    );
+
+    user.roles = normalizedRoles;
+    user.active_role = resolvedActiveRole;
+    user.role = resolvedActiveRole;
+    user.type = deriveUserType(normalizedRoles, resolvedActiveRole);
+    return user;
+  }
+
+  private ensureAccountAvailable(user: User | null): User {
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    if (user.is_deleted) {
+      throw new ForbiddenException("This account has been deleted");
+    }
+
+    if ((user.is_active ?? user.status) !== true || user.status !== true) {
+      throw new ForbiddenException("This account is disabled");
+    }
+
+    return user;
+  }
+
+  private ensureAdminInviteUserName(email: string) {
+    return generateFromEmail(email, 4);
+  }
 
   async findAll(pageOptions: PageOptionsForUsersAll) {
     const { name, status, offset } = pageOptions;
     try {
       const { count, rows } = await this.UserRepository.findAndCountAll<User>({
         attributes: {
-          exclude: [
-            "updatedAt",
-            "password",
-            "type",
-            "role",
-            "role_id",
-            "store_id",
-          ],
+          exclude: ["updatedAt", "password", "role_id"],
         },
         limit: pageOptions.take,
         offset,
         order: [["createdAt", "DESC"]],
         where: {
+          is_deleted: false,
           ...((status == true || status == false) && { status }),
           ...(name && {
             [Op.or]: [
@@ -84,6 +141,7 @@ export class UserService {
       const user = await this.UserRepository.findByPk(userId, {
         attributes: { exclude: ["updatedAt"] },
       });
+      if (user?.is_deleted) throw new NotFoundException();
       if (!user) throw new NotFoundException();
       return new DataResponseDto(user, true, "Successfull");
     } catch (err) {
@@ -192,7 +250,11 @@ export class UserService {
       if (!guser?.phone_number)
         throw new UnauthorizedException("Failed to Deactivate");
       const [count, [user]] = await User.update(
-        { status: false },
+        {
+          status: false,
+          is_active: false,
+          disabled_at: new Date(),
+        },
         { where: { _id }, returning: true }
       );
       if (count == 0) throw new NotFoundException();
@@ -208,7 +270,12 @@ export class UserService {
   async reactivateUser(_id: number) {
     try {
       const [status, [user]] = await this.UserRepository.update(
-        { status: true },
+        {
+          status: true,
+          is_active: true,
+          is_deleted: false,
+          disabled_at: null,
+        },
         { where: { _id }, returning: true }
       );
       if (status == 0) throw new NotFoundException();
@@ -301,9 +368,14 @@ export class UserService {
       user.countrycode = data?.code;
       user.phone = data?.phone;
       user.type = Role.Seller;
+      user.role = Role.User;
+      user.roles = [Role.User, Role.Seller];
+      user.active_role = Role.User;
       user.mail_verify = false;
       user.phone_verify = false; // CHANGED: No phone verification without Firebase OTP
       user.status = true;
+      user.is_active = true;
+      user.is_deleted = false;
       user.store_id = store_id;
       user.image =
         "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/profileicon.png";
@@ -321,12 +393,16 @@ export class UserService {
     password: string
   ) {
     try {
-      const User = await this.UserRepository.findByPk(userId);
+      const User = await this.UserRepository.findByPk(userId, { transaction });
       if (!User) {
         throw new Error("No user has been found@@");
       }
+      const roles = normalizeRoles(User.roles, User.role);
+      if (!roles.includes(Role.Seller)) {
+        roles.push(Role.Seller);
+      }
       User.store_id = store_id;
-      User.type = Role.Seller;
+      this.syncRoleState(User, roles, Role.User);
       if (!User.password) {
         let passwordNew = await this.hashPassword(password);
         User.password = passwordNew;
@@ -335,6 +411,324 @@ export class UserService {
       return newUser;
     } catch (error) {
       throw new Error(getErrorMessage(error) + "@@");
+    }
+  }
+
+  async switchActiveRole(userId: number, role: string, fid: number) {
+    try {
+      const user = this.ensureAccountAvailable(
+        await this.UserRepository.findByPk(userId),
+      );
+      const nextRole = normalizeRole(role);
+
+      if (!nextRole) {
+        throw new ConflictException(
+          "Invalid role. Use buyer, seller, or admin.",
+        );
+      }
+
+      const roles = normalizeRoles(user.roles, user.role);
+      if (!roles.includes(nextRole)) {
+        throw new ForbiddenException(
+          "You do not have permission to switch to this role.",
+        );
+      }
+
+      if (nextRole === Role.Seller) {
+        if (!user.store_id) {
+          throw new ConflictException("No seller store is linked to this user.");
+        }
+
+        const store = await Store.findByPk(user.store_id);
+        if (!store || store.status !== "approved") {
+          throw new ConflictException(
+            "Seller role is unavailable until the linked store is approved.",
+          );
+        }
+      }
+
+      this.syncRoleState(user, roles, nextRole);
+      const updatedUser = await user.save();
+      const token = await this.createToken(updatedUser, fid);
+
+      return new DataResponseDto(
+        updatedUser,
+        true,
+        "Active role switched successfully",
+        token,
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async disableUserAccount(userId: number) {
+    try {
+      const user = await this.UserRepository.findByPk(userId);
+      if (!user || user.is_deleted) throw new NotFoundException("User not found");
+      if (user.is_active === false && user.status === false) {
+        return new DataResponseDto(user, true, "User account is already disabled");
+      }
+
+      user.is_active = false;
+      user.status = false;
+      user.disabled_at = new Date();
+      const updatedUser = await user.save();
+      return new DataResponseDto(
+        updatedUser,
+        true,
+        "User account disabled successfully",
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async enableUserAccount(userId: number) {
+    try {
+      const user = await this.UserRepository.findByPk(userId);
+      if (!user || user.is_deleted) throw new NotFoundException("User not found");
+
+      user.is_active = true;
+      user.status = true;
+      user.disabled_at = null;
+      const updatedUser = await user.save();
+      return new DataResponseDto(
+        updatedUser,
+        true,
+        "User account enabled successfully",
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async softDeleteUser(userId: number) {
+    try {
+      const user = await this.UserRepository.findByPk(userId);
+      if (!user) throw new NotFoundException("User not found");
+      if (user.is_deleted) {
+        return new DataResponseDto(user, true, "User is already deleted");
+      }
+
+      user.is_deleted = true;
+      user.is_active = false;
+      user.status = false;
+      user.deleted_at = new Date();
+      user.disabled_at = user.disabled_at ?? new Date();
+      const updatedUser = await user.save();
+
+      return new DataResponseDto(
+        updatedUser,
+        true,
+        "User deleted successfully",
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async assignAdminRole(userId: number, makeActive = false) {
+    try {
+      const user = await this.UserRepository.findByPk(userId);
+      if (!user || user.is_deleted) throw new NotFoundException("User not found");
+
+      const roles = normalizeRoles(user.roles, user.role);
+      if (!roles.includes(Role.Admin)) {
+        roles.push(Role.Admin);
+      }
+
+      const nextActiveRole = makeActive
+        ? Role.Admin
+        : user.active_role || user.role || Role.User;
+      this.syncRoleState(user, roles, nextActiveRole);
+      const updatedUser = await user.save();
+
+      return new DataResponseDto(
+        updatedUser,
+        true,
+        "Admin role assigned successfully",
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async sendAdminInvite(
+    inviterId: number,
+    payload: SendAdminInviteDto,
+  ): Promise<DataResponseDto> {
+    try {
+      const inviter = await this.UserRepository.findByPk(inviterId);
+      if (!inviter || inviter.is_deleted) {
+        throw new NotFoundException("Inviting admin not found");
+      }
+
+      const normalizedEmail = payload.email.trim().toLowerCase();
+      let user = await this.UserRepository.findOne({
+        where: { email: normalizedEmail },
+      });
+
+      if (user?.is_deleted) {
+        throw new ConflictException("Cannot invite a deleted user account");
+      }
+
+      if (!user) {
+        user = await this.UserRepository.create({
+          email: normalizedEmail,
+          username: this.ensureAdminInviteUserName(normalizedEmail),
+          first_name: payload.first_name || normalizedEmail.split("@")[0],
+          last_name: payload.last_name || "",
+          name:
+            [payload.first_name || normalizedEmail.split("@")[0], payload.last_name || ""]
+              .filter(Boolean)
+              .join(" ") || normalizedEmail.split("@")[0],
+          password: null,
+          role: Role.User,
+          roles: [Role.User],
+          active_role: Role.User,
+          type: Role.User,
+          mail_verify: false,
+          phone_verify: false,
+          status: false,
+          is_active: false,
+          is_deleted: false,
+          image:
+            "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/profileicon.png",
+        } as Partial<User>);
+      } else {
+        const currentRoles = normalizeRoles(user.roles, user.role);
+        if (currentRoles.includes(Role.Admin)) {
+          throw new ConflictException("User is already an admin");
+        }
+
+        if (payload.first_name && !user.first_name) {
+          user.first_name = payload.first_name;
+        }
+        if (payload.last_name && !user.last_name) {
+          user.last_name = payload.last_name;
+        }
+        user.name =
+          [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+          user.name ||
+          normalizedEmail.split("@")[0];
+      }
+
+      user.admin_invited_at = new Date();
+      user.admin_invited_by = inviterId;
+      user.admin_invite_accepted_at = null;
+      await user.save();
+
+      const token = await this.createVerifyToken(user._id, "admin_invitation");
+      if (!token) {
+        throw new InternalServerErrorException("Failed to create invite token");
+      }
+
+      const mail = await AdminInviteMail(
+        {
+          email: user.email,
+          first_name: user.first_name,
+          invitedByName: inviter.name,
+        },
+        token,
+      );
+      await this.mailService.AuthMail(mail);
+
+      return new DataResponseDto(
+        {
+          userId: user._id,
+          email: user.email,
+          invited_at: user.admin_invited_at,
+        },
+        true,
+        "Admin invite sent successfully",
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async acceptAdminInvite(payload: AcceptAdminInviteDto): Promise<DataResponseDto> {
+    try {
+      const verified: any = this.jwtService.verify(payload.token);
+      if (verified?.data?.purpose !== "admin_invitation") {
+        throw new UnauthorizedException("Invalid invite token");
+      }
+
+      const userId = verified?.data?.userId;
+      if (!userId) {
+        throw new UnauthorizedException("Invalid invite token payload");
+      }
+
+      const user = await this.UserRepository.findByPk(userId);
+      if (!user || user.is_deleted) {
+        throw new NotFoundException("Invited user not found");
+      }
+
+      if (!user.admin_invited_at) {
+        throw new UnauthorizedException("No pending admin invite found");
+      }
+
+      if (user.admin_invite_accepted_at) {
+        throw new ConflictException("This admin invite has already been accepted");
+      }
+
+      if (!user.password && !payload.password) {
+        throw new ConflictException(
+          "Password is required to activate this invited admin account",
+        );
+      }
+
+      if (payload.first_name) {
+        user.first_name = payload.first_name;
+      }
+
+      if (payload.last_name !== undefined) {
+        user.last_name = payload.last_name;
+      }
+
+      if (!user.first_name) {
+        user.first_name = user.email?.split("@")[0] || "Admin";
+      }
+
+      user.last_name = user.last_name || "";
+      user.name =
+        [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+        user.email?.split("@")[0] ||
+        "Admin";
+      user.username =
+        user.username || this.ensureAdminInviteUserName(user.email || "admin");
+
+      if (!user.password && payload.password) {
+        user.password = await this.hashPassword(payload.password);
+      }
+
+      const roles = normalizeRoles(user.roles, user.role);
+      if (!roles.includes(Role.Admin)) {
+        roles.push(Role.Admin);
+      }
+
+      this.syncRoleState(user, roles, Role.Admin);
+      user.mail_verify = true;
+      user.status = true;
+      user.is_active = true;
+      user.admin_invite_accepted_at = new Date();
+      const updatedUser = await user.save();
+
+      return new DataResponseDto(
+        updatedUser,
+        true,
+        "Admin invite accepted successfully",
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new UnauthorizedException(getErrorMessage(err));
     }
   }
 }
