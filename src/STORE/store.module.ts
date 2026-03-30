@@ -1,4 +1,4 @@
-import { forwardRef, Module } from "@nestjs/common";
+import { Module } from "@nestjs/common";
 import { StoreController } from "./store.controller";
 import { StoreService } from "./store.service";
 import { StoreProvider } from "./store.provider";
@@ -12,7 +12,7 @@ import { PaystackSubaccountModule } from "../PAYSTACK_SUBACCOUNTS/paystack-subac
 
 @Module({
   imports: [
-    forwardRef(() => UserModule),
+    UserModule,
     EmailModule,
     SettingsModule,
     SettlementsModule,
