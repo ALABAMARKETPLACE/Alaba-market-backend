@@ -149,4 +149,3 @@ vite.config.ts.timestamp-*
 
 # Allow template
 !.env.example
-alaba-marketplace-postman-collection.json
