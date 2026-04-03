@@ -5,10 +5,12 @@ import { PaystackService } from "./paystack.service";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
 import { Order } from "../ORDER/order.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
+import { OrderLog } from "../ORDER_LOG/orderlog.entity";
 
 describe("PaystackService", () => {
   afterEach(() => {
     jest.restoreAllMocks();
+    (OrderLog as any).sequelize = undefined;
     delete process.env.PAYSTACK_SECRET_KEY;
     delete process.env.PAYSTACK_TEST_SECRET_KEY;
     delete process.env.PAYSTACK_PUBLIC_KEY;
@@ -43,6 +45,10 @@ describe("PaystackService", () => {
       })),
     };
 
+    const paymentLogRepository = {
+      findOne: jest.fn(async () => null),
+    };
+
     const guestOrderService = {
       createGuestOrder: jest.fn(async () => ({
         data: [],
@@ -67,7 +73,11 @@ describe("PaystackService", () => {
       guestCheckoutRepository as any,
       userCheckoutRepository as any,
       userRepository as any,
+      paymentLogRepository as any,
       paymentSplitService as any,
+      {
+        decode: jest.fn(),
+      } as any,
       guestOrderService as any,
       orderPlaceService as any,
     );
@@ -79,6 +89,7 @@ describe("PaystackService", () => {
       guestCheckoutRepository,
       userCheckoutRepository,
       userRepository,
+      paymentLogRepository,
       guestOrderService,
       orderPlaceService,
     };
@@ -317,6 +328,459 @@ describe("PaystackService", () => {
 
     expect(() => service.getPublicKey()).toThrow(
       "Development must use Paystack test public keys",
+    );
+  });
+
+  it("previews missing Paystack transactions without mutating local records", async () => {
+    const { service, httpService } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: [
+            {
+              reference: "ps_ref_preview",
+              status: "success",
+              amount: 250000,
+              currency: "NGN",
+              customer: { email: "preview@example.com" },
+            },
+          ],
+          meta: {
+            page: 1,
+            pageCount: 1,
+          },
+        },
+      }),
+    );
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+    const webhookSpy = jest.spyOn(
+      service as any,
+      "handlePaymentWebhookEvent",
+    );
+
+    const result = await service.reconcileTransactions({
+      dryRun: true,
+      page: 1,
+      perPage: 10,
+      maxPages: 1,
+      status: "success",
+    } as any);
+
+    expect(webhookSpy).not.toHaveBeenCalled();
+    expect(result.data.summary).toEqual(
+      expect.objectContaining({
+        total: 1,
+        missingLocally: 1,
+      }),
+    );
+    expect(result.data.results[0]).toEqual(
+      expect.objectContaining({
+        reference: "ps_ref_preview",
+        action: "missing",
+      }),
+    );
+  });
+
+  it("replays reconcilable historical Paystack transactions through webhook sync", async () => {
+    const { service, httpService, guestCheckoutRepository } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    guestCheckoutRepository.findOne.mockResolvedValue({
+      status: "ready_for_webhook",
+      payload: { cart_items: [{ product_id: 1, quantity: 1 }] },
+      order_ids: [],
+    } as any);
+
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: [
+            {
+              reference: "ps_ref_sync",
+              status: "success",
+              amount: 250000,
+              currency: "NGN",
+              customer: { email: "sync@example.com" },
+            },
+          ],
+          meta: {
+            page: 1,
+            pageCount: 1,
+          },
+        },
+      }),
+    );
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+    const webhookSpy = jest
+      .spyOn(service as any, "handlePaymentWebhookEvent")
+      .mockResolvedValue(undefined);
+
+    const result = await service.reconcileTransactions({
+      dryRun: false,
+      page: 1,
+      perPage: 10,
+      maxPages: 1,
+      status: "success",
+    } as any);
+
+    expect(webhookSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reference: "ps_ref_sync",
+      }),
+      "success",
+    );
+    expect(result.data.summary).toEqual(
+      expect.objectContaining({
+        total: 1,
+        reconciled: 1,
+      }),
+    );
+    expect(result.data.results[0]).toEqual(
+      expect.objectContaining({
+        reference: "ps_ref_sync",
+        action: "reconciled",
+      }),
+    );
+  });
+
+  it("rebuilds authenticated orders from payment logs during reconciliation", async () => {
+    const {
+      service,
+      httpService,
+      paymentLogRepository,
+      orderPlaceService,
+    } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    paymentLogRepository.findOne.mockResolvedValue({
+      userId: 4625,
+      addressId: 12,
+      ref: "ps_ref_paymentlog",
+      cart: [
+        {
+          productId: 5,
+          storeId: 7,
+          quantity: 1,
+        },
+      ],
+      charges: {
+        data: {
+          amount: 2500,
+          addressId: 12,
+          discount: 0,
+          tax: 0,
+        },
+      },
+    } as any);
+
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: [
+            {
+              reference: "ps_ref_paymentlog",
+              status: "success",
+              amount: 250000,
+              currency: "NGN",
+              customer: { email: "sync@example.com" },
+            },
+          ],
+          meta: {
+            page: 1,
+            pageCount: 1,
+          },
+        },
+      }),
+    );
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+    const webhookSpy = jest
+      .spyOn(service as any, "handlePaymentWebhookEvent")
+      .mockResolvedValue(undefined);
+
+    await service.reconcileTransactions({
+      dryRun: false,
+      page: 1,
+      perPage: 10,
+      maxPages: 1,
+      status: "success",
+    } as any);
+
+    expect(orderPlaceService.create).toHaveBeenCalledWith(
+      4625,
+      expect.objectContaining({
+        payment: expect.objectContaining({
+          ref: "ps_ref_paymentlog",
+        }),
+        address: { id: 12 },
+      }),
+      expect.objectContaining({
+        skipDeliveryTokenVerification: true,
+        verifiedChargesData: expect.objectContaining({
+          data: expect.objectContaining({
+            addressId: 12,
+          }),
+        }),
+      }),
+    );
+    expect(webhookSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reference: "ps_ref_paymentlog",
+      }),
+      "success",
+    );
+  });
+
+  it("rebuilds authenticated orders from order logs during reconciliation", async () => {
+    const { service, httpService, orderPlaceService } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    (OrderLog as any).sequelize = {
+      escape: (value: string) => `'${value}'`,
+      literal: (value: string) => value,
+    };
+
+    jest.spyOn(OrderLog, "findOne").mockResolvedValue({
+      userId: 4625,
+      address: { id: 12 },
+      cart: [
+        {
+          productId: 5,
+          storeId: 7,
+          quantity: 1,
+        },
+      ],
+      payment: {
+        type: "paystack",
+      },
+      charges: {
+        data: {
+          amount: 2500,
+          addressId: 12,
+          discount: 0,
+          tax: 0,
+        },
+      },
+    } as any);
+
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: [
+            {
+              reference: "ps_ref_orderlog",
+              status: "success",
+              amount: 250000,
+              currency: "NGN",
+              customer: { email: "sync@example.com" },
+            },
+          ],
+          meta: {
+            page: 1,
+            pageCount: 1,
+          },
+        },
+      }),
+    );
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+    const webhookSpy = jest
+      .spyOn(service as any, "handlePaymentWebhookEvent")
+      .mockResolvedValue(undefined);
+
+    await service.reconcileTransactions({
+      dryRun: false,
+      page: 1,
+      perPage: 10,
+      maxPages: 1,
+      status: "success",
+    } as any);
+
+    expect(orderPlaceService.create).toHaveBeenCalledWith(
+      4625,
+      expect.objectContaining({
+        payment: expect.objectContaining({
+          ref: "ps_ref_orderlog",
+        }),
+        address: { id: 12 },
+      }),
+      expect.objectContaining({
+        skipDeliveryTokenVerification: true,
+        verifiedChargesData: expect.objectContaining({
+          data: expect.objectContaining({
+            addressId: 12,
+          }),
+        }),
+      }),
+    );
+    expect(webhookSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reference: "ps_ref_orderlog",
+      }),
+      "success",
+    );
+  });
+
+  it("rebuilds guest orders from Paystack metadata when no guest checkout row exists", async () => {
+    const { service, httpService, guestOrderService } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: [
+            {
+              reference: "guest_ref_metadata",
+              status: "success",
+              amount: 500000,
+              currency: "NGN",
+              customer: { email: "guest@example.com" },
+              metadata: {
+                guest_order_payload: {
+                  guest_info: {
+                    email: "guest@example.com",
+                    first_name: "Guest",
+                    last_name: "User",
+                    phone: "08000000000",
+                  },
+                  delivery_address: {
+                    id: "guest_1",
+                    full_name: "Guest User",
+                    phone_no: "08000000000",
+                    full_address: "12 Test Street",
+                    city: "Lagos",
+                    state: "Lagos",
+                    state_id: 1,
+                    country: "Nigeria",
+                    country_id: 1,
+                  },
+                  cart_items: [
+                    {
+                      product_id: 1,
+                      store_id: 7,
+                      quantity: 1,
+                      unit_price: 5000,
+                    },
+                  ],
+                  delivery: {
+                    delivery_token: "guest-token",
+                    delivery_charge: 0,
+                  },
+                  payment: {
+                    payment_status: "success",
+                  },
+                },
+              },
+            },
+          ],
+          meta: {
+            page: 1,
+            pageCount: 1,
+          },
+        },
+      }),
+    );
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+    const webhookSpy = jest
+      .spyOn(service as any, "handlePaymentWebhookEvent")
+      .mockResolvedValue(undefined);
+
+    await service.reconcileTransactions({
+      dryRun: false,
+      page: 1,
+      perPage: 10,
+      maxPages: 1,
+      status: "success",
+    } as any);
+
+    expect(guestOrderService.createGuestOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({
+          payment_reference: "guest_ref_metadata",
+        }),
+        guest_info: expect.objectContaining({
+          email: "guest@example.com",
+        }),
+      }),
+      expect.objectContaining({
+        skipPaymentVerification: true,
+        verifiedPaymentData: expect.objectContaining({
+          reference: "guest_ref_metadata",
+        }),
+      }),
+    );
+    expect(webhookSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reference: "guest_ref_metadata",
+      }),
+      "success",
+    );
+  });
+
+  it("diagnoses why a transaction is not recoverable", async () => {
+    const { service, httpService } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: {
+            reference: "guest_ref_missing",
+            status: "success",
+            amount: 5000,
+            currency: "NGN",
+            customer: { email: "missing@example.com" },
+            metadata: {},
+          },
+        },
+      }),
+    );
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+
+    const result = await service.diagnoseTransaction("guest_ref_missing");
+
+    expect(result.data.local).toEqual(
+      expect.objectContaining({
+        existsLocally: false,
+        reconcilable: false,
+      }),
+    );
+    expect(result.data.sources.recovery).toEqual(
+      expect.objectContaining({
+        overallRecoverable: false,
+      }),
+    );
+    expect(result.data.guidance.missingPieces).toEqual(
+      expect.arrayContaining([
+        "guest_checkout",
+        "payment_log",
+        "orders",
+        "order_payments",
+      ]),
     );
   });
 });

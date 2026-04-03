@@ -10,6 +10,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
   UsePipes,
   ValidationPipe,
@@ -17,9 +18,11 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiExcludeEndpoint,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
 import { OrderService } from "./order.service";
@@ -100,8 +103,56 @@ export class OrderController {
     return this.orderService.findAll(userId, pageOptions);
   }
 
+  //get all guest order
+  @Get("guest/all")
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get all guest orders (admin)",
+    description:
+      "Returns all guest purchases including paid-but-unfulfilled checkout records. Each item includes seller/store info. Admin only.",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "take", required: false, type: Number })
+  @ApiQuery({ name: "status", required: false, type: String })
+  async getAllGuestOrders(@Query() pageOptions: PageOptionsGetOrdersDto) {
+    return this.guestOrderService.getAllGuestOrders(pageOptions);
+  }
+
+  @Get("guest/store")
+  @UseGuards(AuthGuard)
+  @Roles(Role.Seller, Role.Admin)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get guest orders for a store (seller/admin)",
+    description:
+      "Returns guest orders scoped to the authenticated seller's store. Admins with a storeId get orders for that store; admins without a storeId get all guest orders.",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "take", required: false, type: Number })
+  @ApiQuery({ name: "status", required: false, type: String })
+  async getGuestOrdersByStore(
+    @Req() req: any,
+    @Query() pageOptions: PageOptionsGetOrdersDto,
+  ) {
+    const role = req.user?.active_role || req.user?.role;
+    const storeId = req.user?.store_id || req.user?.storeId;
+
+    if (role === Role.Admin) {
+      if (!storeId && storeId !== 0) {
+        return this.guestOrderService.getAllGuestOrders(pageOptions);
+      }
+    }
+
+    return this.guestOrderService.getGuestOrdersByStore(storeId, pageOptions);
+  }
+
   //DEBUG: Get ALL orders without any filtering (for testing)
   @Get("all-orders-debug")
+  @ApiExcludeEndpoint()
   async getAllOrdersDebug(@Query() query: any) {
     console.log("[DEBUG] Getting ALL orders with query:", query);
     try {
@@ -331,7 +382,7 @@ export class OrderController {
     // this.orderLogger.create(userId, create).catch(console.error);
 
     // Create the actual order
-    console.log({create})
+    console.log({ create });
     return this.placeOrder.create(userId, create);
   }
 

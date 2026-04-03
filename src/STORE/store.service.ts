@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   HttpException,
   HttpStatus,
   Inject,
@@ -29,7 +30,6 @@ import { Products } from "../PRODUCTS/products.entity";
 import { User } from "../USERS/user.entity";
 import { StoreSearchPaginationDto } from "./dto/store_search_dto";
 import { CreateNewStoreDto } from "./dto/createNewStore.dto";
-import { BecomeASellerDto } from "./dto/createStore.dto";
 import { StoreAccountDetailsDto } from "./dto/storeAccountDetails.dto";
 import { UpdateAccountDetailsDto } from "./dto/updateAccountDetails.dto";
 import { RequestDocumentMail } from "../MAILS/templates/sellers/request_documentmail";
@@ -40,6 +40,12 @@ import { Role } from "../shared/enum/role.enum";
 import { Settlements } from "../SETTLEMENTS/settlements.entity";
 import { PaystackSubaccountService } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.service";
 import { PaystackSubaccount } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.entity";
+import {
+  deriveUserType,
+  normalizeRoles,
+  resolveActiveRole,
+} from "../shared/helpers/user-role.helper";
+import { UpgradeToSellerDto } from "./dto/upgradeToSeller.dto";
 
 @Injectable()
 export class StoreService {
@@ -55,7 +61,7 @@ export class StoreService {
     @Inject("Slugify") private readonly slugify: (slug: string) => string,
     private readonly firebaseService: FirebaseService,
     private readonly notificationsService: NotificationsService,
-    private readonly paystackSubaccountService: PaystackSubaccountService
+    private readonly paystackSubaccountService: PaystackSubaccountService,
   ) {}
 
   // Generate provisional subaccount code
@@ -63,6 +69,114 @@ export class StoreService {
     const timestamp = Date.now().toString().slice(-6);
     const randomStr = Math.random().toString(36).substring(2, 8);
     return `ACCT_${randomStr}${timestamp}`;
+  }
+
+  private syncUserRoleState(
+    user: User,
+    roles: string[],
+    activeRole?: string,
+  ): User {
+    const normalizedRoles = normalizeRoles(roles, user.role);
+    const resolvedActiveRole = resolveActiveRole(
+      normalizedRoles,
+      activeRole,
+      user.role,
+    );
+
+    user.roles = normalizedRoles;
+    user.active_role = resolvedActiveRole;
+    user.role = resolvedActiveRole;
+    user.type = deriveUserType(normalizedRoles, resolvedActiveRole);
+
+    return user;
+  }
+
+  private applySellerStorePayload(
+    store: Store,
+    data: UpgradeToSellerDto,
+    phoneNumber: string,
+  ): Store {
+    store.name = `${data?.first_name} ${data?.last_name}`;
+    store.email = data.email;
+    store.password = data.password;
+    store.business_location = String(data.business_location);
+    store.agreement = data.agreement;
+    store.trn_number = data.trn_number;
+    store.trade_lisc_no = data.trade_lisc_no;
+    store.is_prind_available = data.is_print_available;
+    store.seller_name = data.seller_name;
+    store.seller_country = data.seller_country;
+    store.birth_country = data.birth_country;
+    store.dob = data.dob;
+    store.id_proof = data.id_proof;
+    store.id_issue_country = data.id_issue_country;
+    store.id_expiry_date = data.id_expiry_date;
+    store.store_name = data.store_name;
+    store.upscs = data.upscs;
+    store.manufacture = data.manufacture;
+    store.trn_upload = data.trn_upload;
+    store.logo_upload =
+      store.logo_upload ||
+      "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/profileicon.png";
+    store.phone = phoneNumber;
+    store.business_address = data.business_address;
+    store.first_name = data.first_name;
+    store.last_name = data.last_name;
+    store.id_type = data.id_type;
+    store.code = data.code;
+    store.status = "pending";
+    store.status_remark = "";
+    store.order_count = store.order_count ?? 0;
+    store.lat = data.lat;
+    store.long = data.long;
+    store.business_types = data.business_types;
+    store.account_name_or_code = data.account_name_or_code;
+    store.account_number = data.account_number;
+    store.slug = this.slugify(data.store_name);
+    store.subscription_plan = data.subscription_plan || "standard";
+    store.subscription_plan_name =
+      data.subscription_plan_name || "Standard Seller";
+    store.subscription_price = data.subscription_price || 0;
+    store.subscription_boosts = data.subscription_boosts || 0;
+    return store;
+  }
+
+  private resolveUpgradePayload(
+    user: User,
+    data: UpgradeToSellerDto,
+  ): UpgradeToSellerDto {
+    const resolved: UpgradeToSellerDto = {
+      ...data,
+      first_name: data.first_name ?? user.first_name,
+      last_name: data.last_name ?? user.last_name,
+      email: data.email ?? user.email,
+      phone: data.phone ?? user.phone,
+      code: data.code ?? user.countrycode,
+      password: data.password ?? "",
+      seller_name:
+        data.seller_name ??
+        user.name ??
+        [data.first_name ?? user.first_name, data.last_name ?? user.last_name]
+          .filter(Boolean)
+          .join(" "),
+    };
+
+    const missingFields = [
+      !resolved.first_name && "first_name",
+      !resolved.last_name && "last_name",
+      !resolved.email && "email",
+      !resolved.phone && "phone",
+      !resolved.code && "code",
+      !user.password && !resolved.password && "password",
+    ].filter(Boolean);
+
+    if (missingFields.length) {
+      throw new ConflictException(
+        `Missing required profile fields for seller upgrade: ${missingFields.join(", ")}`,
+      );
+    }
+
+    return resolved;
   }
 
   async findAll(pageOptionsDto: StoreSearchPaginationDto, type: string) {
@@ -340,8 +454,10 @@ export class StoreService {
                 store_id: created?.id,
               },
             });
-            user.type = "seller";
-            await user.save();
+            if (user) {
+              user.type = "seller";
+              await user.save();
+            }
           });
           return created;
         }
@@ -359,62 +475,51 @@ export class StoreService {
   }
 
   //to become a seler for an existing user
-  async becomeSeller(userId: number, data: BecomeASellerDto) {
+  async becomeSeller(userId: number, data: UpgradeToSellerDto) {
+    return this.upgradeUserToSeller(userId, data);
+  }
+
+  async upgradeUserToSeller(userId: number, data: UpgradeToSellerDto) {
     try {
       const result = await this.StoreRepository.sequelize.transaction(
         async (transaction: Transaction) => {
-          // COMMENTED: Firebase OTP verification disabled
-          // const guser = await this.firebaseService.verifyIdToken(data.idToken);
-          // if (!guser?.phone_number) {
-          //   throw new Error("Verification Failed. Please Retry@@");
-          // }
-          // const phoneNumber = guser?.phone_number?.replace(data.code, "");
+          const user = await User.findByPk(userId, { transaction });
+          if (!user || user.is_deleted) {
+            throw new NotFoundException("User not found");
+          }
 
-          // Direct phone from request body (no Firebase verification)
-          const phoneNumber = data?.phone || "";
-          const store = new Store();
-          store.name = `${data?.first_name} ${data?.last_name}`;
-          store.email = data.email;
-          store.password = data.password;
-          store.business_location = String(data.business_location);
-          // store.business_type = data.business_type;
-          store.agreement = data.agreement;
-          store.trn_number = data.trn_number;
-          store.trade_lisc_no = data.trade_lisc_no;
-          store.is_prind_available = data.is_print_available;
-          store.seller_name = data.seller_name;
-          store.seller_country = data.seller_country;
-          store.birth_country = data.birth_country;
-          store.dob = data.dob;
-          store.id_proof = data.id_proof;
-          store.id_issue_country = data.id_issue_country;
-          store.id_expiry_date = data.id_expiry_date;
-          store.store_name = data.store_name;
-          store.upscs = data.upscs;
-          store.manufacture = data.manufacture;
-          store.trn_upload = data.trn_upload;
-          store.logo_upload =
-            "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/profileicon.png";
-          store.phone = phoneNumber;
-          store.business_address = data.business_address;
-          store.first_name = data.first_name;
-          store.last_name = data.last_name;
-          store.id_type = data.id_type;
-          store.code = data.code;
-          store.status = "pending";
-          store.status_remark = "";
-          store.order_count = 0;
-          store.lat = data.lat;
-          store.long = data.long;
-          store.business_types = data.business_types;
-          store.account_name_or_code = data.account_name_or_code;
-          store.account_number = data.account_number;
-          store.slug = this.slugify(data.store_name);
+          const roles = normalizeRoles(user.roles, user.role);
+          if (roles.includes(Role.Seller)) {
+            throw new ConflictException("User already has seller access");
+          }
+
+          const resolvedData = this.resolveUpgradePayload(user, data);
+          const phoneNumber = resolvedData.phone || "";
+          let store: Store | null = null;
+
+          if (user.store_id) {
+            store = await this.StoreRepository.findByPk(user.store_id, {
+              transaction,
+            });
+
+            if (
+              store &&
+              !["inactive", "cancelled", "rejected"].includes(store.status)
+            ) {
+              throw new ConflictException(
+                "Seller upgrade is already pending or active for this user",
+              );
+            }
+          }
+
+          store = store ?? new Store();
+          const hadExistingStore = Boolean(store.id);
+          this.applySellerStorePayload(store, resolvedData, phoneNumber);
 
           // Subscription plan fields - Look up plan by name if ID not provided
-          let subscriptionPlanId = data.subscription_plan_id || null;
+          let subscriptionPlanId = resolvedData.subscription_plan_id || null;
           const subscriptionPlanName =
-            data.subscription_plan_name || "Standard Seller";
+            resolvedData.subscription_plan_name || "Standard Seller";
 
           // If plan name is provided but no ID, try to find the plan in database
           if (!subscriptionPlanId && subscriptionPlanName) {
@@ -444,10 +549,10 @@ export class StoreService {
           }
 
           store.subscription_plan_id = subscriptionPlanId;
-          store.subscription_plan = data.subscription_plan || "standard";
+          store.subscription_plan = resolvedData.subscription_plan || "standard";
           store.subscription_plan_name = subscriptionPlanName;
-          store.subscription_price = data.subscription_price || 0;
-          store.subscription_boosts = data.subscription_boosts || 0;
+          store.subscription_price = resolvedData.subscription_price || 0;
+          store.subscription_boosts = resolvedData.subscription_boosts || 0;
 
           console.log(
             "[StoreService.becomeSeller] Storing subscription plan info:",
@@ -464,12 +569,16 @@ export class StoreService {
           
           // Create PaystackSubaccount entry if bank details provided
           console.log('Checking for Paystack subaccount creation in becomeSeller...', {
-            settlement_bank: data.settlement_bank,
-            settlement_account_number: data.settlement_account_number,
-            settlement_account_name: data.settlement_account_name
+            settlement_bank: resolvedData.settlement_bank,
+            settlement_account_number: resolvedData.settlement_account_number,
+            settlement_account_name: resolvedData.settlement_account_name
           });
           
-          if (data.settlement_bank && data.settlement_account_number) {
+          if (
+            !hadExistingStore &&
+            resolvedData.settlement_bank &&
+            resolvedData.settlement_account_number
+          ) {
             const provisionalCode = this.generateProvisionalSubaccountCode();
             
             try {
@@ -486,13 +595,13 @@ export class StoreService {
                   replacements: [
                     created.id,
                     provisionalCode,
-                    data.business_name || data.store_name,
-                    data.settlement_bank,
-                    data.settlement_account_number,
-                    data.settlement_account_name,
-                    data.email,
-                    data.primary_contact_name || `${data.first_name} ${data.last_name}`,
-                    data.primary_contact_phone || data.phone
+                    resolvedData.business_name || resolvedData.store_name,
+                    resolvedData.settlement_bank,
+                    resolvedData.settlement_account_number,
+                    resolvedData.settlement_account_name,
+                    resolvedData.email,
+                    resolvedData.primary_contact_name || `${resolvedData.first_name} ${resolvedData.last_name}`,
+                    resolvedData.primary_contact_phone || resolvedData.phone
                   ],
                   transaction
                 }
@@ -508,7 +617,7 @@ export class StoreService {
             created?.id,
             userId,
             transaction,
-            data.password
+            resolvedData.password || "",
           );
           transaction.afterCommit(async () => {
             let adminEmail = await this.settingsService.getAdminEmail();
@@ -525,6 +634,64 @@ export class StoreService {
         result,
         true,
         "Seller Registration successfull."
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async downgradeUserToBuyer(userId: number) {
+    try {
+      const result = await this.StoreRepository.sequelize.transaction(
+        async (transaction: Transaction) => {
+          const user = await User.findByPk(userId, { transaction });
+          if (!user || user.is_deleted) {
+            throw new NotFoundException("User not found");
+          }
+
+          const roles = normalizeRoles(user.roles, user.role);
+          if (!roles.includes(Role.Seller)) {
+            throw new ConflictException("User is not a seller");
+          }
+
+          if (user.store_id) {
+            const store = await this.StoreRepository.findByPk(user.store_id, {
+              transaction,
+            });
+
+            if (store) {
+              store.status = "inactive";
+              store.status_remark =
+                "Seller account archived after downgrade to buyer";
+              await store.save({ transaction });
+
+              await Products.update(
+                { status: false },
+                {
+                  where: { store_id: store.id },
+                  transaction,
+                },
+              );
+            }
+          }
+
+          const nextRoles = roles.filter((role) => role !== Role.Seller);
+          this.syncUserRoleState(user, nextRoles, Role.User);
+          await user.save({ transaction });
+
+          return user;
+        },
+      );
+
+      if (result.store_id) {
+        await this.cacheManager?.set(`store${result.store_id}`, result.store_id);
+      }
+
+      return new DataResponseDto(
+        result,
+        true,
+        "Seller account downgraded to buyer successfully",
       );
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -590,13 +757,21 @@ export class StoreService {
             },
             transaction,
           });
+          const roles = normalizeRoles(user.roles, user.role);
           if (store.status == "approved") {
             //remove from blacklist
             await this.cacheManager?.del(`store${storeId}`);
-            user.role = Role.Seller;
+            if (!roles.includes(Role.Seller)) {
+              roles.push(Role.Seller);
+            }
+            this.syncUserRoleState(
+              user,
+              roles,
+              user.active_role === Role.Admin ? Role.Admin : Role.Seller,
+            );
           } else if (store.status == "cancelled") {
             await this.cacheManager?.set(`store${storeId}`, storeId);
-            user.role = Role.User;
+            this.syncUserRoleState(user, roles, Role.User);
           }
           await user.save({ transaction });
 
@@ -641,10 +816,20 @@ export class StoreService {
             throw new NotFoundException("User not found for store");
           }
 
+          const roles = normalizeRoles(user.roles, user.role);
+
           if (store.status === "approved") {
-            user.role = Role.Seller;
+            if (!roles.includes(Role.Seller)) {
+              roles.push(Role.Seller);
+            }
+            this.syncUserRoleState(
+              user,
+              roles,
+              user.active_role === Role.Admin ? Role.Admin : Role.Seller,
+            );
           } else if (store.status === "rejected") {
-            user.role = Role.User;
+            const filteredRoles = roles.filter((role) => role !== Role.Seller);
+            this.syncUserRoleState(user, filteredRoles, Role.User);
           }
 
           await user.save({ transaction });

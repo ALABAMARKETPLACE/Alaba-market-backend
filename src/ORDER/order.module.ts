@@ -17,10 +17,11 @@ import { OrderPlaceService } from "./order.place";
 import { OrderLogService } from "./order.log";
 import { GuestOrderService } from "./guest-order.service";
 import { Order } from "./order.entity";
+import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 
 @Module({
   imports: [
-    SequelizeModule.forFeature([Order]),
+    SequelizeModule.forFeature([Order, GuestCheckout]),
     OrderItemsModule,
     OrderPaymentsModule,
     OrderStatusModule,
@@ -28,7 +29,7 @@ import { Order } from "./order.entity";
     CartModule,
     PaymentGatewayModule,
     forwardRef(() => PaystackModule),
-    OrderLogModule, 
+    OrderLogModule,
     NotificationsModule,
   ],
   controllers: [OrderController],
@@ -37,7 +38,7 @@ import { Order } from "./order.entity";
     ...OrderProvider,
     OrderPlaceService,
     GuestOrderService,
-    OrderLogService, 
+    OrderLogService,
   ],
   exports: [OrderService, GuestOrderService, OrderPlaceService],
 })

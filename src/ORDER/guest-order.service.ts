@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { JwtService } from "@nestjs/jwt";
-import { Transaction } from "sequelize";
+import { Op, Transaction, WhereOptions } from "sequelize";
 
 import { CreateGuestOrderDto } from "./dto/create-guest-order.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -30,10 +30,13 @@ import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced"
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
+import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 
 type GuestOrderCreationOptions = {
   skipPaymentVerification?: boolean;
   verifiedPaymentData?: any;
+  skipDeliveryTokenVerification?: boolean;
+  verifiedDeliveryData?: any;
 };
 
 @Injectable()
@@ -41,6 +44,8 @@ export class GuestOrderService {
   constructor(
     @InjectModel(Order)
     private readonly orderRepository: typeof Order,
+    @InjectModel(GuestCheckout)
+    private readonly guestCheckoutRepository: typeof GuestCheckout,
     @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
     private readonly notificationService: NotificationsService,
@@ -81,12 +86,12 @@ export class GuestOrderService {
         `📦 Multi-seller: ${isMultiSeller} (${storeIds.size} stores)`,
       );
 
-      const result = await this.orderRepository.sequelize.transaction(
+      const result = await this.orderRepository.sequelize!.transaction(
         async (t) => {
-          const newOrders = [];
+          const newOrders: any[] = [];
 
           // ✅ Step 1: Validate delivery token and basic data
-          const verified = await this.basicCheck(data);
+          const verified = await this.basicCheck(data, options);
 
           // ✅ Step 2: Verify payment with Paystack (CRITICAL)
           if (data.payment.payment_reference) {
@@ -230,12 +235,444 @@ export class GuestOrderService {
       );
     } catch (err) {
       console.error("=== GUEST ORDER CREATION FAILED ===");
-      console.error("Error:", err.message);
-      console.error("Stack:", err.stack);
+      console.error("Error:", (err as any).message);
+      console.error("Stack:", (err as any).stack);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(
-        `Order creation failed: ${err.message}`,
+        `Order creation failed: ${(err as any).message}`,
+      );
+    }
+  }
+
+  private buildGuestOrderWhereClause(
+    overrides: Record<string, any> = {},
+    email?: string,
+  ): WhereOptions<Order> {
+    const normalizedEmail = email?.toLowerCase().trim();
+
+    if (normalizedEmail) {
+      return {
+        ...overrides,
+        [Op.or]: [
+          {
+            is_guest_order: true,
+            guest_email: normalizedEmail,
+          },
+          {
+            guest_email: normalizedEmail,
+          },
+        ],
+      };
+    }
+
+    // For guest orders: is_guest_order=true OR has guest_email set
+    // Note: userId=null can catch other orphaned orders, so we prioritize is_guest_order flag
+    return {
+      ...overrides,
+      [Op.or]: [
+        {
+          is_guest_order: true,
+        },
+        {
+          [Op.and]: [
+            { guest_email: { [Op.ne]: null as any } },
+            { guest_email: { [Op.ne]: "" } },
+          ],
+        },
+      ],
+    } as any;
+  }
+
+  /** Get all Guest Orders */
+  async getAllGuestOrders(
+    pageOptions: PageOptionsGetOrdersDto,
+  ): Promise<DataResponseDto> {
+    try {
+      console.log("=== FETCHING ALL GUEST ORDERS ===");
+
+      const whereClause: any = this.buildGuestOrderWhereClause();
+      console.log("Where Clause:", JSON.stringify(whereClause, null, 2));
+
+      if (pageOptions.status) {
+        whereClause.status = pageOptions.status;
+      }
+
+      const limit = pageOptions.take || 10;
+      const offset = ((pageOptions.page || 1) - 1) * limit;
+
+      const { count, rows: orders } =
+        await this.orderRepository.findAndCountAll({
+          where: whereClause,
+          include: [
+            {
+              model: OrderItems,
+              as: "orderItems",
+              attributes: [
+                "id",
+                "productId",
+                "variantId",
+                "quantity",
+                "price",
+                "totalPrice",
+                "image",
+                "name",
+                "sku",
+                "combination",
+              ],
+            },
+            {
+              model: OrderPayments,
+              as: "orderPayment",
+              attributes: ["id", "paymentType", "status", "ref", "amount"],
+            },
+            {
+              model: OrderStatus,
+              as: "orderStatus",
+              attributes: ["id", "status", "remark", "createdAt"],
+              separate: true,
+              order: [["createdAt", "DESC"]],
+            },
+            {
+              model: Store,
+              as: "storeDetails",
+              attributes: [
+                "id",
+                "name",
+                "store_name",
+                "email",
+                "phone",
+                "business_address",
+                "logo_upload",
+                "slug",
+              ],
+            },
+          ],
+          limit,
+          offset,
+          order: [["createdAt", "DESC"]],
+          distinct: true,
+        });
+
+      const formattedOrders = orders.map((order: any) => {
+        const normalizedAddress = {
+          full_name: order.delivery_full_name,
+          phone: order.delivery_phone,
+          phone_no: order.delivery_phone,
+          address: order.delivery_address,
+          full_address: order.delivery_address,
+          fullAddress: order.delivery_address,
+          street: order.delivery_address,
+          city: order.delivery_city,
+          state: order.delivery_state,
+          state_id: order.delivery_state_id,
+          country: order.delivery_country,
+          country_id: order.delivery_country_id,
+          landmark: order.delivery_landmark,
+          address_type: order.delivery_address_type,
+          type: order.delivery_address_type,
+          pin_code: "",
+          pincode: "",
+          code: order.guest_country_code || "",
+          country_code: order.guest_country_code || "",
+          alt_phone: order.delivery_phone,
+        };
+
+        return {
+          id: order.id,
+          order_id: order.order_id,
+          status: order.status,
+          guest_email: order.guest_email,
+          guest_first_name: order.guest_first_name,
+          guest_last_name: order.guest_last_name,
+          guest_phone: order.guest_phone,
+          address: normalizedAddress,
+          shipping_address: normalizedAddress,
+          delivery_address: normalizedAddress,
+          store: order.storeDetails,
+          items: order.orderItems,
+          totalItems: order.totalItems,
+          total: order.total,
+          deliveryCharge: order.deliveryCharge,
+          discount: order.discount,
+          tax: order.tax,
+          grandTotal: order.grandTotal,
+          payment: order.orderPayment,
+          delivery_date: order.delivery_date,
+          createdAt: order.createdAt,
+          orderStatus: order.orderStatus,
+          order_notes: order.order_notes,
+          is_guest_order: order.is_guest_order,
+        };
+      });
+
+      // Also fetch paid checkouts that failed to produce ORDER records
+      const fulfilledRefs = new Set(
+        orders.map((o: any) => o.payment_reference).filter(Boolean),
+      );
+
+      const unfulfilledCheckouts = await this.guestCheckoutRepository.findAll({
+        where: {
+          payment_status: "success",
+          status: { [Op.notIn]: ["completed"] },
+          ...(fulfilledRefs.size > 0
+            ? { reference: { [Op.notIn]: [...fulfilledRefs] } }
+            : {}),
+        },
+        order: [["createdAt", "DESC"]],
+      });
+
+      const checkoutStoreIds = Array.from(
+        new Set(
+          unfulfilledCheckouts
+            .flatMap((checkout: any) => checkout?.payload?.cart_items || [])
+            .map((item: any) => Number(item?.store_id))
+            .filter((id: number) => Number.isFinite(id) && id > 0),
+        ),
+      );
+
+      const checkoutStores =
+        checkoutStoreIds.length > 0
+          ? await Store.findAll({
+              where: { id: { [Op.in]: checkoutStoreIds } },
+              attributes: [
+                "id",
+                "name",
+                "store_name",
+                "email",
+                "phone",
+                "business_address",
+                "logo_upload",
+                "slug",
+              ],
+            })
+          : [];
+
+      const checkoutStoreMap = new Map<number, any>(
+        checkoutStores.map((store: any) => [Number(store.id), store]),
+      );
+
+      const checkoutOrders = unfulfilledCheckouts.map((checkout: any) => {
+        const p = checkout.payload || {};
+        const guestInfo = p.guest_info || {};
+        const deliveryAddr = p.delivery_address || {};
+        const orderSummary = p.order_summary || {};
+        const sellerIds: number[] = Array.from(
+          new Set(
+            (p.cart_items || [])
+              .map((item: any) => Number(item?.store_id))
+              .filter((id: number) => Number.isFinite(id) && id > 0),
+          ),
+        );
+        const sellers = sellerIds
+          .map((id) => checkoutStoreMap.get(id))
+          .filter(Boolean);
+        const normalizedAddress = {
+          full_name: deliveryAddr.full_name,
+          phone: deliveryAddr.phone_no,
+          address: deliveryAddr.full_address,
+          full_address: deliveryAddr.full_address,
+          city: deliveryAddr.city,
+          state: deliveryAddr.state,
+          state_id: deliveryAddr.state_id,
+          country: deliveryAddr.country,
+          country_id: deliveryAddr.country_id,
+        };
+        return {
+          id: checkout.id,
+          order_id: null,
+          checkout_reference: checkout.reference,
+          status: "payment_received",
+          fulfillment_status: checkout.status,
+          payment_status: checkout.payment_status,
+          guest_email: checkout.guest_email || guestInfo.email,
+          guest_first_name: guestInfo.first_name,
+          guest_last_name: guestInfo.last_name,
+          guest_phone: guestInfo.phone,
+          address: normalizedAddress,
+          shipping_address: normalizedAddress,
+          delivery_address: normalizedAddress,
+          store: sellers.length === 1 ? sellers[0] : null,
+          sellers,
+          items: (p.cart_items || []).map((item: any) => ({
+            id: null,
+            productId: item.product_id,
+            name: item.product_name,
+            quantity: item.quantity,
+            price: item.unit_price,
+            totalPrice: item.total_price,
+            image: item.image,
+          })),
+          total: orderSummary.total || 0,
+          grandTotal: orderSummary.total || 0,
+          payment: {
+            paymentType: "paystack",
+            status: checkout.payment_status,
+            ref: checkout.reference,
+            amount: (checkout.amount_kobo || 0) / 100,
+          },
+          fulfillment_error: checkout.error,
+          is_guest_order: true,
+          from_checkout: true,
+          createdAt: checkout.createdAt,
+          orderStatus: null,
+        };
+      });
+
+      const allOrders = [...formattedOrders, ...checkoutOrders];
+      const totalCount = Number(count) + unfulfilledCheckouts.length;
+
+      return new DataResponseDto(
+        allOrders,
+        true,
+        "All guest orders retrieved successfully",
+        pageOptions,
+        totalCount,
+      );
+    } catch (err) {
+      console.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
+      console.error("Error:", (err as any).message);
+
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException("Failed to retrieve guest orders");
+    }
+  }
+
+  async getGuestOrdersByStore(
+    storeId: number,
+    pageOptions: PageOptionsGetOrdersDto,
+  ): Promise<DataResponseDto> {
+    try {
+      console.log("=== FETCHING STORE GUEST ORDERS ===");
+
+      const whereClause: any = this.buildGuestOrderWhereClause({ storeId });
+
+      if (pageOptions.status) {
+        whereClause.status = pageOptions.status;
+      }
+
+      const limit = pageOptions.take || 10;
+      const offset = ((pageOptions.page || 1) - 1) * limit;
+
+      const { count, rows: orders } =
+        await this.orderRepository.findAndCountAll({
+          where: whereClause,
+          include: [
+            {
+              model: OrderItems,
+              as: "orderItems",
+              attributes: [
+                "id",
+                "productId",
+                "variantId",
+                "quantity",
+                "price",
+                "totalPrice",
+                "image",
+                "name",
+                "sku",
+                "combination",
+              ],
+            },
+            {
+              model: OrderPayments,
+              as: "orderPayment",
+              attributes: ["id", "paymentType", "status", "ref", "amount"],
+            },
+            {
+              model: OrderStatus,
+              as: "orderStatus",
+              attributes: ["id", "status", "remark", "createdAt"],
+              separate: true,
+              order: [["createdAt", "DESC"]],
+            },
+            {
+              model: Store,
+              as: "storeDetails",
+              attributes: [
+                "id",
+                "name",
+                "store_name",
+                "email",
+                "phone",
+                "business_address",
+                "logo_upload",
+                "slug",
+              ],
+            },
+          ],
+          limit,
+          offset,
+          order: [["createdAt", "DESC"]],
+          distinct: true,
+        });
+
+      const formattedOrders = orders.map((order: any) => {
+        const normalizedAddress = {
+          full_name: order.delivery_full_name,
+          phone: order.delivery_phone,
+          phone_no: order.delivery_phone,
+          address: order.delivery_address,
+          full_address: order.delivery_address,
+          fullAddress: order.delivery_address,
+          street: order.delivery_address,
+          city: order.delivery_city,
+          state: order.delivery_state,
+          state_id: order.delivery_state_id,
+          country: order.delivery_country,
+          country_id: order.delivery_country_id,
+          landmark: order.delivery_landmark,
+          address_type: order.delivery_address_type,
+          type: order.delivery_address_type,
+          pin_code: "",
+          pincode: "",
+          code: order.guest_country_code || "",
+          country_code: order.guest_country_code || "",
+          alt_phone: order.delivery_phone,
+        };
+
+        return {
+          id: order.id,
+          order_id: order.order_id,
+          status: order.status,
+          guest_email: order.guest_email,
+          guest_first_name: order.guest_first_name,
+          guest_last_name: order.guest_last_name,
+          guest_phone: order.guest_phone,
+          address: normalizedAddress,
+          shipping_address: normalizedAddress,
+          delivery_address: normalizedAddress,
+          store: order.storeDetails,
+          items: order.orderItems,
+          totalItems: order.totalItems,
+          total: order.total,
+          deliveryCharge: order.deliveryCharge,
+          discount: order.discount,
+          tax: order.tax,
+          grandTotal: order.grandTotal,
+          payment: order.orderPayment,
+          delivery_date: order.delivery_date,
+          createdAt: order.createdAt,
+          orderStatus: order.orderStatus,
+          order_notes: order.order_notes,
+          is_guest_order: order.is_guest_order,
+        };
+      });
+
+      return new DataResponseDto(
+        formattedOrders,
+        true,
+        "Store guest orders retrieved successfully",
+        pageOptions,
+        count,
+      );
+    } catch (err) {
+      console.error("=== FAILED TO FETCH STORE GUEST ORDERS ===");
+      console.error("Error:", (err as any).message);
+
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(
+        "Failed to retrieve store guest orders",
       );
     }
   }
@@ -251,10 +688,7 @@ export class GuestOrderService {
       console.log("Guest Email:", data.email);
 
       // Build where clause
-      const whereClause: any = {
-        is_guest_order: true,
-        guest_email: data.email.toLowerCase().trim(),
-      };
+      const whereClause: any = this.buildGuestOrderWhereClause({}, data.email);
 
       // Add order_id filter if provided
       if (data.order_id && data.order_id.trim() !== "") {
@@ -342,38 +776,56 @@ export class GuestOrderService {
       }
 
       // Format response
-      const formattedOrders = orders.map((order: any) => ({
-        id: order.id,
-        order_id: order.order_id,
-        status: order.status,
-        guest_email: order.guest_email,
-        guest_first_name: order.guest_first_name,
-        guest_last_name: order.guest_last_name,
-        guest_phone: order.guest_phone,
-        delivery_address: {
+      const formattedOrders = orders.map((order: any) => {
+        const normalizedAddress = {
           full_name: order.delivery_full_name,
           phone: order.delivery_phone,
+          phone_no: order.delivery_phone,
           address: order.delivery_address,
+          full_address: order.delivery_address,
+          fullAddress: order.delivery_address,
+          street: order.delivery_address,
           city: order.delivery_city,
           state: order.delivery_state,
+          state_id: order.delivery_state_id,
           country: order.delivery_country,
+          country_id: order.delivery_country_id,
           landmark: order.delivery_landmark,
           address_type: order.delivery_address_type,
-        },
-        store: order.storeDetails,
-        items: order.orderItems,
-        totalItems: order.totalItems,
-        total: order.total,
-        deliveryCharge: order.deliveryCharge,
-        discount: order.discount,
-        tax: order.tax,
-        grandTotal: order.grandTotal,
-        payment: order.orderPayment,
-        delivery_date: order.delivery_date,
-        createdAt: order.createdAt,
-        orderStatus: order.orderStatus,
-        order_notes: order.order_notes,
-      }));
+          type: order.delivery_address_type,
+          pin_code: "",
+          pincode: "",
+          code: order.guest_country_code || "",
+          country_code: order.guest_country_code || "",
+          alt_phone: order.delivery_phone,
+        };
+
+        return {
+          id: order.id,
+          order_id: order.order_id,
+          status: order.status,
+          guest_email: order.guest_email,
+          guest_first_name: order.guest_first_name,
+          guest_last_name: order.guest_last_name,
+          guest_phone: order.guest_phone,
+          address: normalizedAddress,
+          shipping_address: normalizedAddress,
+          delivery_address: normalizedAddress,
+          store: order.storeDetails,
+          items: order.orderItems,
+          totalItems: order.totalItems,
+          total: order.total,
+          deliveryCharge: order.deliveryCharge,
+          discount: order.discount,
+          tax: order.tax,
+          grandTotal: order.grandTotal,
+          payment: order.orderPayment,
+          delivery_date: order.delivery_date,
+          createdAt: order.createdAt,
+          orderStatus: order.orderStatus,
+          order_notes: order.order_notes,
+        };
+      });
 
       return new DataResponseDto(
         formattedOrders,
@@ -384,7 +836,7 @@ export class GuestOrderService {
       );
     } catch (err) {
       console.error("=== FAILED TO FETCH GUEST ORDERS ===");
-      console.error("Error:", err.message);
+      console.error("Error:", (err as any).message);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve orders");
@@ -393,7 +845,10 @@ export class GuestOrderService {
 
   // ==================== VALIDATION ====================
 
-  private async basicCheck(data: CreateGuestOrderDto) {
+  private async basicCheck(
+    data: CreateGuestOrderDto,
+    options: GuestOrderCreationOptions = {},
+  ) {
     try {
       console.log("🔍 [basicCheck] Starting validation...");
 
@@ -427,18 +882,23 @@ export class GuestOrderService {
 
       // 5. Decode delivery token
       console.log("🔍 [basicCheck] Verifying delivery token...");
-      const verified: any = await this.jwtService.verifyAsync(
-        data.delivery.delivery_token,
-      );
+      let verified: any = options.verifiedDeliveryData;
+
+      if (!verified) {
+        if (options.skipDeliveryTokenVerification) {
+          verified = this.jwtService.decode(data.delivery.delivery_token);
+        } else {
+          verified = await this.jwtService.verifyAsync(
+            data.delivery.delivery_token,
+          );
+        }
+      }
 
       if (!verified || !verified?.data) {
         throw new BadRequestException("Invalid delivery token");
       }
 
-      if (
-        verified?.data?.isGuest != null &&
-        verified.data.isGuest !== true
-      ) {
+      if (verified?.data?.isGuest != null && verified.data.isGuest !== true) {
         throw new BadRequestException("Invalid guest delivery token");
       }
 
@@ -452,17 +912,19 @@ export class GuestOrderService {
       }
 
       // 6. Check token expiry
-      const now = Math.floor(Date.now() / 1000);
-      if (verified.exp && verified.exp < now) {
-        throw new BadRequestException(
-          "Delivery token expired. Please recalculate delivery.",
-        );
+      if (!options.skipDeliveryTokenVerification) {
+        const now = Math.floor(Date.now() / 1000);
+        if (verified.exp && verified.exp < now) {
+          throw new BadRequestException(
+            "Delivery token expired. Please recalculate delivery.",
+          );
+        }
       }
 
       console.log("✅ [basicCheck] Validation passed!");
       return verified;
     } catch (err) {
-      console.error("❌ [basicCheck] Error:", err.message);
+      console.error("❌ [basicCheck] Error:", (err as any).message);
       if (err instanceof HttpException) {
         throw err;
       }
@@ -494,7 +956,7 @@ export class GuestOrderService {
 
       console.log("✅ Payment verified successfully");
     } catch (err) {
-      console.error("❌ Payment verification failed:", err.message);
+      console.error("❌ Payment verification failed:", (err as any).message);
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(
         "Payment verification failed. Please try again.",
@@ -526,16 +988,15 @@ export class GuestOrderService {
     }
 
     const amountInKobo = Number(paymentData.amount);
-    if (
-      expectedAmountInKobo != null &&
-      amountInKobo !== expectedAmountInKobo
-    ) {
+    if (expectedAmountInKobo != null && amountInKobo !== expectedAmountInKobo) {
       console.warn(
-        `⚠️  Amount mismatch: Expected ${
-          expectedAmountInKobo / 100
-        }, got ${amountInKobo / 100}`,
+        `⚠️  Amount mismatch: Expected ${expectedAmountInKobo / 100}, got ${
+          amountInKobo / 100
+        }`,
       );
-      throw new BadRequestException("Payment amount does not match order total.");
+      throw new BadRequestException(
+        "Payment amount does not match order total.",
+      );
     }
   }
 
@@ -760,7 +1221,7 @@ export class GuestOrderService {
 
           // Status
           status: "pending",
-        },
+        } as any,
         { transaction },
       );
 
@@ -827,7 +1288,7 @@ export class GuestOrderService {
             name: product.name,
             sku: product.sku,
             barcode: product.bar_code,
-          },
+          } as any,
           { transaction: t },
         );
 
@@ -893,7 +1354,7 @@ export class GuestOrderService {
         status: payment.payment_status === "success" ? "success" : "pending",
         ref: payment.payment_reference,
         amount: grandTotal * 100,
-      },
+      } as any,
       { transaction: t },
     );
   }
@@ -910,7 +1371,7 @@ export class GuestOrderService {
         orderId,
         status,
         remark: "Your order is being processed.",
-      },
+      } as any,
       { transaction: t },
     );
   }
@@ -992,7 +1453,9 @@ export class GuestOrderService {
           email: recipientEmail,
           name:
             guestUser?.name ||
-            `${order?.guest_first_name || ""} ${order?.guest_last_name || ""}`.trim(),
+            `${order?.guest_first_name || ""} ${
+              order?.guest_last_name || ""
+            }`.trim(),
         },
         newOrder: order,
         store: store,

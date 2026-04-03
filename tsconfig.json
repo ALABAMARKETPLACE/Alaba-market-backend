@@ -13,6 +13,7 @@
     "outDir": "./dist",
     "skipLibCheck": true,
     "baseUrl": "./",
+    "ignoreDeprecations": "5.0",
     "resolveJsonModule": true,
     "esModuleInterop": true
   },

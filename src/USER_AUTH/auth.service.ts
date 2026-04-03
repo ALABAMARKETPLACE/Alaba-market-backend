@@ -39,7 +39,8 @@ import { Op } from "sequelize";
 type VerifyTokenPurpose =
   | "email_verification"
   | "password_reset"
-  | "account_deactivation";
+  | "account_deactivation"
+  | "admin_invitation";
 
 @Injectable()
 export class AuthService {
@@ -92,6 +93,25 @@ export class AuthService {
     return String(email || "").trim().toLowerCase();
   }
 
+  private assertUserCanAuthenticate(
+    user: User | null,
+    notFoundMessage?: string,
+  ) {
+    if (!user) {
+      throw new NotFoundException(notFoundMessage ?? "User not found");
+    }
+
+    if (user.is_deleted) {
+      throw new UnauthorizedException("This account has been deleted");
+    }
+
+    if ((user.is_active ?? user.status) !== true || user.status !== true) {
+      throw new UnauthorizedException("Your Account is Deactivated");
+    }
+
+    return user;
+  }
+
   async signup(body: signup_Request) {
     try {
       // COMMENTED: Firebase OTP verification disabled
@@ -112,8 +132,10 @@ export class AuthService {
       console.log({ body });
 
       const exist = await this.authRepo.checkUserExist(body?.email, phone);
+      console.log({exist})
       if (exist) throw new ConflictException("User Already Exist.");
       const user = await this.authRepo.createNewUser(body, phone);
+      console.log({user})
       if (!user)
         throw new InternalServerErrorException("Failed to Create Account..");
       const [refresh, fid] = await this.tokenService.createToken(user._id);
@@ -124,6 +146,7 @@ export class AuthService {
       const message = "Account created successfully.";
       return new DataResponseDto(user, true, message, token, refresh, true);
     } catch (err) {
+      console.log(err)
       let message = `signup Faild. Please try again, ${getErrorMessage(err)}`;
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(message);
@@ -147,9 +170,7 @@ export class AuthService {
         console.log("Has password:", user?.password ? "YES" : "NO");
       }
 
-      if (!user) throw new NotFoundException(`No User found for ${email}`);
-      if (user?.status != true)
-        throw new UnauthorizedException("Your Account is Deactivated");
+      this.assertUserCanAuthenticate(user, `No User found for ${email}`);
       if (!user?.password)
         throw new UnauthorizedException("No Password Found. use Google Login.");
 
@@ -198,8 +219,7 @@ export class AuthService {
         let message = "Login Successfull";
         return new DataResponseDto(newuser, true, message, token, refresh);
       } else {
-        if (user?.status != true)
-          throw new UnauthorizedException("Account is Deactivated");
+        this.assertUserCanAuthenticate(user, "Account not found");
         if (body?.fcmtoken) {
           await this.authRepo.saveFcm(body.fcmtoken, user._id);
         }
@@ -220,8 +240,7 @@ export class AuthService {
       if (!guser?.email) throw new UnauthorizedException();
       const user = await this.authRepo.findUserbyEmail(guser?.email);
       if (user) {
-        if (user?.status != true)
-          throw new UnauthorizedException("Your Account is Deactivated");
+        this.assertUserCanAuthenticate(user);
         const [refresh, fid] = await this.tokenService.createToken(user._id);
         const token = await this.createToken(user, fid);
         const message = "Login Successful";
@@ -251,8 +270,7 @@ export class AuthService {
       if (!userDetails.email) throw new UnauthorizedException();
       const user = await this.authRepo.findUserbyEmail(userDetails?.email);
       if (user) {
-        if (user?.status != true)
-          throw new UnauthorizedException("Your Account is Deactivated");
+        this.assertUserCanAuthenticate(user);
         const [refresh, fid] = await this.tokenService.createToken(user._id);
         const token = await this.createToken(user, fid);
         const message = "Login Successful";
@@ -266,7 +284,7 @@ export class AuthService {
       const [refresh, fid] = await this.tokenService.createToken(newuser._id);
       const token = await this.createToken(newuser, fid);
       const message = "Login Successfull";
-      return new DataResponseDto(user, true, message, token, refresh, true);
+      return new DataResponseDto(newuser, true, message, token, refresh, true);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(getErrorMessage(err));
@@ -324,11 +342,7 @@ export class AuthService {
           },
         },
       });
-
-      if (!userDetails) throw new NotFoundException();
-      if (userDetails?.status !== true) {
-        throw new UnauthorizedException("Your Account is Deactivated");
-      }
+      this.assertUserCanAuthenticate(userDetails);
       const token = await this.createScopedVerifyToken(
         userDetails?._id,
         "password_reset",
@@ -351,10 +365,7 @@ export class AuthService {
       );
       if (verified) {
         const user = await User.findByPk(verified.data?.userId);
-        if (!user) throw new NotFoundException();
-        if (user.status !== true) {
-          throw new UnauthorizedException("Your Account is Deactivated");
-        }
+        this.assertUserCanAuthenticate(user);
 
         let newPassword = await this.hashPassword(password?.password);
         const [status] = await User.update(
@@ -399,7 +410,7 @@ export class AuthService {
       );
       if (verified) {
         const [count, [user]] = await User.update(
-          { status: false },
+          { status: false, is_active: false, disabled_at: new Date() },
           { where: { _id: verified.data?.userId }, returning: true },
         );
         if (count == 0) throw new NotFoundException();
@@ -464,7 +475,7 @@ export class AuthService {
         where: { _id: userId },
         attributes: { exclude: ["password", "createdAt", "updatedAt"] },
       });
-      if (!user) throw new NotFoundException("User not Found.");
+      this.assertUserCanAuthenticate(user, "User not Found.");
       const token = await this.createToken(user, verified?.fid);
       const message = "Refresh token generated successfully.";
       return new DataResponseDto(user, true, message, token, refresh);

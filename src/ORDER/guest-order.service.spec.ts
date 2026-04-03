@@ -7,29 +7,38 @@ import {
   jest,
 } from "@jest/globals";
 import { BadRequestException } from "@nestjs/common";
+import { Op } from "sequelize";
 import { GuestOrderService } from "./guest-order.service";
 import { Products } from "../PRODUCTS/products.entity";
 
 describe("GuestOrderService", () => {
   let service: GuestOrderService;
+  let orderRepository: {
+    sequelize: { transaction: any };
+    findAndCountAll: any;
+  };
   let paystackService: { verifyPayment: any };
-  let jwtService: { verifyAsync: any };
+  let jwtService: { verifyAsync: any; decode: any };
 
   beforeEach(() => {
+    orderRepository = {
+      sequelize: {
+        transaction: jest.fn(),
+      },
+      findAndCountAll: jest.fn(),
+    };
+
     paystackService = {
       verifyPayment: jest.fn(),
     };
 
     jwtService = {
       verifyAsync: jest.fn(),
+      decode: jest.fn(),
     };
 
     service = new GuestOrderService(
-      {
-        sequelize: {
-          transaction: jest.fn(),
-        },
-      } as any,
+      orderRepository as any,
       paystackService as any,
       {} as any,
       {} as any,
@@ -72,6 +81,45 @@ describe("GuestOrderService", () => {
     });
 
     expect(jwtService.verifyAsync).toHaveBeenCalledWith("signed-token");
+    expect(result.data.addressId).toBe("guest_123");
+  });
+
+  it("accepts expired guest delivery tokens during trusted replay", async () => {
+    jwtService.decode.mockReturnValue({
+      data: {
+        isGuest: true,
+        addressId: "guest_123",
+        amount: 2500,
+      },
+      exp: Math.floor(Date.now() / 1000) - 300,
+    });
+
+    const result = await (service as any).basicCheck(
+      {
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Jane",
+          last_name: "Doe",
+        },
+        cart_items: [{ product_id: 1, quantity: 1 }],
+        delivery_address: {
+          id: "guest_123",
+          state_id: 1,
+          full_address: "12 Test Street",
+        },
+        payment: {
+          payment_reference: "guest_ref_123",
+        },
+        delivery: {
+          delivery_token: "expired-token",
+        },
+      },
+      {
+        skipDeliveryTokenVerification: true,
+      },
+    );
+
+    expect(jwtService.decode).toHaveBeenCalledWith("expired-token");
     expect(result.data.addressId).toBe("guest_123");
   });
 
@@ -148,5 +196,62 @@ describe("GuestOrderService", () => {
         "guest@example.com",
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("fetches guest orders using guest_email even when is_guest_order was not set", async () => {
+    orderRepository.findAndCountAll.mockResolvedValue({
+      count: 1,
+      rows: [
+        {
+          id: 55,
+          order_id: "ORD-55",
+          status: "pending",
+          guest_email: "guest@example.com",
+          guest_first_name: "Jane",
+          guest_last_name: "Doe",
+          guest_phone: "08000000000",
+          delivery_full_name: "Jane Doe",
+          delivery_phone: "08000000000",
+          delivery_address: "12 Test Street",
+          delivery_city: "Lagos",
+          delivery_state: "Lagos",
+          delivery_state_id: 1,
+          delivery_country: "Nigeria",
+          delivery_country_id: 1,
+          delivery_landmark: null,
+          delivery_address_type: "home",
+          guest_country_code: "+234",
+          storeDetails: null,
+          orderItems: [],
+          orderPayment: null,
+          orderStatus: [],
+          totalItems: 1,
+          total: 1000,
+          deliveryCharge: 0,
+          discount: 0,
+          tax: 0,
+          grandTotal: 1000,
+          createdAt: new Date(),
+        },
+      ],
+    });
+
+    const result = await service.getAllGuestOrders({
+      page: 1,
+      take: 10,
+    } as any);
+
+    const where = orderRepository.findAndCountAll.mock.calls[0][0].where;
+
+    expect(where[Op.or]).toEqual([
+      { is_guest_order: true },
+      {
+        [Op.and]: [
+          { guest_email: { [Op.ne]: null } },
+          { guest_email: { [Op.ne]: "" } },
+        ],
+      },
+    ]);
+    expect(result.data).toHaveLength(1);
   });
 });

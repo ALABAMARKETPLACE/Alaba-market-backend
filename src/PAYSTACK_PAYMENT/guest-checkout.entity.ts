@@ -47,7 +47,7 @@ export class GuestCheckout extends Model<GuestCheckout> {
   webhook_payload: any;
 
   @Column({ type: DataType.TEXT, allowNull: true })
-  error: string;
+  error: string | null;
 
   @Column({ type: DataType.DATE, allowNull: true })
   processed_at: Date;
