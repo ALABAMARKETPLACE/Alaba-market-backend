@@ -73,9 +73,9 @@ export class OrderPlaceService {
         return await this.initializeHostedCheckout(userId, data);
       }
 
-      const result = await this.orderRepository.sequelize.transaction(
+      const result = await this.orderRepository.sequelize!.transaction(
         async (t) => {
-          const newOrders = [];
+          const newOrders: any[] = [];
           const verified = await this.basicCheck(data, options);
 
           const products = await this.groupProducts(data.cart, t);
@@ -99,6 +99,9 @@ export class OrderPlaceService {
               where: { id: item.storeId },
               transaction: t,
             });
+            if (!store) {
+              throw new NotFoundException(`Store ${item.storeId} not found`);
+            }
             //================
             const deliveryDate = new Date();
             deliveryDate.setDate(
@@ -196,10 +199,7 @@ export class OrderPlaceService {
     }
   }
 
-  async basicCheck(
-    data: CreateOrderDto,
-    options: CreateOrderOptions = {},
-  ) {
+  async basicCheck(data: CreateOrderDto, options: CreateOrderOptions = {}) {
     try {
       console.log("🔍 [basicCheck] Starting order validation...");
 
@@ -259,7 +259,7 @@ export class OrderPlaceService {
       console.log("✅ [basicCheck] Address validation passed!");
       return verified;
     } catch (err) {
-      console.error("❌ [basicCheck] Error:", err.message);
+      console.error("❌ [basicCheck] Error:", (err as any).message);
       throw err;
     }
   }
@@ -289,13 +289,11 @@ export class OrderPlaceService {
   ): Promise<DataResponseDto> {
     switch (data.payment.type) {
       case PaymentTypeEnum.Paystack: {
-        const result = await this.paystackService.initializeAuthenticatedCheckout(
-          userId,
-          {
+        const result =
+          await this.paystackService.initializeAuthenticatedCheckout(userId, {
             order_payload: data,
             callback_url: data.payment.callback_url,
-          },
-        );
+          });
 
         return new DataResponseDto(result.data, true, result.message);
       }
@@ -314,7 +312,7 @@ export class OrderPlaceService {
   async prepareAuthenticatedCheckout(userId: number, data: CreateOrderDto) {
     const verified = await this.basicCheck(data);
 
-    return this.orderRepository.sequelize.transaction(async (t) => {
+    return this.orderRepository.sequelize!.transaction(async (t) => {
       const products = await this.groupProducts(data.cart, t);
       await this.orderAddress(userId, data.address, t);
 
@@ -454,8 +452,8 @@ export class OrderPlaceService {
           tax: charges.tax,
           deliveryCharge: charges.deliveryCharge,
           discount: charges.discount,
-          payment_reference: data?.payment?.ref || null,
-          transaction_reference: data?.payment?.ref || null,
+          payment_reference: data?.payment?.ref || undefined,
+          transaction_reference: data?.payment?.ref || undefined,
         },
         { transaction },
       );
@@ -497,7 +495,7 @@ export class OrderPlaceService {
           {
             orderId,
             productId: item?.productId,
-            variantId: item?.variantId,
+            variantId: item?.variantId || undefined,
             quantity: item?.quantity,
             price: product.retail_rate,
             totalPrice: 0, //inside modal,
@@ -505,7 +503,7 @@ export class OrderPlaceService {
             name: product.name,
             sku: product.sku,
             barcode: product.bar_code,
-          },
+          } as any,
           { transaction: t },
         );
         //===========================================================================
@@ -561,7 +559,10 @@ export class OrderPlaceService {
         reference: paymentRef,
       });
 
-      if (paystackResponse.status && paystackResponse.data?.status === "success") {
+      if (
+        paystackResponse.status &&
+        paystackResponse.data?.status === "success"
+      ) {
         const amountInKobo = paystackResponse.data?.amount; // Paystack amount is in kobo
         const expectedAmountInKobo = grandTotal * 100;
 
@@ -629,9 +630,9 @@ export class OrderPlaceService {
         orderId,
         paymentType: this.resolveOrderPaymentType(payment),
         status,
-        ref: payment?.ref,
+        ref: payment?.ref || "",
         amount: grandTotal * 100,
-      },
+      } as any,
       { transaction: t },
     );
   }
@@ -656,7 +657,7 @@ export class OrderPlaceService {
           orderId,
           status,
           remark: "your order is getting processed.",
-        },
+        } as any,
         { transaction: t },
       );
       return orderStatus;
@@ -685,7 +686,7 @@ export class OrderPlaceService {
         throw new UnauthorizedException("Invalid Address");
       return address;
     } catch (err) {
-      console.error("[orderAddress] Error:", err.message);
+      console.error("[orderAddress] Error:", (err as any).message);
       throw err;
     }
   }

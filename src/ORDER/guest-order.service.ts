@@ -86,9 +86,9 @@ export class GuestOrderService {
         `📦 Multi-seller: ${isMultiSeller} (${storeIds.size} stores)`,
       );
 
-      const result = await this.orderRepository.sequelize.transaction(
+      const result = await this.orderRepository.sequelize!.transaction(
         async (t) => {
-          const newOrders = [];
+          const newOrders: any[] = [];
 
           // ✅ Step 1: Validate delivery token and basic data
           const verified = await this.basicCheck(data, options);
@@ -235,12 +235,12 @@ export class GuestOrderService {
       );
     } catch (err) {
       console.error("=== GUEST ORDER CREATION FAILED ===");
-      console.error("Error:", err.message);
-      console.error("Stack:", err.stack);
+      console.error("Error:", (err as any).message);
+      console.error("Stack:", (err as any).stack);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(
-        `Order creation failed: ${err.message}`,
+        `Order creation failed: ${(err as any).message}`,
       );
     }
   }
@@ -276,12 +276,12 @@ export class GuestOrderService {
         },
         {
           [Op.and]: [
-            { guest_email: { [Op.ne]: null } },
+            { guest_email: { [Op.ne]: null as any } },
             { guest_email: { [Op.ne]: "" } },
           ],
         },
       ],
-    };
+    } as any;
   }
 
   /** Get all Guest Orders */
@@ -422,11 +422,51 @@ export class GuestOrderService {
         order: [["createdAt", "DESC"]],
       });
 
+      const checkoutStoreIds = Array.from(
+        new Set(
+          unfulfilledCheckouts
+            .flatMap((checkout: any) => checkout?.payload?.cart_items || [])
+            .map((item: any) => Number(item?.store_id))
+            .filter((id: number) => Number.isFinite(id) && id > 0),
+        ),
+      );
+
+      const checkoutStores =
+        checkoutStoreIds.length > 0
+          ? await Store.findAll({
+              where: { id: { [Op.in]: checkoutStoreIds } },
+              attributes: [
+                "id",
+                "name",
+                "store_name",
+                "email",
+                "phone",
+                "business_address",
+                "logo_upload",
+                "slug",
+              ],
+            })
+          : [];
+
+      const checkoutStoreMap = new Map<number, any>(
+        checkoutStores.map((store: any) => [Number(store.id), store]),
+      );
+
       const checkoutOrders = unfulfilledCheckouts.map((checkout: any) => {
         const p = checkout.payload || {};
         const guestInfo = p.guest_info || {};
         const deliveryAddr = p.delivery_address || {};
         const orderSummary = p.order_summary || {};
+        const sellerIds: number[] = Array.from(
+          new Set(
+            (p.cart_items || [])
+              .map((item: any) => Number(item?.store_id))
+              .filter((id: number) => Number.isFinite(id) && id > 0),
+          ),
+        );
+        const sellers = sellerIds
+          .map((id) => checkoutStoreMap.get(id))
+          .filter(Boolean);
         const normalizedAddress = {
           full_name: deliveryAddr.full_name,
           phone: deliveryAddr.phone_no,
@@ -452,6 +492,8 @@ export class GuestOrderService {
           address: normalizedAddress,
           shipping_address: normalizedAddress,
           delivery_address: normalizedAddress,
+          store: sellers.length === 1 ? sellers[0] : null,
+          sellers,
           items: (p.cart_items || []).map((item: any) => ({
             id: null,
             productId: item.product_id,
@@ -489,7 +531,7 @@ export class GuestOrderService {
       );
     } catch (err) {
       console.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
-      console.error("Error:", err.message);
+      console.error("Error:", (err as any).message);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve guest orders");
@@ -626,7 +668,7 @@ export class GuestOrderService {
       );
     } catch (err) {
       console.error("=== FAILED TO FETCH STORE GUEST ORDERS ===");
-      console.error("Error:", err.message);
+      console.error("Error:", (err as any).message);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(
@@ -794,7 +836,7 @@ export class GuestOrderService {
       );
     } catch (err) {
       console.error("=== FAILED TO FETCH GUEST ORDERS ===");
-      console.error("Error:", err.message);
+      console.error("Error:", (err as any).message);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve orders");
@@ -882,7 +924,7 @@ export class GuestOrderService {
       console.log("✅ [basicCheck] Validation passed!");
       return verified;
     } catch (err) {
-      console.error("❌ [basicCheck] Error:", err.message);
+      console.error("❌ [basicCheck] Error:", (err as any).message);
       if (err instanceof HttpException) {
         throw err;
       }
@@ -914,7 +956,7 @@ export class GuestOrderService {
 
       console.log("✅ Payment verified successfully");
     } catch (err) {
-      console.error("❌ Payment verification failed:", err.message);
+      console.error("❌ Payment verification failed:", (err as any).message);
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(
         "Payment verification failed. Please try again.",
@@ -1179,7 +1221,7 @@ export class GuestOrderService {
 
           // Status
           status: "pending",
-        },
+        } as any,
         { transaction },
       );
 
@@ -1246,7 +1288,7 @@ export class GuestOrderService {
             name: product.name,
             sku: product.sku,
             barcode: product.bar_code,
-          },
+          } as any,
           { transaction: t },
         );
 
@@ -1312,7 +1354,7 @@ export class GuestOrderService {
         status: payment.payment_status === "success" ? "success" : "pending",
         ref: payment.payment_reference,
         amount: grandTotal * 100,
-      },
+      } as any,
       { transaction: t },
     );
   }
@@ -1329,7 +1371,7 @@ export class GuestOrderService {
         orderId,
         status,
         remark: "Your order is being processed.",
-      },
+      } as any,
       { transaction: t },
     );
   }
