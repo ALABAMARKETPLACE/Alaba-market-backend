@@ -137,9 +137,7 @@ export class PaystackService {
   /* ----------------------------------
      INITIALIZE PAYMENT
   ---------------------------------- */
-  async initializePayment(
-    initData: PaystackInitializeDto,
-  ): Promise<any> {
+  async initializePayment(initData: PaystackInitializeDto): Promise<any> {
     const amountInKobo = Number(initData.amount);
     if (amountInKobo < 100) {
       throw new HttpException(
@@ -201,10 +199,11 @@ export class PaystackService {
       throw new BadRequestException("Authenticated user not found");
     }
 
-    const preparedCheckout = await this.orderPlaceService.prepareAuthenticatedCheckout(
-      userId,
-      initData.order_payload,
-    );
+    const preparedCheckout =
+      await this.orderPlaceService.prepareAuthenticatedCheckout(
+        userId,
+        initData.order_payload,
+      );
     const reference = initData.reference || this.generateReference();
 
     const payload = {
@@ -213,8 +212,7 @@ export class PaystackService {
       currency: "NGN",
       reference,
       callback_url:
-        initData.callback_url ||
-        `${process.env.FRONTEND_URL}/payment/callback`,
+        initData.callback_url || `${process.env.FRONTEND_URL}/payment/callback`,
       metadata: {
         ...initData.metadata,
         checkout_type: "authenticated_order",
@@ -397,7 +395,9 @@ export class PaystackService {
     }
 
     this.logger.log(
-      `Processed Paystack webhook event "${webhookData.event}" for ${webhookData.data?.reference ?? "unknown-reference"}`,
+      `Processed Paystack webhook event "${webhookData.event}" for ${
+        webhookData.data?.reference ?? "unknown-reference"
+      }`,
     );
 
     return {
@@ -432,11 +432,7 @@ export class PaystackService {
         .pipe(map((r) => r.data)),
     );
 
-    return new DataResponseDto(
-      response,
-      true,
-      "Transaction details retrieved",
-    );
+    return new DataResponseDto(response, true, "Transaction details retrieved");
   }
 
   /* ----------------------------------------------------
@@ -575,8 +571,9 @@ export class PaystackService {
   }
 
   async diagnoseTransaction(reference: string): Promise<DataResponseDto> {
-    const transactionResponse =
-      await this.fetchTransactionByReference(reference);
+    const transactionResponse = await this.fetchTransactionByReference(
+      reference,
+    );
 
     if (!transactionResponse?.data) {
       throw new BadRequestException(
@@ -609,8 +606,8 @@ export class PaystackService {
     const metadataCartItems = Array.isArray(metadata?.cart_items)
       ? metadata.cart_items
       : Array.isArray(metadata?.items)
-        ? metadata.items
-        : [];
+      ? metadata.items
+      : [];
 
     const metadataOrderWhere =
       Number.isFinite(metadataOrderId) && metadataOrderId > 0
@@ -651,8 +648,12 @@ export class PaystackService {
       }
     }
 
-    const guestCheckoutOrderIds = this.normalizeOrderIds(guestCheckout?.order_ids);
-    const userCheckoutOrderIds = this.normalizeOrderIds(userCheckout?.order_ids);
+    const guestCheckoutOrderIds = this.normalizeOrderIds(
+      guestCheckout?.order_ids,
+    );
+    const userCheckoutOrderIds = this.normalizeOrderIds(
+      userCheckout?.order_ids,
+    );
     const paymentOrderIds = payments
       .map((payment) => Number(payment?.orderId))
       .filter((id) => Number.isFinite(id));
@@ -668,11 +669,13 @@ export class PaystackService {
       ),
       viaOrderLog: Boolean(
         orderLog &&
-          this.resolveVerifiedChargesPayload(orderLog?.charges)?.data?.addressId,
+          this.resolveVerifiedChargesPayload(orderLog?.charges)?.data
+            ?.addressId,
       ),
       viaPaymentLog: Boolean(
         paymentLog &&
-          this.resolveVerifiedChargesPayload(paymentLog?.charges)?.data?.addressId,
+          this.resolveVerifiedChargesPayload(paymentLog?.charges)?.data
+            ?.addressId,
       ),
       viaPaystackMetadataGuestPayload: Boolean(metadataGuestPayload),
     };
@@ -686,7 +689,8 @@ export class PaystackService {
     if (paymentOrderIds.length === 0) missingPieces.push("order_payments");
 
     if (!metadataGuestPayload) {
-      if (!metadataGuestInfo) missingPieces.push("paystack_metadata.guest_info");
+      if (!metadataGuestInfo)
+        missingPieces.push("paystack_metadata.guest_info");
       if (!metadataDeliveryAddress) {
         missingPieces.push("paystack_metadata.delivery_address");
       }
@@ -731,20 +735,24 @@ export class PaystackService {
             status: userCheckout?.status || null,
             payment_status: userCheckout?.payment_status || null,
             hasOrderPayload: Boolean(userCheckout?.payload?.order_payload),
-            hasVerifiedDelivery: Boolean(userCheckout?.payload?.verified_delivery),
+            hasVerifiedDelivery: Boolean(
+              userCheckout?.payload?.verified_delivery,
+            ),
             orderIds: userCheckoutOrderIds,
           },
           orderLog: {
             found: Boolean(orderLog),
             hasReusableDeliveryPayload: Boolean(
-              this.resolveVerifiedChargesPayload(orderLog?.charges)?.data?.addressId,
+              this.resolveVerifiedChargesPayload(orderLog?.charges)?.data
+                ?.addressId,
             ),
             createdAt: orderLog?.createdAt || null,
           },
           paymentLog: {
             found: Boolean(paymentLog),
             hasReusableDeliveryPayload: Boolean(
-              this.resolveVerifiedChargesPayload(paymentLog?.charges)?.data?.addressId,
+              this.resolveVerifiedChargesPayload(paymentLog?.charges)?.data
+                ?.addressId,
             ),
           },
           orders: {
@@ -895,7 +903,8 @@ export class PaystackService {
       amount_kobo: Number(transactionData?.amount || 0),
       currency: transactionData?.currency || "NGN",
       customer_email:
-        transactionData?.customer?.email || transactionData?.authorization?.email,
+        transactionData?.customer?.email ||
+        transactionData?.authorization?.email,
       paid_at:
         transactionData?.paid_at ||
         transactionData?.created_at ||
@@ -937,10 +946,7 @@ export class PaystackService {
           transactionData,
           localState,
         );
-        await this.recoverAuthenticatedOrderFromOrderLog(
-          reference,
-          localState,
-        );
+        await this.recoverAuthenticatedOrderFromOrderLog(reference, localState);
         await this.recoverAuthenticatedOrderFromPaymentLog(
           reference,
           localState,
@@ -995,23 +1001,22 @@ export class PaystackService {
       ordersByReference,
       ordersByMetadata,
       payments,
-    ] =
-      await Promise.all([
-        this.guestCheckoutRepository.findOne({ where: { reference } }),
-        this.userCheckoutRepository.findOne({ where: { reference } }),
-        this.findOrderLogByReference(reference),
-        this.paymentLogRepository.findOne({ where: { ref: reference } }),
-        Order.findAll({
-          where: {
-            [Op.or]: [
-              { payment_reference: reference },
-              { transaction_reference: reference },
-            ],
-          },
-        }),
-        metadataOrderWhere ? Order.findAll({ where: metadataOrderWhere }) : [],
-        OrderPayments.findAll({ where: { ref: reference } }),
-      ]);
+    ] = await Promise.all([
+      this.guestCheckoutRepository.findOne({ where: { reference } }),
+      this.userCheckoutRepository.findOne({ where: { reference } }),
+      this.findOrderLogByReference(reference),
+      this.paymentLogRepository.findOne({ where: { ref: reference } }),
+      Order.findAll({
+        where: {
+          [Op.or]: [
+            { payment_reference: reference },
+            { transaction_reference: reference },
+          ],
+        },
+      }),
+      metadataOrderWhere ? Order.findAll({ where: metadataOrderWhere }) : [],
+      OrderPayments.findAll({ where: { ref: reference } }),
+    ]);
 
     const orders = new Map<number, Order>();
     for (const order of [...ordersByReference, ...ordersByMetadata]) {
@@ -1027,7 +1032,9 @@ export class PaystackService {
       ...this.normalizeOrderIds(guestCheckout?.order_ids),
       ...this.normalizeOrderIds(userCheckout?.order_ids),
     ];
-    const orderIds = [...new Set([...orders.keys(), ...paymentOrderIds, ...checkoutOrderIds])];
+    const orderIds = [
+      ...new Set([...orders.keys(), ...paymentOrderIds, ...checkoutOrderIds]),
+    ];
 
     const existsLocally =
       orderIds.length > 0 ||
@@ -1088,7 +1095,9 @@ export class PaystackService {
       });
     } catch (error) {
       this.logger.warn(
-        `Skipping ORDER_LOG lookup for ${reference}: ${error?.message || "query failed"}`,
+        `Skipping ORDER_LOG lookup for ${reference}: ${
+          error?.message || "query failed"
+        }`,
       );
       return null;
     }
@@ -1231,7 +1240,9 @@ export class PaystackService {
       cart: Array.isArray(orderLog?.cart) ? (orderLog.cart as any[]) : [],
       address: (orderLog?.address || {}) as any,
       charges: {
-        token: String((orderLog?.charges as any)?.token || "recovered-order-log"),
+        token: String(
+          (orderLog?.charges as any)?.token || "recovered-order-log",
+        ),
       },
       payment: {
         ...payment,
@@ -1272,9 +1283,8 @@ export class PaystackService {
       return;
     }
 
-    const payload = this.extractGuestOrderPayloadFromTransactionMetadata(
-      transactionData,
-    );
+    const payload =
+      this.extractGuestOrderPayloadFromTransactionMetadata(transactionData);
 
     if (!payload) {
       return;
@@ -1284,6 +1294,7 @@ export class PaystackService {
       skipPaymentVerification: true,
       verifiedPaymentData: transactionData,
       skipDeliveryTokenVerification: true,
+      verifiedDeliveryData: this.buildGuestVerifiedDeliveryData(payload),
     });
   }
 
@@ -1298,7 +1309,10 @@ export class PaystackService {
       metadata?.checkout_payload,
     ]) {
       if (this.looksLikeGuestOrderPayload(candidate)) {
-        return this.buildGuestOrderPayload(candidate, transactionData?.reference);
+        return this.buildGuestOrderPayload(
+          candidate,
+          transactionData?.reference,
+        );
       }
     }
 
@@ -1306,7 +1320,9 @@ export class PaystackService {
       metadata?.guest_info ||
       this.buildGuestInfoFromMetadata(metadata, transactionData);
     const deliveryAddress =
-      metadata?.delivery_address || metadata?.address || metadata?.shipping_address;
+      metadata?.delivery_address ||
+      metadata?.address ||
+      metadata?.shipping_address;
     const deliveryToken =
       metadata?.delivery?.delivery_token ||
       metadata?.delivery_token ||
@@ -1314,8 +1330,8 @@ export class PaystackService {
     const cartItems = Array.isArray(metadata?.cart_items)
       ? metadata.cart_items
       : Array.isArray(metadata?.items)
-        ? metadata.items
-        : null;
+      ? metadata.items
+      : null;
 
     if (
       !guestInfo ||
@@ -1360,7 +1376,9 @@ export class PaystackService {
     } as CreateGuestOrderDto;
   }
 
-  private looksLikeGuestOrderPayload(payload: any): payload is CreateGuestOrderDto {
+  private looksLikeGuestOrderPayload(
+    payload: any,
+  ): payload is CreateGuestOrderDto {
     return Boolean(
       payload?.guest_info?.email &&
         payload?.delivery_address?.full_address &&
@@ -1429,7 +1447,9 @@ export class PaystackService {
     const reference = paymentData?.reference;
 
     if (!reference) {
-      this.logger.warn("Received Paystack webhook without a transaction reference");
+      this.logger.warn(
+        "Received Paystack webhook without a transaction reference",
+      );
       return;
     }
 
@@ -1608,8 +1628,7 @@ export class PaystackService {
         ref: reference,
         currency: paymentData.currency || "NGN",
         amount: Math.round(Number(order.grandTotal || 0) * 100),
-        cardHolder:
-          paymentData.customer?.email || order.guest_email || null,
+        cardHolder: paymentData.customer?.email || order.guest_email || null,
       },
       { transaction },
     );
@@ -1687,7 +1706,9 @@ export class PaystackService {
       await guestCheckout.update({
         payment_status: "failed",
         status:
-          guestCheckout.status === "completed" ? guestCheckout.status : "failed",
+          guestCheckout.status === "completed"
+            ? guestCheckout.status
+            : "failed",
         webhook_payload: paymentData,
         error: paymentData?.gateway_response || "Payment failed via webhook",
       });
@@ -1721,14 +1742,15 @@ export class PaystackService {
     });
 
     try {
-      const payload = this.buildGuestOrderPayload(
-        guestCheckout.payload,
-        reference,
-      );
+      const storedPayload = guestCheckout.payload;
+      const verifiedDeliveryData =
+        this.buildGuestVerifiedDeliveryData(storedPayload);
+      const payload = this.buildGuestOrderPayload(storedPayload, reference);
       const result = await this.guestOrderService.createGuestOrder(payload, {
         skipPaymentVerification: true,
         verifiedPaymentData: paymentData,
         skipDeliveryTokenVerification: true,
+        verifiedDeliveryData,
       });
       const orders = Array.isArray(result?.data) ? result.data : [];
 
@@ -1840,6 +1862,39 @@ export class PaystackService {
     }
 
     return orderIds.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  }
+
+  private buildGuestVerifiedDeliveryData(payload: any): {
+    data: {
+      amount: number;
+      status: boolean;
+      addressId: string | number | null;
+      discount: number;
+      tax: number;
+      totalWeight: number;
+      isGuest: boolean;
+    };
+  } {
+    const deliveryCharge = Number(
+      payload?.delivery?.delivery_charge ??
+        payload?.order_summary?.delivery_fee,
+    );
+    const discount = Number(payload?.order_summary?.discount);
+    const tax = Number(payload?.order_summary?.tax);
+    const totalWeight = Number(payload?.delivery?.total_weight);
+
+    return {
+      data: {
+        amount: Number.isFinite(deliveryCharge) ? deliveryCharge : 0,
+        status: true,
+        addressId: payload?.delivery_address?.id ?? null,
+        discount: Number.isFinite(discount) ? discount : 0,
+        tax: Number.isFinite(tax) ? tax : 0,
+        totalWeight:
+          Number.isFinite(totalWeight) && totalWeight > 0 ? totalWeight : 1,
+        isGuest: true,
+      },
+    };
   }
 
   private buildGuestOrderPayload(

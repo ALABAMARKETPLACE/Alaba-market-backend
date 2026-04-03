@@ -30,6 +30,7 @@ import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced"
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
+import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 
 type GuestOrderCreationOptions = {
   skipPaymentVerification?: boolean;
@@ -43,6 +44,8 @@ export class GuestOrderService {
   constructor(
     @InjectModel(Order)
     private readonly orderRepository: typeof Order,
+    @InjectModel(GuestCheckout)
+    private readonly guestCheckoutRepository: typeof GuestCheckout,
     @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
     private readonly notificationService: NotificationsService,
@@ -403,12 +406,86 @@ export class GuestOrderService {
         };
       });
 
+      // Also fetch paid checkouts that failed to produce ORDER records
+      const fulfilledRefs = new Set(
+        orders.map((o: any) => o.payment_reference).filter(Boolean),
+      );
+
+      const unfulfilledCheckouts = await this.guestCheckoutRepository.findAll({
+        where: {
+          payment_status: "success",
+          status: { [Op.notIn]: ["completed"] },
+          ...(fulfilledRefs.size > 0
+            ? { reference: { [Op.notIn]: [...fulfilledRefs] } }
+            : {}),
+        },
+        order: [["createdAt", "DESC"]],
+      });
+
+      const checkoutOrders = unfulfilledCheckouts.map((checkout: any) => {
+        const p = checkout.payload || {};
+        const guestInfo = p.guest_info || {};
+        const deliveryAddr = p.delivery_address || {};
+        const orderSummary = p.order_summary || {};
+        const normalizedAddress = {
+          full_name: deliveryAddr.full_name,
+          phone: deliveryAddr.phone_no,
+          address: deliveryAddr.full_address,
+          full_address: deliveryAddr.full_address,
+          city: deliveryAddr.city,
+          state: deliveryAddr.state,
+          state_id: deliveryAddr.state_id,
+          country: deliveryAddr.country,
+          country_id: deliveryAddr.country_id,
+        };
+        return {
+          id: checkout.id,
+          order_id: null,
+          checkout_reference: checkout.reference,
+          status: "payment_received",
+          fulfillment_status: checkout.status,
+          payment_status: checkout.payment_status,
+          guest_email: checkout.guest_email || guestInfo.email,
+          guest_first_name: guestInfo.first_name,
+          guest_last_name: guestInfo.last_name,
+          guest_phone: guestInfo.phone,
+          address: normalizedAddress,
+          shipping_address: normalizedAddress,
+          delivery_address: normalizedAddress,
+          items: (p.cart_items || []).map((item: any) => ({
+            id: null,
+            productId: item.product_id,
+            name: item.product_name,
+            quantity: item.quantity,
+            price: item.unit_price,
+            totalPrice: item.total_price,
+            image: item.image,
+          })),
+          total: orderSummary.total || 0,
+          grandTotal: orderSummary.total || 0,
+          payment: {
+            paymentType: "paystack",
+            status: checkout.payment_status,
+            ref: checkout.reference,
+            amount: (checkout.amount_kobo || 0) / 100,
+          },
+          fulfillment_error: checkout.error,
+          is_guest_order: true,
+          from_checkout: true,
+          createdAt: checkout.createdAt,
+          orderStatus: null,
+        };
+      });
+
+      const allOrders = [...formattedOrders, ...checkoutOrders];
+      const totalCount = Number(count) + unfulfilledCheckouts.length;
+
       return new DataResponseDto(
-        formattedOrders,
+        allOrders,
         true,
         "All guest orders retrieved successfully",
         pageOptions,
-        count,
+        totalCount,
       );
     } catch (err) {
       console.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
