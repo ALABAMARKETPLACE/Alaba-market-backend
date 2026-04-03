@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
-} from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { CartTable } from "./cart.entity";
 import { Sequelize, Transaction } from "sequelize";
 import { InjectModel } from "@nestjs/sequelize";
@@ -104,24 +99,13 @@ export class CartRepository {
   }
   async create(userId: number, data: CreateCartDto) {
     try {
-      const requestedQuantity = Math.max(1, Number(data?.quantity || 1));
       const product = await Products.findOne({
         where: { pid: data.productId },
-        attributes: ["_id", "name", "status", "unit"],
+        attributes: ["_id"],
       });
 
       if (!product) {
         throw new NotFoundException("Product not found");
-      }
-
-      if (product.status === false) {
-        throw new ServiceUnavailableException("Product is not available");
-      }
-
-      let availableUnits = Number(product.unit || 0);
-
-      if (availableUnits <= 0) {
-        throw new ServiceUnavailableException("Product is out of stock");
       }
 
       const normalizedVariantId =
@@ -135,7 +119,7 @@ export class CartRepository {
             id: normalizedVariantId,
             productId: product._id,
           },
-          attributes: ["id", "units"],
+          attributes: ["id"],
         });
 
         if (!variant) {
@@ -143,20 +127,6 @@ export class CartRepository {
             "Variant not found for the selected product",
           );
         }
-
-        availableUnits = Number(variant.units || 0);
-
-        if (availableUnits <= 0) {
-          throw new ServiceUnavailableException("Variant is out of stock");
-        }
-      }
-
-      const maxAllowedQuantity = Math.min(25, availableUnits);
-
-      if (requestedQuantity > maxAllowedQuantity) {
-        throw new BadRequestException(
-          `Only ${maxAllowedQuantity} item${maxAllowedQuantity === 1 ? "" : "s"} left in stock`,
-        );
       }
 
       const [cart, created] = await this.cartRepository.findOrCreate({
@@ -168,22 +138,17 @@ export class CartRepository {
         defaults: {
           userId,
           productId: product._id,
-          quantity: requestedQuantity,
+          quantity: data.quantity,
           buyPrice: 0,
           variantId: normalizedVariantId,
         },
       });
 
       if (created == false) {
-        const nextQuantity = Number(cart.quantity) + requestedQuantity;
-
-        if (nextQuantity > maxAllowedQuantity) {
-          throw new BadRequestException(
-            `Only ${maxAllowedQuantity} item${maxAllowedQuantity === 1 ? "" : "s"} left in stock`,
-          );
-        }
-
-        cart.quantity = nextQuantity;
+        cart.quantity = Math.min(
+          25,
+          Number(cart.quantity) + Number(data.quantity || 1),
+        );
         await cart.save({});
       }
       return { cart, created };

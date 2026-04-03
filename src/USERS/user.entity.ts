@@ -11,10 +11,10 @@ import {
   BelongsTo,
   Index,
 } from "sequelize-typescript";
+import { Roles } from "../ROLES/roles.entity";
 import { Store } from "../STORE/store.entity";
 import { DataTypes } from "sequelize";
 import { UUID } from "crypto";
-import { Role } from "../shared/enum/role.enum";
 
 @Table({
   tableName: "USER",
@@ -73,54 +73,8 @@ export class User extends Model<User> {
   @Column
   status: boolean;
 
-  @Index
-  @Column({
-    type: DataType.BOOLEAN,
-    allowNull: false,
-    defaultValue: true,
-  })
-  is_active: boolean;
-
-  @Index
-  @Column({
-    type: DataType.BOOLEAN,
-    allowNull: false,
-    defaultValue: false,
-  })
-  is_deleted: boolean;
-
-  @Column(DataType.DATE)
-  disabled_at: Date | null;
-
-  @Column(DataType.DATE)
-  deleted_at: Date | null;
-
-  @Column(DataType.DATE)
-  admin_invited_at: Date | null;
-
-  @Column(DataType.INTEGER)
-  admin_invited_by: number | null;
-
-  @Column(DataType.DATE)
-  admin_invite_accepted_at: Date | null;
-
   @Column(DataType.STRING)
   role: string;
-
-  @Column({
-    type: DataType.JSONB,
-    allowNull: false,
-    defaultValue: [Role.User],
-  })
-  roles: string[];
-
-  @Index
-  @Column({
-    type: DataType.STRING,
-    allowNull: false,
-    defaultValue: Role.User,
-  })
-  active_role: string;
 
   @Column({
     type: DataType.UUID,
@@ -139,6 +93,6 @@ export class User extends Model<User> {
   @Column({ type: DataType.STRING, allowNull: true })
   fcmtoken: string;
 
-  @BelongsTo(() => Store, { foreignKey: "store_id", constraints: false })
+  @BelongsTo(() => Store, { foreignKey: 'store_id', constraints: false })
   store: Store;
 }

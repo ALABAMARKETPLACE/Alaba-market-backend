@@ -23,7 +23,6 @@ import { orderCancelMail } from "../MAILS/templates/orders/order_cancelled_user"
 import { orderCancelSellerMail } from "../MAILS/templates/orders/order_cancelled_seller";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { StoreReview } from "../STORE_REVIEW/storereview.entity";
-import { Store } from "../STORE/store.entity";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { Products } from "../PRODUCTS/products.entity";
 import { NotificationsService } from "../NOTIFICATIONS/notification.service";
@@ -133,104 +132,6 @@ export class OrderService {
     ],
   };
 
-  private normalizeOrderAddress(order: any) {
-    const rawAddress = order?.address ?? {};
-    const fullName =
-      rawAddress?.full_name ||
-      order?.delivery_full_name ||
-      `${order?.guest_first_name || ""} ${order?.guest_last_name || ""}`.trim();
-    const fullAddress =
-      rawAddress?.full_address ||
-      rawAddress?.fullAddress ||
-      rawAddress?.address ||
-      order?.delivery_address ||
-      "";
-    const pincode =
-      rawAddress?.pincode ||
-      rawAddress?.pin_code ||
-      rawAddress?.postal_code ||
-      "";
-    const phoneNo =
-      rawAddress?.phone_no ||
-      rawAddress?.alt_phone ||
-      rawAddress?.phone ||
-      order?.delivery_phone ||
-      order?.guest_phone ||
-      "";
-    const countryCode =
-      rawAddress?.country_code ||
-      rawAddress?.code ||
-      order?.guest_country_code ||
-      "";
-    const state =
-      rawAddress?.state ||
-      rawAddress?.stateDetails?.name ||
-      order?.delivery_state ||
-      "";
-    const country =
-      rawAddress?.country ||
-      rawAddress?.countryDetails?.country_name ||
-      order?.delivery_country ||
-      "";
-
-    const normalizedAddress = {
-      ...(rawAddress || {}),
-      id: rawAddress?.id ?? order?.addressId ?? null,
-      full_name: fullName,
-      address_type:
-        rawAddress?.address_type ||
-        rawAddress?.type ||
-        order?.delivery_address_type ||
-        "",
-      type:
-        rawAddress?.type ||
-        rawAddress?.address_type ||
-        order?.delivery_address_type ||
-        "",
-      full_address: fullAddress,
-      fullAddress: fullAddress,
-      address: fullAddress,
-      street: rawAddress?.street || fullAddress,
-      pincode: pincode,
-      pin_code: pincode,
-      phone_no: phoneNo,
-      alt_phone: phoneNo,
-      phone: phoneNo,
-      country_code: countryCode,
-      code: countryCode,
-      city: rawAddress?.city || order?.delivery_city || "",
-      state,
-      state_id: rawAddress?.state_id || order?.delivery_state_id || null,
-      country,
-      country_id: rawAddress?.country_id || order?.delivery_country_id || null,
-      landmark: rawAddress?.landmark || order?.delivery_landmark || "",
-      flat: rawAddress?.flat || "",
-    };
-
-    if (
-      !normalizedAddress.full_address &&
-      !normalizedAddress.city &&
-      !normalizedAddress.state &&
-      !normalizedAddress.phone_no
-    ) {
-      return rawAddress || null;
-    }
-
-    return normalizedAddress;
-  }
-
-  private normalizeOrderResponse(order: any) {
-    const plainOrder =
-      typeof order?.toJSON === "function" ? order.toJSON() : order;
-    const normalizedAddress = this.normalizeOrderAddress(plainOrder);
-
-    return {
-      ...plainOrder,
-      address: normalizedAddress,
-      shipping_address: normalizedAddress,
-    };
-  }
-
   //for user only
   async findOne(userId: number, order_id: number) {
     try {
@@ -244,11 +145,7 @@ export class OrderService {
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
       if (!order) throw new NotFoundException();
-      return new DataResponseDto(
-        this.normalizeOrderResponse(order),
-        true,
-        "Successfully fetched",
-      );
+      return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -268,11 +165,7 @@ export class OrderService {
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
       if (!order) throw new NotFoundException();
-      return new DataResponseDto(
-        this.normalizeOrderResponse(order),
-        true,
-        "Successfully fetched",
-      );
+      return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -292,11 +185,7 @@ export class OrderService {
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
       if (!order) throw new NotFoundException();
-      return new DataResponseDto(
-        this.normalizeOrderResponse(order),
-        true,
-        "Successfully fetched",
-      );
+      return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -365,43 +254,11 @@ export class OrderService {
                 ...(name && { name: { [Op.iLike]: `%${name?.trim()}%` } }),
               },
             },
-            {
-              model: User,
-              required: true,
-              attributes: [
-                "_id",
-                "name",
-                "first_name",
-                "last_name",
-                "email",
-                "phone",
-                "image",
-              ],
-            },
-            {
-              model: Store,
-              required: false,
-              attributes: [
-                "id",
-                "store_name",
-                "name",
-                "email",
-                "phone",
-                "business_address",
-                "logo_upload",
-                "slug",
-              ],
-            },
+            { model: User, required: true, attributes: ["name"] },
           ],
         },
       );
-      return new DataResponseDto(
-        rows.map((order: any) => this.normalizeOrderResponse(order)),
-        true,
-        "Success",
-        pageOptionsDto,
-        count,
-      );
+      return new DataResponseDto(rows, true, "Success", pageOptionsDto, count);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -811,7 +668,7 @@ export class OrderService {
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
-
+  
   async buyAgain(userid: number, pageOptionsDto: PageOptionsDto) {
     try {
       const { take, page, order } = pageOptionsDto;
