@@ -23,6 +23,7 @@ import { orderCancelMail } from "../MAILS/templates/orders/order_cancelled_user"
 import { orderCancelSellerMail } from "../MAILS/templates/orders/order_cancelled_seller";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { StoreReview } from "../STORE_REVIEW/storereview.entity";
+import { Store } from "../STORE/store.entity";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { Products } from "../PRODUCTS/products.entity";
 import { NotificationsService } from "../NOTIFICATIONS/notification.service";
@@ -145,7 +146,10 @@ export class OrderService {
       order?.delivery_address ||
       "";
     const pincode =
-      rawAddress?.pincode || rawAddress?.pin_code || rawAddress?.postal_code || "";
+      rawAddress?.pincode ||
+      rawAddress?.pin_code ||
+      rawAddress?.postal_code ||
+      "";
     const phoneNo =
       rawAddress?.phone_no ||
       rawAddress?.alt_phone ||
@@ -154,7 +158,10 @@ export class OrderService {
       order?.guest_phone ||
       "";
     const countryCode =
-      rawAddress?.country_code || rawAddress?.code || order?.guest_country_code || "";
+      rawAddress?.country_code ||
+      rawAddress?.code ||
+      order?.guest_country_code ||
+      "";
     const state =
       rawAddress?.state ||
       rawAddress?.stateDetails?.name ||
@@ -213,7 +220,8 @@ export class OrderService {
   }
 
   private normalizeOrderResponse(order: any) {
-    const plainOrder = typeof order?.toJSON === "function" ? order.toJSON() : order;
+    const plainOrder =
+      typeof order?.toJSON === "function" ? order.toJSON() : order;
     const normalizedAddress = this.normalizeOrderAddress(plainOrder);
 
     return {
@@ -357,7 +365,33 @@ export class OrderService {
                 ...(name && { name: { [Op.iLike]: `%${name?.trim()}%` } }),
               },
             },
-            { model: User, required: true, attributes: ["name"] },
+            {
+              model: User,
+              required: true,
+              attributes: [
+                "_id",
+                "name",
+                "first_name",
+                "last_name",
+                "email",
+                "phone",
+                "image",
+              ],
+            },
+            {
+              model: Store,
+              required: false,
+              attributes: [
+                "id",
+                "store_name",
+                "name",
+                "email",
+                "phone",
+                "business_address",
+                "logo_upload",
+                "slug",
+              ],
+            },
           ],
         },
       );
@@ -777,7 +811,7 @@ export class OrderService {
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
-  
+
   async buyAgain(userid: number, pageOptionsDto: PageOptionsDto) {
     try {
       const { take, page, order } = pageOptionsDto;

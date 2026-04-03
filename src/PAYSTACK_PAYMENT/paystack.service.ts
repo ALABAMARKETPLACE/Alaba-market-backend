@@ -462,7 +462,7 @@ export class PaystackService {
     const perPage = options.perPage || 50;
     const maxPages = options.maxPages || 1;
     const normalizedStatus = options.status?.trim().toLowerCase() || "success";
-    const results = [];
+    const results: any[] = [];
 
     if (options.reference) {
       const transactionResponse = await this.fetchTransactionByReference(
@@ -680,7 +680,7 @@ export class PaystackService {
       viaPaystackMetadataGuestPayload: Boolean(metadataGuestPayload),
     };
 
-    const missingPieces = [];
+    const missingPieces: string[] = [];
     if (!guestCheckout) missingPieces.push("guest_checkout");
     if (!userCheckout) missingPieces.push("user_checkout");
     if (!orderLog) missingPieces.push("order_log");
@@ -966,7 +966,7 @@ export class PaystackService {
       return {
         ...result,
         action: "failed",
-        reason: error?.message || "Reconciliation failed",
+        reason: (error as any)?.message || "Reconciliation failed",
       };
     }
   }
@@ -1096,7 +1096,7 @@ export class PaystackService {
     } catch (error) {
       this.logger.warn(
         `Skipping ORDER_LOG lookup for ${reference}: ${
-          error?.message || "query failed"
+          (error as any)?.message || "query failed"
         }`,
       );
       return null;
@@ -1200,21 +1200,21 @@ export class PaystackService {
     paymentLog: PaymentLog,
     reference: string,
   ): CreateOrderDto {
-    const cart = Array.isArray(paymentLog.cart)
+    const cart = Array.isArray(paymentLog?.cart)
       ? paymentLog.cart.map((item: any) => ({
           id: item?.id,
           productId: Number(item?.productId ?? item?.product_id),
           variantId:
             item?.variantId != null || item?.variant_id != null
               ? Number(item?.variantId ?? item?.variant_id)
-              : undefined,
+              : null,
           storeId: Number(item?.storeId ?? item?.store_id),
           quantity: Number(item?.quantity),
         }))
       : [];
 
     return {
-      cart,
+      cart: cart as any,
       address: {
         id: Number(paymentLog.addressId),
       },
@@ -1464,7 +1464,7 @@ export class PaystackService {
       paymentStatus,
     );
 
-    await OrderPayments.sequelize.transaction(async (t: Transaction) => {
+    await OrderPayments.sequelize!.transaction(async (t: Transaction) => {
       const orders = await this.findOrdersForWebhook(
         reference,
         paymentData,
@@ -1629,7 +1629,7 @@ export class PaystackService {
         currency: paymentData.currency || "NGN",
         amount: Math.round(Number(order.grandTotal || 0) * 100),
         cardHolder: paymentData.customer?.email || order.guest_email || null,
-      },
+      } as any,
       { transaction },
     );
   }
@@ -1684,7 +1684,7 @@ export class PaystackService {
         orderId,
         status,
         remark,
-      },
+      } as any,
       { transaction },
     );
   }
@@ -1764,7 +1764,7 @@ export class PaystackService {
     } catch (error) {
       await guestCheckout.update({
         status: "failed",
-        error: error?.message || "Guest checkout finalization failed",
+        error: (error as any)?.message || "Guest checkout finalization failed",
       });
       throw error;
     }
@@ -1850,7 +1850,9 @@ export class PaystackService {
     } catch (error) {
       await userCheckout.update({
         status: "failed",
-        error: error?.message || "Authenticated checkout finalization failed",
+        error:
+          (error as any)?.message ||
+          "Authenticated checkout finalization failed",
       });
       throw error;
     }
@@ -1943,7 +1945,7 @@ export class PaystackService {
       payload,
       status: payload ? "ready_for_webhook" : "awaiting_frontend_confirmation",
       payment_status: "pending",
-    });
+    } as any);
   }
 
   private async persistUserCheckoutInitialization(
@@ -1971,7 +1973,7 @@ export class PaystackService {
       },
       status: "ready_for_webhook",
       payment_status: "pending",
-    });
+    } as any);
   }
 
   // ==================== GUEST PAYMENT INITIALIZATION ====================
@@ -2092,7 +2094,7 @@ export class PaystackService {
       };
     } catch (error) {
       this.logger.error(
-        `Guest payment initialization failed: ${error.message}`,
+        `Guest payment initialization failed: ${(error as any).message}`,
       );
 
       // ✅ Better error handling
@@ -2101,8 +2103,8 @@ export class PaystackService {
       }
 
       throw new BadRequestException(
-        error.response?.data?.message ||
-          error.message ||
+        (error as any).response?.data?.message ||
+          (error as any).message ||
           "Failed to initialize payment",
       );
     }

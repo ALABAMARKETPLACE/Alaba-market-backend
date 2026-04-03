@@ -22,7 +22,7 @@ export class CartServices {
   constructor(
     private readonly cartRepo: CartRepository,
     @InjectModel(CartTable)
-    private readonly cartRepository: typeof CartTable
+    private readonly cartRepository: typeof CartTable,
   ) {}
 
   async findByUserId(id: number) {
@@ -50,74 +50,83 @@ export class CartServices {
 
   async create(userId: number, data: CreateCartDto) {
     try {
-      let warningMessage = null;
-      
+      let warningMessage: string | undefined = undefined;
+
       // First, check if user has existing cart items
       const existingCartItems = await CartTable.findAll({
         where: { userId },
         include: [
           {
             model: Products,
-            as: 'productDetails',
-            attributes: ['store_id']
-          }
-        ]
+            as: "productDetails",
+            attributes: ["store_id"],
+          },
+        ],
       });
 
-      console.log({existingCartItems})
+      console.log({ existingCartItems });
 
       // If there are existing items, check the store
       if (existingCartItems && existingCartItems.length > 0) {
         // Get all unique store IDs from existing cart items
-        const existingStoreIds = [...new Set(
-          existingCartItems.map(item => item.productDetails.store_id)
-        )];
-        
+        const existingStoreIds = [
+          ...new Set(
+            existingCartItems
+              .map((item) => item.productDetails?.store_id)
+              .filter((storeId): storeId is number => storeId != null),
+          ),
+        ];
+
         // Get the product details for the new item being added
         const newProduct = await Products.findOne({
           where: {
-            pid: data.productId
+            pid: data.productId,
           },
-          attributes: ['store_id']
+          attributes: ["store_id"],
         });
-        
+
         if (!newProduct) {
-          throw new NotFoundException('Product not found');
+          throw new NotFoundException("Product not found");
         }
-        
+
         // Check if the new product's store is already in the cart or if there are already multiple stores
-        const willHaveMultipleStores = existingStoreIds.length > 1 || 
-                                      !existingStoreIds.includes(newProduct.store_id);
-        
+        const willHaveMultipleStores =
+          existingStoreIds.length > 1 ||
+          !existingStoreIds.includes(newProduct.store_id);
+
         if (willHaveMultipleStores) {
           // Set warning message but continue with adding to cart
-          warningMessage = "Items from different stores are in your cart. You may not be eligible for discount offers and combined delivery charges.";
+          warningMessage =
+            "Items from different stores are in your cart. You may not be eligible for discount offers and combined delivery charges.";
         }
       }
 
       // Proceed with normal cart creation regardless of store check
       const { cart, created }: any = await this.cartRepo.create(userId, data);
-      console.log("userId, data", {userId, data});
+      console.log("userId, data", { userId, data });
       const message = created
-        ? (warningMessage ? warningMessage : "Successfully Added to cart")
-        : (warningMessage ? warningMessage : `Changed Product Quantity to ${cart?.quantity}`);
-      
+        ? warningMessage
+          ? warningMessage
+          : "Successfully Added to cart"
+        : warningMessage
+        ? warningMessage
+        : `Changed Product Quantity to ${cart?.quantity}`;
+
       // Return success response with warning if applicable
       return new CartDataResponseDto(
-        cart, 
-        true, 
+        cart,
+        true,
         message,
-        warningMessage ? 'DIFFERENT_STORE_WARNING' : null,
-        warningMessage ? true : false  // isDifferentStore field
+        warningMessage ? "DIFFERENT_STORE_WARNING" : undefined,
+        warningMessage ? true : false, // isDifferentStore field
       );
     } catch (err) {
-      console.log('error', err);
+      console.log("error", err);
       if (err instanceof HttpException) throw err;
 
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
-
 
   async update(userId: number, id: number, action: string) {
     const where = { id, userId };
@@ -161,7 +170,8 @@ export class CartServices {
             if (
               !Number.isFinite(availableUnits) ||
               availableUnits <= 0 ||
-              Number(currentCartItem.quantity || 0) >= Math.min(25, availableUnits)
+              Number(currentCartItem.quantity || 0) >=
+                Math.min(25, availableUnits)
             ) {
               throw new ServiceUnavailableException("Product is out of stock");
             }
@@ -169,7 +179,7 @@ export class CartServices {
             const { count, data }: any = await this.cartRepo.updateCart(
               where,
               1,
-              transaction
+              transaction,
             );
             if (count == 0) throw new NotFoundException();
             message = `You have Changed the quantity to ${data?.[0]?.quantity}`;
@@ -177,7 +187,7 @@ export class CartServices {
             const { count, data }: any = await this.cartRepo.updateCart(
               where,
               -1,
-              transaction
+              transaction,
             );
             if (count == 0) throw new NotFoundException();
             message = `You have Changed the quantity to ${data?.[0]?.quantity}`;
@@ -188,7 +198,7 @@ export class CartServices {
             }
           }
           return message;
-        }
+        },
       );
       return new DataResponseDto({}, true, result);
     } catch (err) {
@@ -218,7 +228,7 @@ export class CartServices {
       return deleted;
     } catch (err) {}
   }
-  
+
   async clearCart(userId: number) {
     try {
       const cleared = await this.cartRepo.removeAll(userId);
