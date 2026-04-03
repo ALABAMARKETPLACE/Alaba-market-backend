@@ -71,6 +71,7 @@ import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.mo
 import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.module";
 import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
 
+
 @Module({
   imports: [
     DatabaseModule,

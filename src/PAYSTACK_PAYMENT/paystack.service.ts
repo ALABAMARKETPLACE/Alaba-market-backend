@@ -573,6 +573,216 @@ export class PaystackService {
         : "Paystack reconciliation completed successfully",
     );
   }
+
+  async diagnoseTransaction(reference: string): Promise<DataResponseDto> {
+    const transactionResponse =
+      await this.fetchTransactionByReference(reference);
+
+    if (!transactionResponse?.data) {
+      throw new BadRequestException(
+        `Paystack transaction "${reference}" was not found.`,
+      );
+    }
+
+    const transactionData = transactionResponse.data;
+    const localState = await this.getLocalTransactionState(
+      reference,
+      transactionData,
+    );
+    const metadata = transactionData?.metadata || {};
+    const metadataOrderId = Number(metadata?.order_id);
+    const metadataGuestPayload =
+      this.extractGuestOrderPayloadFromTransactionMetadata(transactionData);
+    const metadataGuestInfo =
+      metadata?.guest_info ||
+      this.buildGuestInfoFromMetadata(metadata, transactionData);
+    const metadataDeliveryAddress =
+      metadata?.delivery_address ||
+      metadata?.address ||
+      metadata?.shipping_address ||
+      null;
+    const metadataDeliveryToken =
+      metadata?.delivery?.delivery_token ||
+      metadata?.delivery_token ||
+      metadata?.deliveryToken ||
+      null;
+    const metadataCartItems = Array.isArray(metadata?.cart_items)
+      ? metadata.cart_items
+      : Array.isArray(metadata?.items)
+        ? metadata.items
+        : [];
+
+    const metadataOrderWhere =
+      Number.isFinite(metadataOrderId) && metadataOrderId > 0
+        ? {
+            [Op.or]: [{ id: metadataOrderId }, { order_id: metadataOrderId }],
+          }
+        : null;
+
+    const [
+      guestCheckout,
+      userCheckout,
+      orderLog,
+      paymentLog,
+      ordersByReference,
+      ordersByMetadata,
+      payments,
+    ] = await Promise.all([
+      this.guestCheckoutRepository.findOne({ where: { reference } }),
+      this.userCheckoutRepository.findOne({ where: { reference } }),
+      this.findOrderLogByReference(reference),
+      this.paymentLogRepository.findOne({ where: { ref: reference } }),
+      Order.findAll({
+        where: {
+          [Op.or]: [
+            { payment_reference: reference },
+            { transaction_reference: reference },
+          ],
+        },
+      }),
+      metadataOrderWhere ? Order.findAll({ where: metadataOrderWhere }) : [],
+      OrderPayments.findAll({ where: { ref: reference } }),
+    ]);
+
+    const orders = new Map<number, Order>();
+    for (const order of [...ordersByReference, ...ordersByMetadata]) {
+      if (order?.id) {
+        orders.set(order.id, order);
+      }
+    }
+
+    const guestCheckoutOrderIds = this.normalizeOrderIds(guestCheckout?.order_ids);
+    const userCheckoutOrderIds = this.normalizeOrderIds(userCheckout?.order_ids);
+    const paymentOrderIds = payments
+      .map((payment) => Number(payment?.orderId))
+      .filter((id) => Number.isFinite(id));
+    const foundOrderIds = [...orders.keys()];
+
+    const recovery = {
+      viaExistingOrdersOrPayments:
+        foundOrderIds.length > 0 || paymentOrderIds.length > 0,
+      viaGuestCheckoutPayload: Boolean(guestCheckout?.payload),
+      viaUserCheckoutPayload: Boolean(
+        userCheckout?.payload?.order_payload &&
+          userCheckout?.payload?.verified_delivery,
+      ),
+      viaOrderLog: Boolean(
+        orderLog &&
+          this.resolveVerifiedChargesPayload(orderLog?.charges)?.data?.addressId,
+      ),
+      viaPaymentLog: Boolean(
+        paymentLog &&
+          this.resolveVerifiedChargesPayload(paymentLog?.charges)?.data?.addressId,
+      ),
+      viaPaystackMetadataGuestPayload: Boolean(metadataGuestPayload),
+    };
+
+    const missingPieces = [];
+    if (!guestCheckout) missingPieces.push("guest_checkout");
+    if (!userCheckout) missingPieces.push("user_checkout");
+    if (!orderLog) missingPieces.push("order_log");
+    if (!paymentLog) missingPieces.push("payment_log");
+    if (foundOrderIds.length === 0) missingPieces.push("orders");
+    if (paymentOrderIds.length === 0) missingPieces.push("order_payments");
+
+    if (!metadataGuestPayload) {
+      if (!metadataGuestInfo) missingPieces.push("paystack_metadata.guest_info");
+      if (!metadataDeliveryAddress) {
+        missingPieces.push("paystack_metadata.delivery_address");
+      }
+      if (!metadataDeliveryToken) {
+        missingPieces.push("paystack_metadata.delivery_token");
+      }
+      if (metadataCartItems.length === 0) {
+        missingPieces.push("paystack_metadata.cart_items");
+      }
+    }
+
+    const overallRecoverable = Object.values(recovery).some(Boolean);
+
+    return new DataResponseDto(
+      {
+        reference,
+        paystack: {
+          status: transactionData?.status || null,
+          amount_kobo: Number(transactionData?.amount || 0),
+          currency: transactionData?.currency || "NGN",
+          customer_email:
+            transactionData?.customer?.email ||
+            transactionData?.authorization?.email ||
+            null,
+          paid_at:
+            transactionData?.paid_at ||
+            transactionData?.created_at ||
+            transactionData?.transaction_date ||
+            null,
+        },
+        local: localState,
+        sources: {
+          guestCheckout: {
+            found: Boolean(guestCheckout),
+            status: guestCheckout?.status || null,
+            payment_status: guestCheckout?.payment_status || null,
+            hasPayload: Boolean(guestCheckout?.payload),
+            orderIds: guestCheckoutOrderIds,
+          },
+          userCheckout: {
+            found: Boolean(userCheckout),
+            status: userCheckout?.status || null,
+            payment_status: userCheckout?.payment_status || null,
+            hasOrderPayload: Boolean(userCheckout?.payload?.order_payload),
+            hasVerifiedDelivery: Boolean(userCheckout?.payload?.verified_delivery),
+            orderIds: userCheckoutOrderIds,
+          },
+          orderLog: {
+            found: Boolean(orderLog),
+            hasReusableDeliveryPayload: Boolean(
+              this.resolveVerifiedChargesPayload(orderLog?.charges)?.data?.addressId,
+            ),
+            createdAt: orderLog?.createdAt || null,
+          },
+          paymentLog: {
+            found: Boolean(paymentLog),
+            hasReusableDeliveryPayload: Boolean(
+              this.resolveVerifiedChargesPayload(paymentLog?.charges)?.data?.addressId,
+            ),
+          },
+          orders: {
+            count: foundOrderIds.length,
+            ids: foundOrderIds,
+          },
+          orderPayments: {
+            count: payments.length,
+            orderIds: paymentOrderIds,
+          },
+          paystackMetadata: {
+            orderId:
+              Number.isFinite(metadataOrderId) && metadataOrderId > 0
+                ? metadataOrderId
+                : null,
+            hasGuestOrderPayload: Boolean(metadataGuestPayload),
+            hasGuestInfo: Boolean(metadataGuestInfo),
+            hasDeliveryAddress: Boolean(metadataDeliveryAddress),
+            hasDeliveryToken: Boolean(metadataDeliveryToken),
+            cartItemCount: metadataCartItems.length,
+          },
+          recovery: {
+            ...recovery,
+            overallRecoverable,
+          },
+        },
+        guidance: {
+          recoverable: overallRecoverable,
+          summary: overallRecoverable
+            ? "At least one recovery path is available for this reference."
+            : "No recovery path is currently available for this reference.",
+          missingPieces,
+        },
+      },
+      true,
+      "Paystack transaction diagnosis generated successfully",
+    );
+  }
   /* ----------------------------------
      REFUND
   ---------------------------------- */
@@ -1073,6 +1283,7 @@ export class PaystackService {
     await this.guestOrderService.createGuestOrder(payload, {
       skipPaymentVerification: true,
       verifiedPaymentData: transactionData,
+      skipDeliveryTokenVerification: true,
     });
   }
 
@@ -1517,6 +1728,7 @@ export class PaystackService {
       const result = await this.guestOrderService.createGuestOrder(payload, {
         skipPaymentVerification: true,
         verifiedPaymentData: paymentData,
+        skipDeliveryTokenVerification: true,
       });
       const orders = Array.isArray(result?.data) ? result.data : [];
 
