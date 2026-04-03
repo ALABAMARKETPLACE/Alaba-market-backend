@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { JwtService } from "@nestjs/jwt";
-import { Transaction } from "sequelize";
+import { Op, Transaction, WhereOptions } from "sequelize";
 
 import { CreateGuestOrderDto } from "./dto/create-guest-order.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -34,6 +34,8 @@ import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 type GuestOrderCreationOptions = {
   skipPaymentVerification?: boolean;
   verifiedPaymentData?: any;
+  skipDeliveryTokenVerification?: boolean;
+  verifiedDeliveryData?: any;
 };
 
 @Injectable()
@@ -86,7 +88,7 @@ export class GuestOrderService {
           const newOrders = [];
 
           // ✅ Step 1: Validate delivery token and basic data
-          const verified = await this.basicCheck(data);
+          const verified = await this.basicCheck(data, options);
 
           // ✅ Step 2: Verify payment with Paystack (CRITICAL)
           if (data.payment.payment_reference) {
@@ -240,6 +242,45 @@ export class GuestOrderService {
     }
   }
 
+  private buildGuestOrderWhereClause(
+    overrides: Record<string, any> = {},
+    email?: string,
+  ): WhereOptions<Order> {
+    const normalizedEmail = email?.toLowerCase().trim();
+
+    if (normalizedEmail) {
+      return {
+        ...overrides,
+        [Op.or]: [
+          {
+            is_guest_order: true,
+            guest_email: normalizedEmail,
+          },
+          {
+            guest_email: normalizedEmail,
+          },
+        ],
+      };
+    }
+
+    // For guest orders: is_guest_order=true OR has guest_email set
+    // Note: userId=null can catch other orphaned orders, so we prioritize is_guest_order flag
+    return {
+      ...overrides,
+      [Op.or]: [
+        {
+          is_guest_order: true,
+        },
+        {
+          [Op.and]: [
+            { guest_email: { [Op.ne]: null } },
+            { guest_email: { [Op.ne]: "" } },
+          ],
+        },
+      ],
+    };
+  }
+
   /** Get all Guest Orders */
   async getAllGuestOrders(
     pageOptions: PageOptionsGetOrdersDto,
@@ -247,9 +288,8 @@ export class GuestOrderService {
     try {
       console.log("=== FETCHING ALL GUEST ORDERS ===");
 
-      const whereClause: any = {
-        is_guest_order: true,
-      };
+      const whereClause: any = this.buildGuestOrderWhereClause();
+      console.log("Where Clause:", JSON.stringify(whereClause, null, 2));
 
       if (pageOptions.status) {
         whereClause.status = pageOptions.status;
@@ -386,10 +426,7 @@ export class GuestOrderService {
     try {
       console.log("=== FETCHING STORE GUEST ORDERS ===");
 
-      const whereClause: any = {
-        is_guest_order: true,
-        storeId,
-      };
+      const whereClause: any = this.buildGuestOrderWhereClause({ storeId });
 
       if (pageOptions.status) {
         whereClause.status = pageOptions.status;
@@ -532,10 +569,7 @@ export class GuestOrderService {
       console.log("Guest Email:", data.email);
 
       // Build where clause
-      const whereClause: any = {
-        is_guest_order: true,
-        guest_email: data.email.toLowerCase().trim(),
-      };
+      const whereClause: any = this.buildGuestOrderWhereClause({}, data.email);
 
       // Add order_id filter if provided
       if (data.order_id && data.order_id.trim() !== "") {
@@ -692,7 +726,10 @@ export class GuestOrderService {
 
   // ==================== VALIDATION ====================
 
-  private async basicCheck(data: CreateGuestOrderDto) {
+  private async basicCheck(
+    data: CreateGuestOrderDto,
+    options: GuestOrderCreationOptions = {},
+  ) {
     try {
       console.log("🔍 [basicCheck] Starting validation...");
 
@@ -726,9 +763,17 @@ export class GuestOrderService {
 
       // 5. Decode delivery token
       console.log("🔍 [basicCheck] Verifying delivery token...");
-      const verified: any = await this.jwtService.verifyAsync(
-        data.delivery.delivery_token,
-      );
+      let verified: any = options.verifiedDeliveryData;
+
+      if (!verified) {
+        if (options.skipDeliveryTokenVerification) {
+          verified = this.jwtService.decode(data.delivery.delivery_token);
+        } else {
+          verified = await this.jwtService.verifyAsync(
+            data.delivery.delivery_token,
+          );
+        }
+      }
 
       if (!verified || !verified?.data) {
         throw new BadRequestException("Invalid delivery token");
@@ -748,11 +793,13 @@ export class GuestOrderService {
       }
 
       // 6. Check token expiry
-      const now = Math.floor(Date.now() / 1000);
-      if (verified.exp && verified.exp < now) {
-        throw new BadRequestException(
-          "Delivery token expired. Please recalculate delivery.",
-        );
+      if (!options.skipDeliveryTokenVerification) {
+        const now = Math.floor(Date.now() / 1000);
+        if (verified.exp && verified.exp < now) {
+          throw new BadRequestException(
+            "Delivery token expired. Please recalculate delivery.",
+          );
+        }
       }
 
       console.log("✅ [basicCheck] Validation passed!");

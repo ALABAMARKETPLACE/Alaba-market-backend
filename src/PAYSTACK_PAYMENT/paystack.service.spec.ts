@@ -736,4 +736,51 @@ describe("PaystackService", () => {
       "success",
     );
   });
+
+  it("diagnoses why a transaction is not recoverable", async () => {
+    const { service, httpService } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: {
+            reference: "guest_ref_missing",
+            status: "success",
+            amount: 5000,
+            currency: "NGN",
+            customer: { email: "missing@example.com" },
+            metadata: {},
+          },
+        },
+      }),
+    );
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+
+    const result = await service.diagnoseTransaction("guest_ref_missing");
+
+    expect(result.data.local).toEqual(
+      expect.objectContaining({
+        existsLocally: false,
+        reconcilable: false,
+      }),
+    );
+    expect(result.data.sources.recovery).toEqual(
+      expect.objectContaining({
+        overallRecoverable: false,
+      }),
+    );
+    expect(result.data.guidance.missingPieces).toEqual(
+      expect.arrayContaining([
+        "guest_checkout",
+        "payment_log",
+        "orders",
+        "order_payments",
+      ]),
+    );
+  });
 });
