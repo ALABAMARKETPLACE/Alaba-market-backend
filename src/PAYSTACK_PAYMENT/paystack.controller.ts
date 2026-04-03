@@ -11,6 +11,8 @@ import {
   RawBodyRequest,
   Req,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -41,6 +43,9 @@ import { PaystackUserInitializeDto } from "./dto/paystack-user-initialize.dto";
 import { Public } from "../shared/decorator/optional.decorator";
 import { PaystackWebhookResponseDto } from "./dto/paystack-webhook.dto";
 import { UserId } from "../shared/decorator/userId_decorator";
+import { Roles } from "../shared/decorator/roles.decorator";
+import { Role } from "../shared/enum/role.enum";
+import { ReconcilePaystackTransactionsDto } from "./dto/reconcile-paystack-transactions.dto";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -284,6 +289,26 @@ export class PaystackController {
     @Query("perPage") perPage: number = 50,
   ): Promise<any> {
     return await this.paystackService.listTransactions(page, perPage);
+  }
+
+  @Post("transactions/reconcile")
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Reconcile historical Paystack transactions into the app database",
+    description:
+      "Scans Paystack transactions, checks whether each reference already exists locally, and can replay successful or failed transactions through the existing webhook sync logic.",
+  })
+  @ApiOkResponse({
+    description: "Paystack reconciliation completed successfully",
+  })
+  async reconcileTransactions(
+    @Body() data: ReconcilePaystackTransactionsDto,
+  ): Promise<DataResponseDto> {
+    return await this.paystackService.reconcileTransactions(data);
   }
 
   @Get("success")

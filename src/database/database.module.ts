@@ -62,6 +62,7 @@ import { DriverOrder } from "../DELIVERY_COMPANY/driver_order.entity";
 import { PaystackSubaccount } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.entity";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 import { UserCheckout } from "../PAYSTACK_PAYMENT/user-checkout.entity";
+import { PaymentSplit } from "../PAYMENT_SPLITS/payment-split.entity";
 
 @Global()
 @Module({
@@ -129,6 +130,7 @@ import { UserCheckout } from "../PAYSTACK_PAYMENT/user-checkout.entity";
           Driver,
           DriverInvitation,
           DriverOrder,
+          PaymentSplit,
           PaystackSubaccount,
           GuestCheckout,
           UserCheckout,
