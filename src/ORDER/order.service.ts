@@ -23,7 +23,6 @@ import { orderCancelMail } from "../MAILS/templates/orders/order_cancelled_user"
 import { orderCancelSellerMail } from "../MAILS/templates/orders/order_cancelled_seller";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { StoreReview } from "../STORE_REVIEW/storereview.entity";
-import { Store } from "../STORE/store.entity";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { Products } from "../PRODUCTS/products.entity";
 import { NotificationsService } from "../NOTIFICATIONS/notification.service";
@@ -248,11 +247,7 @@ export class OrderService {
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
       if (!order) throw new NotFoundException();
-      return new DataResponseDto(
-        this.normalizeOrderResponse(order),
-        true,
-        "Successfully fetched",
-      );
+      return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -272,11 +267,7 @@ export class OrderService {
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
       if (!order) throw new NotFoundException();
-      return new DataResponseDto(
-        this.normalizeOrderResponse(order),
-        true,
-        "Successfully fetched",
-      );
+      return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -325,11 +316,7 @@ export class OrderService {
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
       if (!order) throw new NotFoundException();
-      return new DataResponseDto(
-        this.normalizeOrderResponse(order),
-        true,
-        "Successfully fetched",
-      );
+      return new DataResponseDto(order, true, "Successfully fetched");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -398,43 +385,11 @@ export class OrderService {
                 ...(name && { name: { [Op.iLike]: `%${name?.trim()}%` } }),
               },
             },
-            {
-              model: User,
-              required: true,
-              attributes: [
-                "_id",
-                "name",
-                "first_name",
-                "last_name",
-                "email",
-                "phone",
-                "image",
-              ],
-            },
-            {
-              model: Store,
-              required: false,
-              attributes: [
-                "id",
-                "store_name",
-                "name",
-                "email",
-                "phone",
-                "business_address",
-                "logo_upload",
-                "slug",
-              ],
-            },
+            { model: User, required: true, attributes: ["name"] },
           ],
         },
       );
-      return new DataResponseDto(
-        rows.map((order: any) => this.normalizeOrderResponse(order)),
-        true,
-        "Success",
-        pageOptionsDto,
-        count,
-      );
+      return new DataResponseDto(rows, true, "Success", pageOptionsDto, count);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -877,7 +832,7 @@ export class OrderService {
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
-
+  
   async buyAgain(userid: number, pageOptionsDto: PageOptionsDto) {
     try {
       const { take, page, order } = pageOptionsDto;

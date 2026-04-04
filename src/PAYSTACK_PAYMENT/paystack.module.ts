@@ -12,8 +12,6 @@ import { GuestCheckout } from "./guest-checkout.entity";
 import { UserCheckout } from "./user-checkout.entity";
 import { OrderModule } from "../ORDER/order.module";
 import { User } from "../USERS/user.entity";
-import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
-import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
 
 @Module({
   imports: [
@@ -24,13 +22,7 @@ import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
     }),
 
     // Sequelize model needed by PaystackService
-    SequelizeModule.forFeature([
-      Store,
-      GuestCheckout,
-      UserCheckout,
-      User,
-      PaymentLog,
-    ]),
+    SequelizeModule.forFeature([Store, GuestCheckout, UserCheckout, User]),
 
     // StoreModule (non-circular)
     StoreModule,
@@ -38,7 +30,6 @@ import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
     // Circular dependency handled correctly
     forwardRef(() => PaymentSplitModule),
     forwardRef(() => OrderModule),
-    PaystackReconciliationModule,
   ],
   controllers: [PaystackController],
   providers: [PaystackService],

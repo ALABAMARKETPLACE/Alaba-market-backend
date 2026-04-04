@@ -50,7 +50,7 @@ export class UserCheckout extends Model<UserCheckout> {
   webhook_payload: any;
 
   @Column({ type: DataType.TEXT, allowNull: true })
-  error: string | null;
+  error: string;
 
   @Column({ type: DataType.DATE, allowNull: true })
   processed_at: Date;

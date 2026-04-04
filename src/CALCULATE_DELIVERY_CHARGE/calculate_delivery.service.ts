@@ -131,7 +131,7 @@ export class CalculateDeliveryChargeService {
       };
       // Temporary behavior: ignore distance-based charging and use only the
       // product/order-value delivery charge so checkout remains available.
-      const result = await DistanceCharge.sequelize!.transaction(
+      const result = await DistanceCharge.sequelize.transaction(
         async (transaction: Transaction) => {
           console.log({ transaction });
           for (const _store of groupedProducts) {
@@ -371,6 +371,8 @@ export class CalculateDeliveryChargeService {
         true,
         "Delivery charge calculated successfully",
         guestToken,
+        null,
+        false,
       );
     } catch (err) {
       console.log("Error calculating public delivery charge:", err);

@@ -19,7 +19,7 @@ import { UpsertDeliveryChargeDto } from "./dto/upsertDeliveryCharge.dto";
 export class DeliveryChargeService {
   constructor(
     @Inject("DeliveryChargeRepository")
-    private readonly deliveryChargeRepository: typeof DeliveryCharge,
+    private readonly deliveryChargeRepository: typeof DeliveryCharge
   ) {}
 
   async findAll() {
@@ -28,7 +28,7 @@ export class DeliveryChargeService {
         order: [["createdAt", "ASC"]],
       });
       const data = deliveryCharges.map(
-        (item: DeliveryCharge) => new DeliveryChargeDto(item),
+        (item: DeliveryCharge) => new DeliveryChargeDto(item)
       );
       return new DataResponseDto(data, true, "Successfully");
     } catch (err) {
@@ -92,14 +92,14 @@ export class DeliveryChargeService {
   }
   async upsertCharge(data: UpsertDeliveryChargeDto) {
     try {
-      const result = await this.deliveryChargeRepository.sequelize!.transaction(
+      const result = await this.deliveryChargeRepository.sequelize.transaction(
         async (transaction: Transaction) => {
           let upsertId: number[] = [];
           let newDeliveryCharge: DeliveryCharge[] = [];
           for (const item of data.deliveryChargeItems) {
             if (item?.id) {
               const charge = await this.deliveryChargeRepository.findByPk(
-                item?.id,
+                item?.id
               );
               if (!charge) {
                 throw new Error("Invalid Id@@");
@@ -115,7 +115,7 @@ export class DeliveryChargeService {
               throw new Error(`All Field are Required for Product Charge@@`);
             }
             const [upsertData, created] =
-              await this.deliveryChargeRepository.upsert(item as any, {
+              await this.deliveryChargeRepository.upsert(item, {
                 transaction,
               });
             upsertId.push(upsertData.id);
@@ -130,7 +130,7 @@ export class DeliveryChargeService {
             transaction,
           });
           return newDeliveryCharge;
-        },
+        }
       );
       return new DataResponseDto(result, true, "Successfully Updated");
     } catch (err) {
@@ -187,7 +187,7 @@ export class DeliveryChargeService {
 
   async getDeliveryCharge(
     data: CaluclateDeliveryChargeDto,
-    transaction: Transaction,
+    transaction: Transaction
   ) {
     try {
       const { amount: inputAmount } = data;
