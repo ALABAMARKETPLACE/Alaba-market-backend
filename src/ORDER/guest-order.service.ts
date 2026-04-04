@@ -266,8 +266,7 @@ export class GuestOrderService {
       };
     }
 
-    // For guest orders: is_guest_order=true OR has guest_email set
-    // Note: userId=null can catch other orphaned orders, so we prioritize is_guest_order flag
+    // For guest orders: is_guest_order=true OR has guest_email set OR missing/legacy userId values
     return {
       ...overrides,
       [Op.or]: [
@@ -279,6 +278,12 @@ export class GuestOrderService {
             { guest_email: { [Op.ne]: null as any } },
             { guest_email: { [Op.ne]: "" } },
           ],
+        },
+        {
+          userId: null,
+        },
+        {
+          userId: 0,
         },
       ],
     } as any;
@@ -411,14 +416,18 @@ export class GuestOrderService {
         orders.map((o: any) => o.payment_reference).filter(Boolean),
       );
 
+      const checkoutWhereClause: any = {
+        ...(fulfilledRefs.size > 0
+          ? { reference: { [Op.notIn]: [...fulfilledRefs] } }
+          : {}),
+      };
+
+      if (pageOptions.status) {
+        checkoutWhereClause.status = pageOptions.status;
+      }
+
       const unfulfilledCheckouts = await this.guestCheckoutRepository.findAll({
-        where: {
-          payment_status: "success",
-          status: { [Op.notIn]: ["completed"] },
-          ...(fulfilledRefs.size > 0
-            ? { reference: { [Op.notIn]: [...fulfilledRefs] } }
-            : {}),
-        },
+        where: checkoutWhereClause,
         order: [["createdAt", "DESC"]],
       });
 
