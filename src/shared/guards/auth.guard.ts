@@ -14,10 +14,7 @@ import { ROLES_KEY } from "../decorator/roles.decorator";
 import { Cache } from "cache-manager";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { User } from "../../USERS/user.entity";
-import {
-  normalizeRoles,
-  resolveActiveRole,
-} from "../helpers/user-role.helper";
+import { normalizeRoles, resolveActiveRole } from "../helpers/user-role.helper";
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -131,8 +128,13 @@ export class AuthGuard implements CanActivate {
           throw new ForbiddenException("Unauthorized role");
         }
 
+        const userRoles = normalizeRoles(request.user.roles, request.user.role);
         const hasRole = requiredRoles.some(
-          (role) => role.toLowerCase() === request.user.role.toLowerCase(),
+          (role) =>
+            role.toLowerCase() === request.user.role.toLowerCase() ||
+            userRoles.some(
+              (userRole) => userRole.toLowerCase() === role.toLowerCase(),
+            ),
         );
 
         if (!hasRole) {
