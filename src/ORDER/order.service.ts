@@ -224,10 +224,14 @@ export class OrderService {
       typeof order?.toJSON === "function" ? order.toJSON() : order;
     const normalizedAddress = this.normalizeOrderAddress(plainOrder);
 
+    const { user, store, ...rest } = plainOrder;
+
     return {
-      ...plainOrder,
+      ...rest,
       address: normalizedAddress,
       shipping_address: normalizedAddress,
+      buyer: user ?? null,
+      seller: store ?? null,
     };
   }
 
@@ -288,7 +292,36 @@ export class OrderService {
           order_id,
         },
         attributes: this.orderAttributes,
-        include: this.includeModals,
+        include: [
+          ...this.includeModals,
+          {
+            model: User,
+            attributes: [
+              "_id",
+              "name",
+              "first_name",
+              "last_name",
+              "email",
+              "phone",
+              "image",
+            ],
+            required: false,
+          },
+          {
+            model: Store,
+            attributes: [
+              "id",
+              "store_name",
+              "name",
+              "email",
+              "phone",
+              "business_address",
+              "logo_upload",
+              "slug",
+            ],
+            required: false,
+          },
+        ],
         order: [[Sequelize.col("orderStatus.createdAt"), "ASC"]],
       });
       if (!order) throw new NotFoundException();
@@ -790,9 +823,42 @@ export class OrderService {
       const orders = await this.OrderRepository.findAll({
         where: whereClause,
         order: [["createdAt", "DESC"]],
+        include: [
+          {
+            model: User,
+            attributes: [
+              "_id",
+              "name",
+              "first_name",
+              "last_name",
+              "email",
+              "phone",
+              "image",
+            ],
+            required: false,
+          },
+          {
+            model: Store,
+            attributes: [
+              "id",
+              "store_name",
+              "name",
+              "email",
+              "phone",
+              "business_address",
+              "logo_upload",
+              "slug",
+            ],
+            required: false,
+          },
+        ],
       });
 
-      return new DataResponseDto(orders, true, "Successful");
+      return new DataResponseDto(
+        orders.map((o: any) => this.normalizeOrderResponse(o)),
+        true,
+        "Successful",
+      );
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
