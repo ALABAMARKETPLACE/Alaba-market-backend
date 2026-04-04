@@ -88,11 +88,9 @@ module.exports = {
         `
           UPDATE "USER"
           SET "role" = CASE
-            WHEN "store_id" IS NOT NULL THEN 'seller'
-            ELSE 'user'
+            WHEN "role" = 'Seller' OR  "store_id" IS NOT NULL THEN '["seller"]'::jsonb
+            ELSE 'user'::jsonb
           END
-          WHERE "role" IS NULL
-             OR "role" = '';
         `,
         { transaction },
       );
@@ -236,21 +234,15 @@ module.exports = {
       const tableInfo = await queryInterface.describeTable("USER");
 
       if (tableInfo.deleted_at) {
-        await queryInterface.removeColumn("USER", "deleted_at", {
-          transaction,
-        });
+        await queryInterface.removeColumn("USER", "deleted_at", { transaction });
       }
 
       if (tableInfo.disabled_at) {
-        await queryInterface.removeColumn("USER", "disabled_at", {
-          transaction,
-        });
+        await queryInterface.removeColumn("USER", "disabled_at", { transaction });
       }
 
       if (tableInfo.is_deleted) {
-        await queryInterface.removeColumn("USER", "is_deleted", {
-          transaction,
-        });
+        await queryInterface.removeColumn("USER", "is_deleted", { transaction });
       }
 
       if (tableInfo.is_active) {
@@ -258,9 +250,7 @@ module.exports = {
       }
 
       if (tableInfo.active_role) {
-        await queryInterface.removeColumn("USER", "active_role", {
-          transaction,
-        });
+        await queryInterface.removeColumn("USER", "active_role", { transaction });
       }
 
       if (tableInfo.roles) {
