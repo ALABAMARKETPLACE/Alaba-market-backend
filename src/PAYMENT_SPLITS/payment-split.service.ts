@@ -20,6 +20,7 @@ import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
 import { Role } from "../shared/enum/role.enum";
+import { resolveStoreSubaccountCode } from "../shared/helpers/paystack-subaccount.helper";
 
 type PaymentSplitActor = {
   userId?: number;
@@ -124,7 +125,7 @@ export class PaymentSplitService {
     if (
       !store ||
       store.subaccount_status !== "active" ||
-      !store.paystack_subaccount_code
+      !resolveStoreSubaccountCode(store)
     ) {
       throw new HttpException(
         "Store subaccount is not active",
@@ -337,7 +338,7 @@ export class PaymentSplitService {
           }
 
           const store = paymentSplit.store || order.storeDetails;
-          if (!store?.paystack_subaccount_code) {
+          if (!resolveStoreSubaccountCode(store)) {
             throw new HttpException(
               "Store subaccount not configured",
               HttpStatus.BAD_REQUEST,

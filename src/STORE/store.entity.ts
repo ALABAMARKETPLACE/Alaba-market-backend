@@ -205,8 +205,27 @@ export class Store extends Model<Store> {
   @Column({ type: DataType.STRING, allowNull: true })
   paystack_subaccount_code: string;
 
+  @Column({ type: DataType.STRING, allowNull: true })
+  paystack_subaccount_code_old: string;
+
+  @Column({ type: DataType.STRING, allowNull: true })
+  paystack_subaccount_code_new: string;
+
   @Column({ type: DataType.BIGINT, allowNull: true })
   paystack_subaccount_id: number;
+
+  @Column({ type: DataType.DATE, allowNull: true })
+  paystack_subaccount_migrated_at: Date;
+
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: true,
+    comment: "pending, success, failed",
+  })
+  paystack_subaccount_migration_status: string;
+
+  @Column({ type: DataType.TEXT, allowNull: true })
+  paystack_subaccount_migration_error: string;
 
   @Column({ 
     type: DataType.STRING(50), 

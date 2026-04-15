@@ -144,12 +144,15 @@ import { PaymentSplit } from "../PAYMENT_SPLITS/payment-split.entity";
         // sync: { alter: true },
 
         /** Azure PostgreSQL SSL */
-        dialectOptions: {
-          ssl: {
-            require: true,
-            rejectUnauthorized: false,
-          },
-        },
+        dialectOptions:
+          process.env.DATABASE_SSL === "true"
+            ? {
+                ssl: {
+                  require: true,
+                  rejectUnauthorized: false,
+                },
+              }
+            : {},
       }),
     }),
   ],

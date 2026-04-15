@@ -7,10 +7,7 @@ import {
 import { Reflector } from "@nestjs/core";
 import { Role } from "../enum/role.enum";
 import { ROLES_KEY } from "../decorator/roles.decorator";
-import {
-  normalizeRoles,
-  resolveActiveRole,
-} from "../helpers/user-role.helper";
+import { normalizeRoles, resolveActiveRole } from "../helpers/user-role.helper";
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -28,7 +25,7 @@ export class RolesGuard implements CanActivate {
     const roles = normalizeRoles(user?.roles, user?.role);
     const activeRole = resolveActiveRole(roles, user?.activeRole, user?.role);
     const hasRequiredRole = requiredRoles.some(
-      (role) => activeRole === role,
+      (role) => activeRole === role || roles.includes(role),
     );
     if (!hasRequiredRole) {
       throw new UnauthorizedException(

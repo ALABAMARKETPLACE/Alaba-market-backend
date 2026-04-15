@@ -1,0 +1,691 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { HttpService } from "@nestjs/axios";
+import { InjectModel } from "@nestjs/sequelize";
+import { firstValueFrom } from "rxjs";
+import { Op, Transaction } from "sequelize";
+import { Store } from "../STORE/store.entity";
+import { DataResponseDto } from "../shared/dto/data-response-dto";
+import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
+import { PaystackAccountConfigService } from "../PAYSTACK_PAYMENT/paystack-account-config.service";
+import {
+  resolveStoreSubaccountCode,
+  resolveStoreSubaccountSelection,
+} from "../shared/helpers/paystack-subaccount.helper";
+
+type MigrationStatus = "pending" | "success" | "failed";
+type MigrationResultStatus = "preview" | "success" | "failed" | "skipped";
+
+interface MigrationExecutionOptions {
+  dryRun?: boolean;
+  force?: boolean;
+}
+
+interface CreateSubaccountPayload {
+  business_name: string;
+  settlement_bank: string;
+  account_number: string;
+  percentage_charge: number;
+  description: string;
+  primary_contact_email: string;
+  primary_contact_name: string;
+  primary_contact_phone: string;
+  settlement_schedule: string;
+}
+
+@Injectable()
+export class PaystackSubaccountMigrationService {
+  private readonly logger = new Logger(
+    PaystackSubaccountMigrationService.name,
+  );
+  private readonly paystackBaseUrl = "https://api.paystack.co";
+
+  constructor(
+    @InjectModel(Store)
+    private readonly storeRepository: typeof Store,
+    private readonly httpService: HttpService,
+    private readonly paystackAccountConfigService: PaystackAccountConfigService,
+  ) {}
+
+  async migrateStoreById(
+    storeId: number,
+    options: MigrationExecutionOptions = {},
+  ): Promise<DataResponseDto> {
+    const store = await this.storeRepository.findByPk(storeId);
+
+    if (!store) {
+      throw new NotFoundException("Store not found");
+    }
+
+    const result = await this.migrateStoreRecord(store, options);
+
+    return new DataResponseDto(
+      result,
+      true,
+      options.dryRun
+        ? "Store subaccount migration preview generated successfully"
+        : "Store subaccount migration completed",
+    );
+  }
+
+  async migratePendingStores(
+    options: MigrationExecutionOptions = {},
+  ): Promise<DataResponseDto> {
+    const stores = await this.findMigrationCandidates("pending", options.force);
+    const results: any[] = [];
+
+    for (const store of stores) {
+      results.push(await this.migrateStoreRecord(store, options));
+    }
+
+    return new DataResponseDto(
+      {
+        dryRun: Boolean(options.dryRun),
+        force: Boolean(options.force),
+        summary: this.buildSummary(results),
+        results,
+      },
+      true,
+      options.dryRun
+        ? "Pending Paystack subaccount migration preview generated successfully"
+        : "Pending Paystack subaccounts migrated",
+    );
+  }
+
+  async retryFailedMigrations(
+    options: MigrationExecutionOptions = {},
+  ): Promise<DataResponseDto> {
+    const stores = await this.findMigrationCandidates("failed", options.force);
+    const results: any[] = [];
+
+    for (const store of stores) {
+      results.push(await this.migrateStoreRecord(store, {
+        ...options,
+        force: true,
+      }));
+    }
+
+    return new DataResponseDto(
+      {
+        dryRun: Boolean(options.dryRun),
+        force: true,
+        summary: this.buildSummary(results),
+        results,
+      },
+      true,
+      options.dryRun
+        ? "Failed Paystack subaccount retry preview generated successfully"
+        : "Failed Paystack subaccount migrations retried",
+    );
+  }
+
+  async getMigrationStatus(options: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }): Promise<DataResponseDto> {
+    const page = Math.max(Number(options.page || 1), 1);
+    const limit = Math.min(Math.max(Number(options.limit || 50), 1), 200);
+    const offset = (page - 1) * limit;
+    const where = this.buildStatusWhere(options.status);
+
+    const { rows, count } = await this.storeRepository.findAndCountAll({
+      where,
+      order: [
+        ["paystack_subaccount_migrated_at", "DESC"],
+        ["updatedAt", "DESC"],
+      ],
+      limit,
+      offset,
+    });
+
+    const summary = await this.buildStatusSummary();
+    const pageOptions = Object.assign(new PageOptionsDto(), {
+      page,
+      take: limit,
+    });
+
+    return new DataResponseDto(
+      {
+        summary,
+        stores: rows,
+      },
+      true,
+      "Paystack subaccount migration status fetched successfully",
+      pageOptions,
+      count,
+    );
+  }
+
+  async exportMigrationStatusCsv(options: {
+    status?: string;
+  }): Promise<string> {
+    const stores = await this.storeRepository.findAll({
+      where: this.buildStatusWhere(options.status),
+      order: [
+        ["paystack_subaccount_migrated_at", "DESC"],
+        ["updatedAt", "DESC"],
+      ],
+    });
+
+    const headers = [
+      "store_id",
+      "store_name",
+      "status",
+      "migrated_at",
+      "legacy_subaccount_code",
+      "new_subaccount_code",
+      "migration_error",
+    ];
+    const rows = stores.map((store) => [
+      store.id,
+      store.store_name || store.business_name || store.name || "",
+      store.paystack_subaccount_migration_status || "",
+      store.paystack_subaccount_migrated_at
+        ? store.paystack_subaccount_migrated_at.toISOString()
+        : "",
+      resolveStoreSubaccountCode({
+        paystack_subaccount_code_new: null,
+        paystack_subaccount_code: store.paystack_subaccount_code,
+        paystack_subaccount_code_old: store.paystack_subaccount_code_old,
+      } as Partial<Store>) || "",
+      store.paystack_subaccount_code_new || "",
+      store.paystack_subaccount_migration_error || "",
+    ]);
+
+    return [headers, ...rows]
+      .map((row) => row.map((value) => this.escapeCsvValue(value)).join(","))
+      .join("\n");
+  }
+
+  private async findMigrationCandidates(
+    mode: "pending" | "failed",
+    force = false,
+  ): Promise<Store[]> {
+    const where: any = {
+      subaccount_status: "active",
+      [Op.or]: [
+        { paystack_subaccount_code: { [Op.ne]: null } },
+        { paystack_subaccount_code_old: { [Op.ne]: null } },
+      ],
+    };
+
+    if (mode === "failed") {
+      where.paystack_subaccount_migration_status = "failed";
+    } else if (!force) {
+      where[Op.and] = [
+        {
+          [Op.or]: [
+            { paystack_subaccount_migration_status: null },
+            { paystack_subaccount_migration_status: "pending" },
+          ],
+        },
+        { paystack_subaccount_code_new: null },
+      ];
+    }
+
+    return this.storeRepository.findAll({
+      where,
+      order: [["id", "ASC"]],
+    });
+  }
+
+  private async migrateStoreRecord(
+    store: Store,
+    options: MigrationExecutionOptions,
+  ): Promise<Record<string, any>> {
+    const dryRun = Boolean(options.dryRun);
+    const force = Boolean(options.force);
+    const existingSelection = resolveStoreSubaccountSelection(store);
+    const legacySubaccountCode =
+      store.paystack_subaccount_code_old ||
+      store.paystack_subaccount_code ||
+      null;
+
+    if (store.paystack_subaccount_code_new && !force) {
+      this.logger.log(
+        `Skipping store ${store.id}: new Paystack subaccount already exists`,
+      );
+
+      return {
+        store_id: store.id,
+        store_name: store.store_name || store.business_name || store.name,
+        result: "skipped" as MigrationResultStatus,
+        dry_run: dryRun,
+        force,
+        legacy_subaccount_code: legacySubaccountCode,
+        new_subaccount_code: store.paystack_subaccount_code_new,
+        migration_status:
+          store.paystack_subaccount_migration_status || ("success" as MigrationStatus),
+        message: "Store already has a migrated Paystack subaccount",
+      };
+    }
+
+    try {
+      const enrichedStore = await this.enrichStoreFromLegacySubaccount(store);
+      const payload = this.buildCreateSubaccountPayload(enrichedStore);
+
+      if (dryRun) {
+        this.logger.log(
+          `Dry run: validated Paystack subaccount migration for store ${store.id}`,
+        );
+
+        return {
+          store_id: store.id,
+          store_name: store.store_name || store.business_name || store.name,
+          result: "preview" as MigrationResultStatus,
+          dry_run: true,
+          force,
+          current_resolution_source: existingSelection?.source || null,
+          legacy_subaccount_code: legacySubaccountCode,
+          new_subaccount_code: store.paystack_subaccount_code_new || null,
+          migration_status:
+            store.paystack_subaccount_migration_status || ("pending" as MigrationStatus),
+          paystack_payload: payload,
+          message: "Store is eligible for Paystack subaccount migration",
+        };
+      }
+
+      this.logger.log(
+        `Migrating Paystack subaccount for store ${store.id} using the new Paystack account`,
+      );
+
+      const createdSubaccount =
+        await this.createSubaccountInNewAccount(payload);
+      const migratedAt = new Date();
+
+      await this.persistMigrationSuccess(
+        store.id,
+        legacySubaccountCode,
+        createdSubaccount.subaccount_code,
+        migratedAt,
+      );
+
+      this.logger.log(
+        `Migrated Paystack subaccount for store ${store.id}: ${createdSubaccount.subaccount_code}`,
+      );
+
+      return {
+        store_id: store.id,
+        store_name: store.store_name || store.business_name || store.name,
+        result: "success" as MigrationResultStatus,
+        dry_run: false,
+        force,
+        current_resolution_source: existingSelection?.source || null,
+        legacy_subaccount_code: legacySubaccountCode,
+        new_subaccount_code: createdSubaccount.subaccount_code,
+        migration_status: "success" as MigrationStatus,
+        migrated_at: migratedAt.toISOString(),
+        paystack_subaccount_id: createdSubaccount.id,
+        message: "Store Paystack subaccount migrated successfully",
+      };
+    } catch (error) {
+      const normalizedError = this.normalizeMigrationError(error);
+
+      this.logger.error(
+        `Paystack subaccount migration failed for store ${store.id}: ${normalizedError}`,
+      );
+
+      if (!dryRun) {
+        await this.persistMigrationFailure(
+          store.id,
+          legacySubaccountCode,
+          normalizedError,
+        );
+      }
+
+      return {
+        store_id: store.id,
+        store_name: store.store_name || store.business_name || store.name,
+        result: "failed" as MigrationResultStatus,
+        dry_run: dryRun,
+        force,
+        current_resolution_source: existingSelection?.source || null,
+        legacy_subaccount_code: legacySubaccountCode,
+        new_subaccount_code: store.paystack_subaccount_code_new || null,
+        migration_status: "failed" as MigrationStatus,
+        error: normalizedError,
+        message: "Store Paystack subaccount migration failed",
+      };
+    }
+  }
+
+  private async enrichStoreFromLegacySubaccount(store: Store): Promise<Store> {
+    const needsEnrichment =
+      !this.firstNonEmptyValue(store.settlement_bank) ||
+      !this.firstNonEmptyValue(store.settlement_account_number);
+
+    if (!needsEnrichment) {
+      return store;
+    }
+
+    const legacyCode =
+      store.paystack_subaccount_code_old || store.paystack_subaccount_code;
+
+    if (!legacyCode) {
+      return store;
+    }
+
+    const legacyDetails = await this.fetchLegacySubaccountDetails(legacyCode);
+
+    if (!legacyDetails) {
+      return store;
+    }
+
+    this.logger.log(
+      `Enriched store ${store.id} with settlement details from legacy Paystack subaccount ${legacyCode}`,
+    );
+
+    if (!this.firstNonEmptyValue(store.settlement_bank) && legacyDetails.settlement_bank) {
+      (store as any).settlement_bank = legacyDetails.settlement_bank;
+    }
+
+    if (!this.firstNonEmptyValue(store.settlement_account_number) && legacyDetails.account_number) {
+      (store as any).settlement_account_number = legacyDetails.account_number;
+    }
+
+    if (!this.firstNonEmptyValue(store.business_name) && legacyDetails.business_name) {
+      (store as any).business_name = legacyDetails.business_name;
+    }
+
+    if (!this.firstNonEmptyValue(store.primary_contact_email) && legacyDetails.primary_contact_email) {
+      (store as any).primary_contact_email = legacyDetails.primary_contact_email;
+    }
+
+    if (!this.firstNonEmptyValue(store.primary_contact_name) && legacyDetails.primary_contact_name) {
+      (store as any).primary_contact_name = legacyDetails.primary_contact_name;
+    }
+
+    if (!this.firstNonEmptyValue(store.primary_contact_phone) && legacyDetails.primary_contact_phone) {
+      (store as any).primary_contact_phone = legacyDetails.primary_contact_phone;
+    }
+
+    return store;
+  }
+
+  private async fetchLegacySubaccountDetails(
+    subaccountCode: string,
+  ): Promise<Record<string, any> | null> {
+    for (const account of ["old", "default"] as const) {
+      try {
+        const response = await firstValueFrom(
+          this.httpService.get(
+            `${this.paystackBaseUrl}/subaccount/${subaccountCode}`,
+            { headers: this.paystackAccountConfigService.getHeaders(account) },
+          ),
+        );
+
+        if (response?.data?.status && response?.data?.data) {
+          this.logger.log(
+            `Fetched legacy subaccount details for ${subaccountCode} via ${account} account`,
+          );
+          return response.data.data;
+        }
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status === 404) {
+          this.logger.debug(
+            `Subaccount ${subaccountCode} not found in ${account} account, trying next`,
+          );
+          continue;
+        }
+
+        this.logger.warn(
+          `Failed to fetch legacy subaccount details for ${subaccountCode} via ${account} account: ${error?.message}`,
+        );
+      }
+    }
+
+    this.logger.warn(
+      `Subaccount ${subaccountCode} not found in any Paystack account — settlement bank must be set manually`,
+    );
+    return null;
+  }
+
+  private buildCreateSubaccountPayload(store: Store): CreateSubaccountPayload {
+    const businessName = this.firstNonEmptyValue(
+      store.business_name,
+      store.store_name,
+      store.name,
+    );
+    const settlementBank = this.firstNonEmptyValue(store.settlement_bank);
+    const accountNumber = this.firstNonEmptyValue(
+      store.settlement_account_number,
+    );
+    const primaryContactEmail = this.firstNonEmptyValue(
+      store.primary_contact_email,
+      store.email,
+    );
+    const primaryContactName = this.firstNonEmptyValue(
+      store.primary_contact_name,
+      store.name,
+      businessName,
+    );
+    const primaryContactPhone = this.firstNonEmptyValue(
+      store.primary_contact_phone,
+      store.phone,
+    );
+
+    if (!businessName) {
+      throw new BadRequestException(
+        "Missing business name required for Paystack subaccount migration",
+      );
+    }
+
+    if (!settlementBank) {
+      throw new BadRequestException(
+        "Missing settlement bank required for Paystack subaccount migration",
+      );
+    }
+
+    if (!accountNumber) {
+      throw new BadRequestException(
+        "Missing settlement account number required for Paystack subaccount migration",
+      );
+    }
+
+    if (!/^\d{10}$/.test(accountNumber)) {
+      throw new BadRequestException(
+        "Invalid settlement account number. Expected a 10-digit account number",
+      );
+    }
+
+    if (!primaryContactEmail) {
+      throw new BadRequestException(
+        "Missing primary contact email required for Paystack subaccount migration",
+      );
+    }
+
+    if (!primaryContactName) {
+      throw new BadRequestException(
+        "Missing primary contact name required for Paystack subaccount migration",
+      );
+    }
+
+    if (!primaryContactPhone) {
+      throw new BadRequestException(
+        "Missing primary contact phone required for Paystack subaccount migration",
+      );
+    }
+
+    return {
+      business_name: businessName,
+      settlement_bank: settlementBank,
+      account_number: accountNumber,
+      percentage_charge: Number(store.percentage_charge || 95),
+      description: `Migrated subaccount for store ${store.id}`,
+      primary_contact_email: primaryContactEmail,
+      primary_contact_name: primaryContactName,
+      primary_contact_phone: primaryContactPhone,
+      settlement_schedule: store.settlement_schedule || "auto",
+    };
+  }
+
+  private async createSubaccountInNewAccount(
+    payload: CreateSubaccountPayload,
+  ): Promise<{ id: number; subaccount_code: string }> {
+    const response = await firstValueFrom(
+      this.httpService.post(`${this.paystackBaseUrl}/subaccount`, payload, {
+        headers: this.paystackAccountConfigService.getHeaders("new"),
+      }),
+    );
+
+    if (!response?.data?.status || !response?.data?.data?.subaccount_code) {
+      throw new BadRequestException(
+        response?.data?.message || "Paystack did not return a new subaccount code",
+      );
+    }
+
+    return response.data.data;
+  }
+
+  private async persistMigrationSuccess(
+    storeId: number,
+    legacySubaccountCode: string | null,
+    newSubaccountCode: string,
+    migratedAt: Date,
+  ): Promise<void> {
+    await this.storeRepository.sequelize.transaction(
+      async (transaction: Transaction) => {
+        const store = await this.storeRepository.findByPk(storeId, {
+          transaction,
+        });
+
+        if (!store) {
+          throw new NotFoundException("Store not found");
+        }
+
+        // Preserve the legacy code path until the old account is fully retired.
+        await store.update(
+          {
+            paystack_subaccount_code_old:
+              store.paystack_subaccount_code_old || legacySubaccountCode,
+            paystack_subaccount_code_new: newSubaccountCode,
+            paystack_subaccount_migrated_at: migratedAt,
+            paystack_subaccount_migration_status: "success",
+            paystack_subaccount_migration_error: null,
+          },
+          { transaction },
+        );
+      },
+    );
+  }
+
+  private async persistMigrationFailure(
+    storeId: number,
+    legacySubaccountCode: string | null,
+    errorMessage: string,
+  ): Promise<void> {
+    await this.storeRepository.sequelize.transaction(
+      async (transaction: Transaction) => {
+        const store = await this.storeRepository.findByPk(storeId, {
+          transaction,
+        });
+
+        if (!store) {
+          throw new NotFoundException("Store not found");
+        }
+
+        await store.update(
+          {
+            paystack_subaccount_code_old:
+              store.paystack_subaccount_code_old || legacySubaccountCode,
+            paystack_subaccount_migration_status: "failed",
+            paystack_subaccount_migration_error: errorMessage,
+          },
+          { transaction },
+        );
+      },
+    );
+  }
+
+  private buildSummary(results: Array<{ result: MigrationResultStatus }>) {
+    return results.reduce(
+      (acc, result) => {
+        acc.total += 1;
+        acc[result.result] += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        preview: 0,
+        success: 0,
+        failed: 0,
+        skipped: 0,
+      },
+    );
+  }
+
+  private async buildStatusSummary() {
+    const [pending, success, failed] = await Promise.all([
+      this.storeRepository.count({
+        where: { paystack_subaccount_migration_status: "pending" },
+      }),
+      this.storeRepository.count({
+        where: { paystack_subaccount_migration_status: "success" },
+      }),
+      this.storeRepository.count({
+        where: { paystack_subaccount_migration_status: "failed" },
+      }),
+    ]);
+
+    return {
+      pending,
+      success,
+      failed,
+    };
+  }
+
+  private buildStatusWhere(status?: string) {
+    if (!status) {
+      return {
+        [Op.or]: [
+          { paystack_subaccount_migration_status: { [Op.ne]: null } },
+          { paystack_subaccount_code_new: { [Op.ne]: null } },
+        ],
+      };
+    }
+
+    return {
+      paystack_subaccount_migration_status: status,
+    };
+  }
+
+  private normalizeMigrationError(error: any): string {
+    const responseStatus = error?.response?.status;
+    const responseMessage =
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      "Unknown migration error";
+
+    const normalizedMessage =
+      typeof responseMessage === "string"
+        ? responseMessage
+        : JSON.stringify(responseMessage);
+
+    return responseStatus
+      ? `[${responseStatus}] ${normalizedMessage}`
+      : normalizedMessage;
+  }
+
+  private firstNonEmptyValue(...values: Array<string | null | undefined>) {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    return null;
+  }
+
+  private escapeCsvValue(value: unknown): string {
+    const normalizedValue =
+      value === null || value === undefined ? "" : String(value);
+    return `"${normalizedValue.replace(/"/g, '""')}"`;
+  }
+}

@@ -33,8 +33,8 @@ export function normalizeRoles(
   const values = Array.isArray(roles)
     ? roles
     : typeof roles === "string"
-      ? [roles]
-      : [];
+    ? [roles]
+    : [];
 
   const normalized = values
     .map((role) => normalizeRole(role))
@@ -42,7 +42,7 @@ export function normalizeRoles(
 
   const fallback = normalizeRole(fallbackRole);
 
-  if (!normalized.length && fallback) {
+  if (fallback && !normalized.includes(fallback)) {
     normalized.push(fallback);
   }
 
@@ -91,10 +91,7 @@ export function deriveUserType(roles: unknown, fallbackRole?: unknown): string {
     return Role.Seller;
   }
 
-  if (
-    normalizedRoles.length === 1 &&
-    normalizedRoles.includes(Role.Admin)
-  ) {
+  if (normalizedRoles.length === 1 && normalizedRoles.includes(Role.Admin)) {
     return Role.Admin;
   }
 
