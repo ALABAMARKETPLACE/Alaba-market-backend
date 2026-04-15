@@ -18,7 +18,7 @@ export function computeSplit({
   delivery_kobo = 0,
   tax_kobo = 0,
   discount_kobo = 0,
-  admin_percentage = 5,
+  admin_percentage = 6.5,
 }: {
   product_total_kobo: number;
   delivery_kobo?: number;

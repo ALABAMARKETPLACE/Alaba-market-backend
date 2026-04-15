@@ -28,9 +28,11 @@ import { MailService } from "../MAILS/Mails.services";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced";
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
+import { OrderUpdateMail } from "../MAILS/templates/orders/order_Status_update";
 import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
+import { UpdateOrderStatus } from "./dto/updateOrderStatus.dto";
 
 type GuestOrderCreationOptions = {
   skipPaymentVerification?: boolean;
@@ -849,6 +851,218 @@ export class GuestOrderService {
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve orders");
+    }
+  }
+
+  async updateGuestOrder(id: number, data: UpdateOrderStatus) {
+    try {
+      const result = await this.orderRepository.sequelize!.transaction(
+        async (transaction: Transaction) => {
+          const order: any = await this.orderRepository.findByPk(id, {
+            transaction,
+          });
+
+          if (!order) {
+            throw new NotFoundException("Order not found");
+          }
+
+          const isGuestOrder =
+            order.is_guest_order === true ||
+            Boolean(order.guest_email) ||
+            order.userId === null ||
+            Number(order.userId) === 0;
+
+          if (!isGuestOrder) {
+            throw new BadRequestException("This is not a guest order");
+          }
+
+          const terminalStatuses = [
+            "failed",
+            "delivered",
+            "cancelled",
+            "rejected",
+          ];
+
+          if (terminalStatuses.includes(order.status)) {
+            throw new BadRequestException(
+              `Cannot update order with '${order.status}' status`,
+            );
+          }
+
+          order.status = data.status;
+
+          if (data?.delivery_date) {
+            order.delivery_date = data.delivery_date;
+          }
+
+          await order.save({ transaction });
+
+          if (order.paymentType === "Pay On Credit") {
+            const paymentInfo = await order.getOrderPayment({ transaction });
+            if (paymentInfo && paymentInfo.status === "pending") {
+              await paymentInfo.update({ status: "approved" }, { transaction });
+            }
+          }
+
+          if (data.status === "delivered") {
+            const paymentInfo = await order.getOrderPayment({ transaction });
+            if (paymentInfo) {
+              await paymentInfo.update({ status: "success" }, { transaction });
+            }
+
+            if (order.userId) {
+              await this.notificationService.createNotification(
+                "order",
+                `Your order has been delivered. Thank you for shopping with ${process.env.NAME}`,
+                "Order Delivered",
+                order.order_id,
+                order.userId,
+              );
+            }
+          }
+
+          await OrderStatus.create(
+            {
+              orderId: order.id,
+              status: order.status,
+              remark: data.remark ?? "Your order status has been updated.",
+            } as any,
+            { transaction },
+          );
+
+          // Post-commit side effects (email)
+          transaction.afterCommit(async () => {
+            try {
+              console.log(
+                "📧 Sending guest order status update email for order #" +
+                  order.order_id,
+              );
+
+              // Fetch complete order with relationships
+              const completedOrder: any = await this.orderRepository.findByPk(
+                order.id,
+                {
+                  include: [
+                    {
+                      model: OrderItems,
+                      as: "orderItems",
+                      attributes: [
+                        "id",
+                        "productId",
+                        "variantId",
+                        "quantity",
+                        "price",
+                        "totalPrice",
+                        "image",
+                        "name",
+                        "sku",
+                      ],
+                    },
+                    {
+                      model: Store,
+                      as: "storeDetails",
+                      attributes: [
+                        "id",
+                        "name",
+                        "store_name",
+                        "email",
+                        "phone",
+                        "business_address",
+                        "logo_upload",
+                      ],
+                    },
+                  ],
+                },
+              );
+
+              if (!completedOrder) {
+                throw new Error(
+                  "Failed to fetch complete order for email sending",
+                );
+              }
+
+              // Build guest user object
+              const guestUser = {
+                name: `${completedOrder.guest_first_name || ""} ${
+                  completedOrder.guest_last_name || ""
+                }`.trim(),
+                email: String(completedOrder.guest_email || "")
+                  .trim()
+                  .toLowerCase(),
+                phone: completedOrder.guest_phone,
+                fcmtoken: null,
+              };
+
+              // Build address object
+              const guestAddressObject = {
+                full_name: completedOrder.delivery_full_name,
+                phone: completedOrder.delivery_phone,
+                phone_no: completedOrder.delivery_phone,
+                full_address: completedOrder.delivery_address,
+                address: completedOrder.delivery_address,
+                city: completedOrder.delivery_city,
+                state: completedOrder.delivery_state,
+                state_id: completedOrder.delivery_state_id,
+                country: completedOrder.delivery_country,
+                country_id: completedOrder.delivery_country_id,
+                landmark: completedOrder.delivery_landmark,
+                address_type: completedOrder.delivery_address_type,
+              };
+
+              // Get order items details
+              const orderItems = completedOrder.orderItems || [];
+
+              // Get store details
+              const store = completedOrder.storeDetails;
+
+              if (!store) {
+                throw new Error("Store details not found for order");
+              }
+
+              // Build and send email
+              const email = (await OrderUpdateMail(
+                completedOrder,
+                guestUser,
+                store,
+                orderItems,
+                guestAddressObject,
+              )) as {
+                to?: string;
+                subject?: string;
+                template?: string;
+              };
+
+              if (!email?.template) {
+                throw new Error("Failed to build status update email");
+              }
+
+              // Ensure email recipient is set to guest
+              email.to = guestUser.email;
+
+              await this.mailService.sellerEmails(email);
+
+              console.log("✅ Status update email sent to:", guestUser.email);
+            } catch (err) {
+              // Never crash the app after commit
+              console.error(
+                "Failed to send guest order status update email:",
+                err,
+              );
+            }
+          });
+
+          return order;
+        },
+      );
+
+      return new DataResponseDto(result, true, "Successfully Updated");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(
+        `Failed to update guest order: ${
+          (err as any)?.message || "Unknown error"
+        }`,
+      );
     }
   }
 

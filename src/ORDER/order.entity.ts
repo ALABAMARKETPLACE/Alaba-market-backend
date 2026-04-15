@@ -28,12 +28,12 @@ export class Order extends Model<Order> {
   @PrimaryKey
   @AutoIncrement
   @Column(DataType.BIGINT)
-  id: number;
+  id!: number;
 
   // ✅ CHANGED: Made nullable for guest orders
   @ForeignKey(() => User)
   @Column({ type: DataType.INTEGER, allowNull: true })
-  userId: number;
+  userId!: number;
 
   // order/order.entity.ts
 
@@ -43,14 +43,14 @@ export class Order extends Model<Order> {
     allowNull: false,
     comment: "True if order is part of a multi-seller checkout",
   })
-  is_multi_seller: boolean;
+  is_multi_seller!: boolean;
 
   // ✅ CHANGED: Made nullable for guest orders (they don't have saved addresses)
   @Column({ type: DataType.INTEGER, allowNull: true })
-  addressId: number;
+  addressId!: number;
 
   @Column({ type: DataType.INTEGER, allowNull: false })
-  storeId: number;
+  storeId!: number;
 
   @ForeignKey(() => DeliveryCompany)
   @Column({
@@ -58,7 +58,7 @@ export class Order extends Model<Order> {
     allowNull: true,
     comment: "Assigned delivery company",
   })
-  delivery_company_id: number;
+  delivery_company_id!: number;
 
   @Column({
     type: DataType.BIGINT,
@@ -66,28 +66,28 @@ export class Order extends Model<Order> {
     allowNull: false,
     defaultValue: () => Math.round(+new Date() / 10),
   })
-  order_id: number;
+  order_id!: number;
 
   @Column({ type: DataType.INTEGER, defaultValue: 0 })
-  totalItems: number;
+  totalItems!: number;
 
   @Column({ type: DataType.STRING, allowNull: false })
-  paymentType: string;
+  paymentType!: string;
 
   @Column(DataType.STRING)
-  coupan: string;
+  coupan!: string;
 
   @Column({ type: DataType.DOUBLE, defaultValue: 0 })
-  tax: number;
+  tax!: number;
 
   @Column({ type: DataType.DOUBLE, defaultValue: 0 })
-  deliveryCharge: number;
+  deliveryCharge!: number;
 
   @Column({ type: DataType.DOUBLE, defaultValue: 0 })
-  discount: number;
+  discount!: number;
 
   @Column({ type: DataType.DOUBLE, allowNull: false, defaultValue: 0 })
-  total: number;
+  total!: number;
 
   @IsIn({
     msg: "Invalid Order Status@@",
@@ -96,6 +96,7 @@ export class Order extends Model<Order> {
         "pending",
         "cancelled",
         "shipped",
+        "dispatched",
         "out_for_delivery",
         "packed",
         "delivered",
@@ -112,7 +113,7 @@ export class Order extends Model<Order> {
     type: DataType.STRING,
     defaultValue: "pending",
   })
-  status: string;
+  status!: string;
 
   @Column({
     type: DataType.DOUBLE,
@@ -125,16 +126,16 @@ export class Order extends Model<Order> {
       this.setDataValue("grandTotal", total);
     },
   })
-  grandTotal: number;
+  grandTotal!: number;
 
   @Column({ type: DataType.DATE })
-  delivery_date: Date;
+  delivery_date!: Date;
 
   @Column({ type: DataType.JSON })
-  address: JSON;
+  address!: JSON;
 
   @Column({ type: DataType.JSON })
-  products: JSON;
+  products!: JSON;
 
   @Column({
     type: DataType.STRING,
@@ -142,7 +143,7 @@ export class Order extends Model<Order> {
     comment:
       "Order OTP for delivery verification - auto-generated when customer places order",
   })
-  order_otp: string;
+  order_otp!: string;
 
   @Column({
     type: DataType.STRING,
@@ -150,35 +151,35 @@ export class Order extends Model<Order> {
     comment:
       "Pickup code for store pickup verification - auto-generated when customer places order",
   })
-  pickup_code: string;
+  pickup_code!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Product image URL uploaded during pickup",
   })
-  pickup_image: string;
+  pickup_image!: string;
 
   @Column({
     type: DataType.TEXT,
     allowNull: true,
     comment: "Description provided during pickup",
   })
-  pickup_description: string;
+  pickup_description!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Image URL uploaded during delivery confirmation",
   })
-  delivery_image: string;
+  delivery_image!: string;
 
   @Column({
     type: DataType.TEXT,
     allowNull: true,
     comment: "Description provided during delivery confirmation",
   })
-  delivery_description: string;
+  delivery_description!: string;
 
   // ==================== GUEST ORDER FIELDS (NEW) ====================
 
@@ -187,42 +188,42 @@ export class Order extends Model<Order> {
     defaultValue: false,
     comment: "True if this order was placed by a guest user (no account)",
   })
-  is_guest_order: boolean;
+  is_guest_order!: boolean;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Guest user email address",
   })
-  guest_email: string;
+  guest_email!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Guest user first name",
   })
-  guest_first_name: string;
+  guest_first_name!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Guest user last name",
   })
-  guest_last_name: string;
+  guest_last_name!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Guest user phone number",
   })
-  guest_phone: string;
+  guest_phone!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Guest user country code (e.g., +234)",
   })
-  guest_country_code: string;
+  guest_country_code!: string;
 
   // Delivery Address Fields (inline for guest orders)
   @Column({
@@ -230,70 +231,70 @@ export class Order extends Model<Order> {
     allowNull: true,
     comment: "Delivery recipient full name",
   })
-  delivery_full_name: string;
+  delivery_full_name!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Delivery contact phone number",
   })
-  delivery_phone: string;
+  delivery_phone!: string;
 
   @Column({
     type: DataType.TEXT,
     allowNull: true,
     comment: "Full delivery address (for guest orders)",
   })
-  delivery_address: string;
+  delivery_address!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Delivery city",
   })
-  delivery_city: string;
+  delivery_city!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Delivery state/province name",
   })
-  delivery_state: string;
+  delivery_state!: string;
 
   @Column({
     type: DataType.INTEGER,
     allowNull: true,
     comment: "Delivery state ID (foreign key reference)",
   })
-  delivery_state_id: number;
+  delivery_state_id!: number;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Delivery country name",
   })
-  delivery_country: string;
+  delivery_country!: string;
 
   @Column({
     type: DataType.INTEGER,
     allowNull: true,
     comment: "Delivery country ID (foreign key reference)",
   })
-  delivery_country_id: number;
+  delivery_country_id!: number;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Delivery address landmark",
   })
-  delivery_landmark: string;
+  delivery_landmark!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Address type: Home, Office, Other",
   })
-  delivery_address_type: string;
+  delivery_address_type!: string;
 
   // Payment & Metadata for Guest Orders
   @Column({
@@ -301,69 +302,69 @@ export class Order extends Model<Order> {
     allowNull: true,
     comment: "Payment reference number",
   })
-  payment_reference: string;
+  payment_reference!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Payment gateway transaction reference",
   })
-  transaction_reference: string;
+  transaction_reference!: string;
 
   @Column({
     type: DataType.TEXT,
     allowNull: true,
     comment: "Order notes from customer",
   })
-  order_notes: string;
+  order_notes!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Preferred delivery time window",
   })
-  preferred_delivery_time: string;
+  preferred_delivery_time!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Order source: web, mobile_app, etc.",
   })
-  order_source: string;
+  order_source!: string;
 
   @Column({
     type: DataType.STRING,
     allowNull: true,
     comment: "Device ID for guest session tracking",
   })
-  device_id: string;
+  device_id!: string;
 
   // ==================== RELATIONSHIPS ====================
 
   @BelongsTo(() => User)
-  userDetails: User;
+  userDetails!: User;
 
   @BelongsTo(() => Store, { foreignKey: "storeId", constraints: false })
-  storeDetails: Store;
+  storeDetails!: Store;
 
   @BelongsTo(() => DeliveryCompany, {
     foreignKey: "delivery_company_id",
     constraints: false,
   })
-  deliveryCompany: DeliveryCompany;
+  deliveryCompany!: DeliveryCompany;
 
   @HasOne(() => OrderPayments, { onDelete: "cascade", hooks: true })
-  orderPayment: OrderPayments;
+  orderPayment!: OrderPayments;
 
   @HasMany(() => OrderStatus, { onDelete: "cascade", hooks: true })
-  orderStatus: OrderStatus[];
+  orderStatus!: OrderStatus[];
 
   @HasMany(() => OrderItems, { onDelete: "cascade", hooks: true })
-  orderItems: OrderItem[];
+  orderItems!: OrderItem[];
 
   @HasMany(() => OrderSubstitution)
-  orderSubstitution: OrderSubstitution[];
+  orderSubstitution!: OrderSubstitution[];
 
   @HasOne(() => StoreReview)
-  storeReviews: StoreReview;
+  storeReviews!: StoreReview;
 }

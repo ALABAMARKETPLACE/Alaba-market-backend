@@ -13,8 +13,14 @@ describe("PaystackService", () => {
     (OrderLog as any).sequelize = undefined;
     delete process.env.PAYSTACK_SECRET_KEY;
     delete process.env.PAYSTACK_TEST_SECRET_KEY;
+    delete process.env.PAYSTACK_SECRET_KEY_OLD;
+    delete process.env.PAYSTACK_TEST_SECRET_KEY_OLD;
+    delete process.env.PAYSTACK_SECRET_KEY_NEW;
+    delete process.env.PAYSTACK_TEST_SECRET_KEY_NEW;
     delete process.env.PAYSTACK_PUBLIC_KEY;
     delete process.env.PAYSTACK_TEST_PUBLIC_KEY;
+    delete process.env.PAYSTACK_PUBLIC_KEY_NEW;
+    delete process.env.PAYSTACK_TEST_PUBLIC_KEY_NEW;
     delete process.env.NODE_ENV;
   });
 
@@ -26,6 +32,31 @@ describe("PaystackService", () => {
 
     const paymentSplitService = {
       syncPaymentStatusFromWebhook: jest.fn(async () => undefined),
+    };
+
+    const paystackAccountConfigService = {
+      getHeaders: jest.fn(() => ({
+        Authorization: `Bearer ${process.env.PAYSTACK_TEST_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "sk_test_123456"}`,
+        "Content-Type": "application/json",
+      })),
+      getPublicKey: jest.fn(
+        () =>
+          process.env.PAYSTACK_TEST_PUBLIC_KEY ||
+          process.env.PAYSTACK_PUBLIC_KEY ||
+          "pk_test_123456",
+      ),
+      getWebhookSecretKeys: jest.fn(() => {
+        const values = [
+          process.env.PAYSTACK_TEST_SECRET_KEY,
+          process.env.PAYSTACK_SECRET_KEY,
+          process.env.PAYSTACK_TEST_SECRET_KEY_OLD,
+          process.env.PAYSTACK_SECRET_KEY_OLD,
+          process.env.PAYSTACK_TEST_SECRET_KEY_NEW,
+          process.env.PAYSTACK_SECRET_KEY_NEW,
+        ].filter(Boolean);
+
+        return values.length > 0 ? values : ["sk_test_123456"];
+      }),
     };
 
     const guestCheckoutRepository = {
@@ -69,6 +100,7 @@ describe("PaystackService", () => {
 
     const service = new PaystackService(
       httpService as any,
+      paystackAccountConfigService as any,
       {} as any,
       guestCheckoutRepository as any,
       userCheckoutRepository as any,
@@ -85,6 +117,7 @@ describe("PaystackService", () => {
     return {
       service,
       httpService,
+      paystackAccountConfigService,
       paymentSplitService,
       guestCheckoutRepository,
       userCheckoutRepository,
@@ -321,14 +354,11 @@ describe("PaystackService", () => {
     expect(orderStatusCreateSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects live Paystack public keys in development", () => {
-    const { service } = createService();
-    process.env.NODE_ENV = "development";
-    process.env.PAYSTACK_PUBLIC_KEY = "pk_live_123456";
+  it("delegates public key resolution to the Paystack account config service", () => {
+    const { service, paystackAccountConfigService } = createService();
 
-    expect(() => service.getPublicKey()).toThrow(
-      "Development must use Paystack test public keys",
-    );
+    expect(service.getPublicKey()).toBe("pk_test_123456");
+    expect(paystackAccountConfigService.getPublicKey).toHaveBeenCalled();
   });
 
   it("previews missing Paystack transactions without mutating local records", async () => {
