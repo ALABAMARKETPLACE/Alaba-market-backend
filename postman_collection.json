@@ -11370,6 +11370,94 @@
               }
             }
           ]
+        },
+        {
+          "name": "PUT /order/guest/update_status/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/order/guest/update_status/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "order",
+                "guest",
+                "update_status",
+                ":id"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"processing\",\n  \"remark\": \"Order is being processed\",\n  \"delivery_date\": \"2026-04-10T00:00:00.000Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const orderCandidate = order || first;",
+                  "  setIf('orderId', orderCandidate?.id || data?.id);",
+                  "  setIf('orderPublicId', orderCandidate?.order_id || data?.order_id);",
+                  "  setIf('paymentReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+                  "  setIf('reconcileReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+                  "  setIf('guestEmail', orderCandidate?.guest_email || data?.email);",
+                  "  setIf('storeId', orderCandidate?.storeId || store?.id || data?.storeId);",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -13429,7 +13517,7 @@
           ]
         },
         {
-          "name": "🧾 Paystack Reconciliation",
+          "name": "\ud83e\uddfe Paystack Reconciliation",
           "item": [
             {
               "name": "GET /paystack/reconciliation/orphaned-payments",
@@ -14334,6 +14422,328 @@
               }
             }
           ]
+        },
+        {
+          "name": "POST /admin/paystack/subaccounts/migrate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/migrate?dryRun=true&force=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "migrate"
+              ],
+              "query": [
+                {
+                  "key": "dryRun",
+                  "value": "true"
+                },
+                {
+                  "key": "force",
+                  "value": "false"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const payload = json?.data ?? json;",
+                  "  const results = Array.isArray(payload?.results) ? payload.results : [];",
+                  "  const first = results[0] || payload;",
+                  "  setIf('storeId', first?.store_id);",
+                  "  setIf('migrationStatus', first?.migration_status);",
+                  "  setIf('migrationResult', first?.result);",
+                  "  setIf('paystackMigrationError', first?.error);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /admin/paystack/subaccounts/migrate/:storeId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/migrate/{{storeId}}?dryRun=true&force=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "migrate",
+                "{{storeId}}"
+              ],
+              "query": [
+                {
+                  "key": "dryRun",
+                  "value": "true"
+                },
+                {
+                  "key": "force",
+                  "value": "false"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const payload = json?.data ?? json;",
+                  "  setIf('storeId', payload?.store_id);",
+                  "  setIf('migrationStatus', payload?.migration_status);",
+                  "  setIf('migrationResult', payload?.result);",
+                  "  setIf('paystackMigrationError', payload?.error);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /admin/paystack/subaccounts/migrate/retry-failed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/migrate/retry-failed?dryRun=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "migrate",
+                "retry-failed"
+              ],
+              "query": [
+                {
+                  "key": "dryRun",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const payload = json?.data ?? json;",
+                  "  const results = Array.isArray(payload?.results) ? payload.results : [];",
+                  "  const first = results[0] || payload;",
+                  "  setIf('storeId', first?.store_id);",
+                  "  setIf('migrationStatus', first?.migration_status);",
+                  "  setIf('migrationResult', first?.result);",
+                  "  setIf('paystackMigrationError', first?.error);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/paystack/subaccounts/migration-status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/migration-status?status=&page=1&limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "migration-status"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const payload = json?.data ?? json;",
+                  "  const stores = Array.isArray(payload?.stores) ? payload.stores : [];",
+                  "  const first = stores[0] || payload;",
+                  "  setIf('storeId', first?.id);",
+                  "  setIf('migrationStatus', first?.paystack_subaccount_migration_status);",
+                  "  setIf('paystackMigrationError', first?.paystack_subaccount_migration_error);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/paystack/subaccounts/migration-status/report.csv",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/csv"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/migration-status/report.csv?status=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "migration-status",
+                "report.csv"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": ""
+                }
+              ]
+            }
+          }
         },
         {
           "name": "PUT /paystack-subaccounts/:id/approve",
@@ -18588,6 +18998,47 @@
                   "  setIf('subCategoryId', product?.subCategory || product?.subCategoryId || subCategory?.id || subCategory?._id || data?.subCategory || data?.subCategoryId);",
                   "  setIf('variantId', firstVariant?.id || firstVariant?._id || product?.variantId || first?.variantId);",
                   "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /product_search/details/slug/:slug",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/product_search/details/slug/:slug",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "product_search",
+                "details",
+                "slug",
+                ":slug"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (error) { }",
+                  "if (json) { const data = json?.data ?? json; const setIf = (key, value) => { if (value) { pm.collectionVariables.set(key, String(value)); } }; setIf('productId', data?.id || data?._id); }"
                 ]
               }
             }
@@ -26787,6 +27238,27 @@
     {
       "id": "paystackAmountKobo",
       "key": "paystackAmountKobo",
+      "type": "string",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "id": "migrationStatus",
+      "key": "migrationStatus",
+      "type": "string",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "id": "migrationResult",
+      "key": "migrationResult",
+      "type": "string",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "id": "paystackMigrationError",
+      "key": "paystackMigrationError",
       "type": "string",
       "value": "",
       "enabled": true

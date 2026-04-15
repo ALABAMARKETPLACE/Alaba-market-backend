@@ -13,10 +13,10 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { Transaction } from "sequelize";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
+import { PaystackAccountConfigService } from "../PAYSTACK_PAYMENT/paystack-account-config.service";
 
 @Injectable()
 export class PaystackSubaccountService {
-  private readonly paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
   private readonly paystackBaseUrl = "https://api.paystack.co";
 
   constructor(
@@ -27,6 +27,7 @@ export class PaystackSubaccountService {
   private readonly storeRepository: typeof Store,
 
   private readonly httpService: HttpService,
+  private readonly paystackAccountConfigService: PaystackAccountConfigService,
 ) {}
 
   // Generate provisional subaccount code
@@ -200,10 +201,7 @@ export class PaystackSubaccountService {
 
       const response = await firstValueFrom(
         this.httpService.post(`${this.paystackBaseUrl}/subaccount`, payload, {
-          headers: {
-            Authorization: `Bearer ${this.paystackSecretKey}`,
-            "Content-Type": "application/json",
-          },
+          headers: this.paystackAccountConfigService.getHeaders(),
         })
       );
 
@@ -309,9 +307,7 @@ export class PaystackSubaccountService {
     try {
       const response = await firstValueFrom(
         this.httpService.get(`${this.paystackBaseUrl}/bank`, {
-          headers: {
-            Authorization: `Bearer ${this.paystackSecretKey}`,
-          },
+          headers: this.paystackAccountConfigService.getHeaders(),
         })
       );
 
@@ -338,9 +334,7 @@ export class PaystackSubaccountService {
         this.httpService.get(
           `${this.paystackBaseUrl}/bank/resolve?account_number=${accountNumber}&bank_code=${bankCode}`,
           {
-            headers: {
-              Authorization: `Bearer ${this.paystackSecretKey}`,
-            },
+            headers: this.paystackAccountConfigService.getHeaders(),
           }
         )
       );

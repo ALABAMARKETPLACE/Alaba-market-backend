@@ -48,7 +48,7 @@ export class ProductSearchController {
     private readonly productSearchSingle: ProductSearchServiceSingle,
     private readonly productServiceMain: ProductServiceMain,
     private readonly productSearchStore: ProductSearchStoreService,
-    private readonly topStoreService: TopStoreService
+    private readonly topStoreService: TopStoreService,
   ) {}
   //search for products for both multi and single. params:keyword, type
 
@@ -58,7 +58,7 @@ export class ProductSearchController {
   @ApiPaginatedResponse(ProductsDto)
   @UsePipes(new ValidationPipe({ transform: true }))
   searchMulti(
-    @Query() pageOpt: ProductSearchMultiDto
+    @Query() pageOpt: ProductSearchMultiDto,
   ): Promise<DataResponseDto> {
     return this.productSearchMulti.fetchProductsMulti(pageOpt);
   }
@@ -69,7 +69,7 @@ export class ProductSearchController {
   @ApiPaginatedResponse(ProductsDto)
   @UsePipes(new ValidationPipe({ transform: true }))
   searchSingle(
-    @Query() pageOpt: ProductSearchSingleDto
+    @Query() pageOpt: ProductSearchSingleDto,
   ): Promise<DataResponseDto> {
     return this.productSearchSingle.fetchProductsSingle(pageOpt);
   }
@@ -80,7 +80,7 @@ export class ProductSearchController {
   @HttpCode(200)
   @UsePipes(new ValidationPipe({ transform: true }))
   getTopStores(
-    @Query() options: TopSellingStoresDto
+    @Query() options: TopSellingStoresDto,
   ): Promise<DataResponseDto> {
     return this.topStoreService.getTopStores(options);
   }
@@ -89,9 +89,23 @@ export class ProductSearchController {
   @HttpCode(200)
   @UsePipes(new ValidationPipe({ transform: true }))
   getPrintStore(
-    @Query() options: TopSellingStoresDto
+    @Query() options: TopSellingStoresDto,
   ): Promise<DataResponseDto> {
     return this.topStoreService.getPrintStore(options);
+  }
+
+  @Public()
+  @UseGuards(AuthGuard)
+  @Get("details/slug/:slug")
+  @ApiBearerAuth()
+  @ApiParam({ name: "slug", required: true })
+  @ApiDataObjectResponse(ProductsDto)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  findOneBySlug(
+    @Param("slug") slug: string,
+    @UserId() userId: number,
+  ): Promise<DataResponseDto> {
+    return this.productServiceMain.fetchOneProductBySlug(slug, userId);
   }
 
   @Public()
@@ -103,7 +117,7 @@ export class ProductSearchController {
   @UsePipes(new ValidationPipe({ transform: true }))
   findOne(
     @Param("id") id: string,
-    @UserId() userId: number
+    @UserId() userId: number,
   ): Promise<DataResponseDto> {
     return this.productServiceMain.fetchOneProduct(id, userId);
   }
@@ -124,7 +138,7 @@ export class ProductSearchController {
   @UsePipes(new ValidationPipe({ transform: true }))
   storeSearch(
     @Param("slug") name: string,
-    @Query() pageOpt: ProductSearchStoreDto
+    @Query() pageOpt: ProductSearchStoreDto,
   ): Promise<DataResponseDto> {
     return this.productSearchStore.fetchProductsOnStore(name, pageOpt);
   }
@@ -137,7 +151,7 @@ export class ProductSearchController {
   @UsePipes(new ValidationPipe({ transform: true }))
   storeItems(
     @Param("slug") name: string,
-    @Query() pageOpt: ProductSearchByCategory
+    @Query() pageOpt: ProductSearchByCategory,
   ): Promise<DataResponseDto> {
     return this.productSearchStore.fetchByCategory(pageOpt, name);
   }
@@ -148,7 +162,7 @@ export class ProductSearchController {
   @ApiOkResponse({ type: [ProductsDto] })
   @UsePipes(new ValidationPipe({ transform: true }))
   storeItemsCategory(
-    @Query() pageOpt: ProductSearchItemByCategory
+    @Query() pageOpt: ProductSearchItemByCategory,
   ): Promise<DataResponseDto> {
     return this.productSearchStore.fetchProductByCategory(pageOpt);
   }
@@ -159,7 +173,7 @@ export class ProductSearchController {
   @ApiPaginatedResponse(ProductsDto)
   @UsePipes(new ValidationPipe({ transform: true }))
   async boostedCategory(
-    @Query() query: BoostedCategoryDto
+    @Query() query: BoostedCategoryDto,
   ): Promise<DataResponseDto> {
     return this.productServiceMain.fetchBoostedCategory(query);
   }

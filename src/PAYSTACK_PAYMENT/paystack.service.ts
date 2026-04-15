@@ -49,6 +49,11 @@ import { ReconcilePaystackTransactionsDto } from "./dto/reconcile-paystack-trans
 import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
 import { JwtService } from "@nestjs/jwt";
 import { OrderLog } from "../ORDER_LOG/orderlog.entity";
+import { PaystackAccountConfigService } from "./paystack-account-config.service";
+import {
+  PaystackAccountType,
+  resolveStoreSubaccountSelection,
+} from "../shared/helpers/paystack-subaccount.helper";
 
 @Injectable()
 export class PaystackService {
@@ -57,6 +62,7 @@ export class PaystackService {
 
   constructor(
     private readonly httpService: HttpService,
+    private readonly paystackAccountConfigService: PaystackAccountConfigService,
 
     @InjectModel(Store)
     private readonly storeRepository: typeof Store,
@@ -86,52 +92,12 @@ export class PaystackService {
   /* ----------------------------------
      HEADERS
   ---------------------------------- */
-  private getHeaders() {
-    return {
-      Authorization: `Bearer ${this.getPaystackSecretKey()}`,
-      "Content-Type": "application/json",
-    };
+  private getHeaders(account: PaystackAccountType = "default") {
+    return this.paystackAccountConfigService.getHeaders(account);
   }
 
   getPublicKey(): string {
-    return this.resolvePaystackKey("public");
-  }
-
-  private getPaystackSecretKey(): string {
-    return this.resolvePaystackKey("secret");
-  }
-
-  private resolvePaystackKey(type: "public" | "secret"): string {
-    const nodeEnv = (process.env.NODE_ENV || "development").replace(/"/g, "");
-    const isDevelopmentLike = nodeEnv !== "production";
-    const isSecret = type === "secret";
-    const primaryKey = isSecret
-      ? process.env.PAYSTACK_SECRET_KEY
-      : process.env.PAYSTACK_PUBLIC_KEY;
-    const testKey = isSecret
-      ? process.env.PAYSTACK_TEST_SECRET_KEY
-      : process.env.PAYSTACK_TEST_PUBLIC_KEY;
-    const expectedTestPrefix = isSecret ? "sk_test_" : "pk_test_";
-
-    const resolvedKey = isDevelopmentLike
-      ? testKey || primaryKey
-      : primaryKey || testKey;
-
-    if (!resolvedKey) {
-      throw new InternalServerErrorException(
-        `Missing Paystack ${type} key configuration.`,
-      );
-    }
-
-    if (isDevelopmentLike && !resolvedKey.startsWith(expectedTestPrefix)) {
-      throw new InternalServerErrorException(
-        `Development must use Paystack test ${type} keys. Set ${
-          isSecret ? "PAYSTACK_TEST_SECRET_KEY" : "PAYSTACK_TEST_PUBLIC_KEY"
-        } or switch PAYSTACK_${type.toUpperCase()}_KEY to a test key.`,
-      );
-    }
-
-    return resolvedKey;
+    return this.paystackAccountConfigService.getPublicKey();
   }
 
   /* ----------------------------------
@@ -270,10 +236,11 @@ export class PaystackService {
     metadata?: Record<string, any>;
   }): Promise<any> {
     const store = await this.storeRepository.findByPk(initData.store_id);
-    if (!store || !store.paystack_subaccount_code) {
-      throw new HttpException(
-        "Invalid store subaccount",
-        HttpStatus.BAD_REQUEST,
+    const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+
+    if (!store || !resolvedSubaccount) {
+      throw new BadRequestException(
+        "Store subaccount is not configured for split payments",
       );
     }
 
@@ -293,7 +260,7 @@ export class PaystackService {
     const payload = {
       email: initData.email,
       amount: amountInKobo,
-      subaccount: store.paystack_subaccount_code,
+      subaccount: resolvedSubaccount.code,
       transaction_charge: adminAmount,
       bearer: "account",
       reference: initData.reference || this.generateReference(),
@@ -308,7 +275,7 @@ export class PaystackService {
     const response = await lastValueFrom(
       this.httpService
         .post(`${this.baseUrl}/transaction/initialize`, payload, {
-          headers: this.getHeaders(),
+          headers: this.getHeaders(resolvedSubaccount.paystackAccount),
         })
         .pipe(
           map((r) => r.data),
@@ -348,27 +315,23 @@ export class PaystackService {
   async verifyPayment(
     verifyData: PaystackVerifyDto,
   ): Promise<PaystackVerificationResponseDto> {
-    const response = await lastValueFrom(
-      this.httpService
-        .get(`${this.baseUrl}/transaction/verify/${verifyData.reference}`, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
-    );
-
-    return response;
+    return await this.fetchTransactionByReference(verifyData.reference, true);
   }
 
   /* ----------------------------------
      WEBHOOK SIGNATURE
   ---------------------------------- */
   verifyWebhookSignature(payload: string, signature: string): boolean {
-    const hash = crypto
-      .createHmac("sha512", this.getPaystackSecretKey())
-      .update(payload)
-      .digest("hex");
+    const secretKeys = this.paystackAccountConfigService.getWebhookSecretKeys();
 
-    return hash === signature;
+    return secretKeys.some((secretKey) => {
+      const hash = crypto
+        .createHmac("sha512", secretKey)
+        .update(payload)
+        .digest("hex");
+
+      return hash === signature;
+    });
   }
 
   /* ----------------------------------
@@ -424,13 +387,7 @@ export class PaystackService {
    GET TRANSACTION DETAILS
 ---------------------------------------------------- */
   async getTransactionDetails(reference: string): Promise<DataResponseDto> {
-    const response = await lastValueFrom(
-      this.httpService
-        .get(`${this.baseUrl}/transaction/verify/${reference}`, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
-    );
+    const response = await this.fetchTransactionByReference(reference, true);
 
     return new DataResponseDto(response, true, "Transaction details retrieved");
   }
@@ -467,6 +424,7 @@ export class PaystackService {
     if (options.reference) {
       const transactionResponse = await this.fetchTransactionByReference(
         options.reference,
+        true,
       );
       if (!transactionResponse?.data) {
         throw new BadRequestException(
@@ -573,6 +531,7 @@ export class PaystackService {
   async diagnoseTransaction(reference: string): Promise<DataResponseDto> {
     const transactionResponse = await this.fetchTransactionByReference(
       reference,
+      true,
     );
 
     if (!transactionResponse?.data) {
@@ -827,16 +786,30 @@ export class PaystackService {
     return this.verifyPayment({ reference });
   }
 
-  private async fetchTransactionByReference(reference: string): Promise<any> {
-    const response = await lastValueFrom(
-      this.httpService
-        .get(`${this.baseUrl}/transaction/verify/${reference}`, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
-    );
+  private async fetchTransactionByReference(
+    reference: string,
+    tryAllAccounts = false,
+  ): Promise<any> {
+    const accountsToTry: PaystackAccountType[] = tryAllAccounts
+      ? ["default", "old", "new"]
+      : ["default"];
+    let lastError: any = null;
 
-    return response;
+    for (const account of [...new Set(accountsToTry)]) {
+      try {
+        return await lastValueFrom(
+          this.httpService
+            .get(`${this.baseUrl}/transaction/verify/${reference}`, {
+              headers: this.getHeaders(account),
+            })
+            .pipe(map((r) => r.data)),
+        );
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError;
   }
 
   private async fetchTransactionsPage(params: {

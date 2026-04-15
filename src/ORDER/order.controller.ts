@@ -150,6 +150,25 @@ export class OrderController {
     return this.guestOrderService.getGuestOrdersByStore(storeId, pageOptions);
   }
 
+  //to update guest order status only for sellers/admin
+  @Roles(Role.Seller, Role.Admin)
+  @UseGuards(AuthGuard)
+  @Put("guest/update_status/:id")
+  @ApiDataObjectResponse(OrderDto)
+  @ApiParam({
+    name: "id",
+    required: true,
+    description: "Database primary key of the guest order",
+  })
+  @HttpCode(201)
+  @ApiBearerAuth()
+  updateGuestStatus(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() create: UpdateOrderStatus,
+  ): Promise<DataResponseDto> {
+    return this.guestOrderService.updateGuestOrder(id, create);
+  }
+
   //DEBUG: Get ALL orders without any filtering (for testing)
   @Get("all-orders-debug")
   @ApiExcludeEndpoint()
