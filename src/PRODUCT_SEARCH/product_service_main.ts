@@ -54,17 +54,13 @@ export class ProductServiceMain extends ProductAttributes {
 
   async fetchOneProductBySlug(slug: string, userId: number) {
     try {
-      if (userId) {
-        const data = await this.findProductBySlug(slug, userId);
-        return new DataResponseDto(data, true, "Success");
-      } else {
-        const data = await this.findProductBySlug(slug, null);
-        return new DataResponseDto(data, true, "Success");
-      }
+      const data = await this.findProductBySlug(slug, userId || null);
+      return new DataResponseDto(data, true, "Success");
     } catch (err) {
       if (err instanceof HttpException) {
         throw err;
       }
+      console.error("[fetchOneProductBySlug] Unexpected error:", err?.message || err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
