@@ -60,6 +60,9 @@ export class ProductServiceMain extends ProductAttributes {
       if (err instanceof HttpException) {
         throw err;
       }
+
+      console.log({err})
+
       console.error("[fetchOneProductBySlug] Unexpected error:", err?.message || err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -79,7 +82,6 @@ export class ProductServiceMain extends ProductAttributes {
           ...(userId ? this.loggedUserModels(userId) : []),
         ],
         attributes: {
-          include: [...(userId ? this.productAttributeUser : [])],
           exclude: this.fetchOneExcludeAttributes,
         },
         order: [[Sequelize.col("productImages.id"), "ASC"]],
@@ -89,7 +91,10 @@ export class ProductServiceMain extends ProductAttributes {
         throw new NotFoundException("Product not found");
       }
 
-      if (userId) this.addtoHistory(userId, data?._id);
+      if (userId) {
+        this.applyUserFlags(data);
+        this.addtoHistory(userId, data?._id);
+      }
       return data;
     } catch (err) {
       throw err;
@@ -107,7 +112,6 @@ export class ProductServiceMain extends ProductAttributes {
           ...(userId ? this.loggedUserModels(userId) : []),
         ],
         attributes: {
-          include: [...(userId ? this.productAttributeUser : [])],
           exclude: this.fetchOneExcludeAttributes,
         },
         order: [[Sequelize.col("productImages.id"), "ASC"]],
@@ -117,11 +121,20 @@ export class ProductServiceMain extends ProductAttributes {
         throw new NotFoundException("Product not found");
       }
 
-      if (userId) this.addtoHistory(userId, data?._id);
+      if (userId) {
+        this.applyUserFlags(data);
+        this.addtoHistory(userId, data?._id);
+      }
       return data;
     } catch (err) {
       throw err;
     }
+  }
+
+  private applyUserFlags(data: any): void {
+    data.setDataValue("cart", Array.isArray(data.cartDetail) && data.cartDetail.length > 0);
+    data.setDataValue("wishlist", Array.isArray(data.wishLists) && data.wishLists.length > 0);
+    data.setDataValue("review", Array.isArray(data.productReview) && data.productReview.length > 0);
   }
 
   async addtoHistory(userId: number, productId: number) {
