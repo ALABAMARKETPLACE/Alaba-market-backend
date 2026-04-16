@@ -19004,7 +19004,7 @@
           ]
         },
         {
-          "name": "GET /product_search/details/slug/:slug",
+          "name": "GET /product_search/:slug",
           "request": {
             "method": "GET",
             "header": [
@@ -19018,15 +19018,19 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/product_search/details/slug/:slug",
+              "raw": "{{baseUrl}}/product_search/:slug",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "product_search",
-                "details",
-                "slug",
                 ":slug"
+              ],
+              "variable": [
+                {
+                  "key": "slug",
+                  "value": "{{productSlug}}"
+                }
               ]
             }
           },
@@ -22133,6 +22137,53 @@
                   "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
                   "  setIf('storeId', store?.id || store?._id || data?.id || data?._id);",
                   "  setIf('storeSlug', store?.slug || data?.slug || first?.slug);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /coorporate_store/slug/:slug",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/coorporate_store/slug/:slug",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "coorporate_store",
+                "slug",
+                ":slug"
+              ],
+              "variable": [
+                {
+                  "key": "slug",
+                  "value": "{{storeSlug}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try { json = pm.response.json(); } catch (error) {}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => { if (value !== undefined && value !== null && value !== '') { pm.collectionVariables.set(key, String(value)); if (pm.environment) { pm.environment.set(key, String(value)); } } };",
+                  "  const data = json?.data ?? json;",
+                  "  setIf('storeId', data?.id || data?._id);",
+                  "  setIf('storeSlug', data?.slug);",
                   "}"
                 ]
               }

@@ -34,6 +34,7 @@ import { UserId } from "../shared/decorator/userId_decorator";
 import { UpgradeToSellerDto } from "./dto/upgradeToSeller.dto";
 import { StoreAccountDetailsDto } from "./dto/storeAccountDetails.dto";
 import { UpdateAccountDetailsDto } from "./dto/updateAccountDetails.dto";
+import { Public } from "../shared/decorator/optional.decorator";
 
 @Controller("coorporate_store")
 @ApiTags("coorporate_store")
@@ -230,5 +231,18 @@ export class StoreController {
     @Param("id", ParseIntPipe) storeId: number
   ): Promise<DataResponseDto> {
     return this.storeService.deactivateSeller(storeId);
+  }
+
+  // public route — no auth required
+  @Public()
+  @UseGuards(AuthGuard)
+  @Get("slug/:slug")
+  @ApiOkResponse({ type: StoreDto })
+  @ApiParam({ name: "slug", required: true })
+  @HttpCode(200)
+  findStoreBySlug(
+    @Param("slug") slug: string,
+  ): Promise<DataResponseDto> {
+    return this.storeService.findStoreBySlug(slug);
   }
 }

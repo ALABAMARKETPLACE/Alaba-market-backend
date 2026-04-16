@@ -264,6 +264,18 @@ export class StoreService {
     }
   }
 
+  async findStoreBySlug(slug: string) {
+    try {
+      const store = await this.StoreRepository.findOne({ where: { slug } });
+      if (!store) throw new NotFoundException("Store not found");
+      const storeData = new StoreDto(store);
+      return new DataResponseDto(storeData, true, "Successfully fetched");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
   async getAccountDetails(storeId: number) {
     try {
       const store = await this.StoreRepository.findByPk(storeId);
