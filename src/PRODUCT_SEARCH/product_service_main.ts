@@ -84,7 +84,6 @@ export class ProductServiceMain extends ProductAttributes {
         attributes: {
           exclude: this.fetchOneExcludeAttributes,
         },
-        order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
 
       if (!data) {
@@ -114,7 +113,6 @@ export class ProductServiceMain extends ProductAttributes {
         attributes: {
           exclude: this.fetchOneExcludeAttributes,
         },
-        order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
 
       if (!data) {
