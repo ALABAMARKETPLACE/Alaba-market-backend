@@ -54,17 +54,16 @@ export class ProductServiceMain extends ProductAttributes {
 
   async fetchOneProductBySlug(slug: string, userId: number) {
     try {
-      if (userId) {
-        const data = await this.findProductBySlug(slug, userId);
-        return new DataResponseDto(data, true, "Success");
-      } else {
-        const data = await this.findProductBySlug(slug, null);
-        return new DataResponseDto(data, true, "Success");
-      }
+      const data = await this.findProductBySlug(slug, userId || null);
+      return new DataResponseDto(data, true, "Success");
     } catch (err) {
       if (err instanceof HttpException) {
         throw err;
       }
+
+      console.log({err})
+
+      console.error("[fetchOneProductBySlug] Unexpected error:", err?.message || err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
@@ -83,17 +82,18 @@ export class ProductServiceMain extends ProductAttributes {
           ...(userId ? this.loggedUserModels(userId) : []),
         ],
         attributes: {
-          include: [...(userId ? this.productAttributeUser : [])],
           exclude: this.fetchOneExcludeAttributes,
         },
-        order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
 
       if (!data) {
         throw new NotFoundException("Product not found");
       }
 
-      if (userId) this.addtoHistory(userId, data?._id);
+      if (userId) {
+        this.applyUserFlags(data);
+        this.addtoHistory(userId, data?._id);
+      }
       return data;
     } catch (err) {
       throw err;
@@ -111,21 +111,28 @@ export class ProductServiceMain extends ProductAttributes {
           ...(userId ? this.loggedUserModels(userId) : []),
         ],
         attributes: {
-          include: [...(userId ? this.productAttributeUser : [])],
           exclude: this.fetchOneExcludeAttributes,
         },
-        order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
 
       if (!data) {
         throw new NotFoundException("Product not found");
       }
 
-      if (userId) this.addtoHistory(userId, data?._id);
+      if (userId) {
+        this.applyUserFlags(data);
+        this.addtoHistory(userId, data?._id);
+      }
       return data;
     } catch (err) {
       throw err;
     }
+  }
+
+  private applyUserFlags(data: any): void {
+    data.setDataValue("cart", Array.isArray(data.cartDetail) && data.cartDetail.length > 0);
+    data.setDataValue("wishlist", Array.isArray(data.wishLists) && data.wishLists.length > 0);
+    data.setDataValue("review", Array.isArray(data.productReview) && data.productReview.length > 0);
   }
 
   async addtoHistory(userId: number, productId: number) {
