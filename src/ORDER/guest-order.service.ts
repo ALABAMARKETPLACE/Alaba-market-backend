@@ -858,9 +858,7 @@ export class GuestOrderService {
     try {
       const result = await this.orderRepository.sequelize!.transaction(
         async (transaction: Transaction) => {
-          const order: any = await this.orderRepository.findByPk(id, {
-            transaction,
-          });
+          const order: any = await this.findGuestOrderForUpdate(id, transaction);
 
           if (!order) {
             throw new NotFoundException("Order not found");
@@ -1064,6 +1062,24 @@ export class GuestOrderService {
         }`,
       );
     }
+  }
+
+  private async findGuestOrderForUpdate(
+    identifier: number,
+    transaction: Transaction,
+  ) {
+    const orderByPrimaryKey = await this.orderRepository.findByPk(identifier, {
+      transaction,
+    });
+
+    if (orderByPrimaryKey) {
+      return orderByPrimaryKey;
+    }
+
+    return this.orderRepository.findOne({
+      where: { order_id: identifier },
+      transaction,
+    });
   }
 
   // ==================== VALIDATION ====================
