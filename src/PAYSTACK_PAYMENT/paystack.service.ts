@@ -123,6 +123,13 @@ export class PaystackService {
       );
     }
 
+    if (await this.shouldAutoSplitExistingOrder(initData.order_id)) {
+      return this.initializeWithSplit({
+        ...initData,
+        split_payment: true,
+      });
+    }
+
     const payload = {
       email: initData.email,
       amount: amountInKobo,
@@ -170,6 +177,7 @@ export class PaystackService {
         userId,
         initData.order_payload,
       );
+    this.assertSingleStoreSplitOnly(preparedCheckout.store_ids);
     const reference = initData.reference || this.generateReference();
 
     const payload = {
@@ -189,13 +197,34 @@ export class PaystackService {
       channels: ["card", "bank", "ussd", "mobile_money"],
     };
 
-    const response = await firstValueFrom(
-      this.httpService
-        .post(`${this.baseUrl}/transaction/initialize`, payload, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
+    const storeForSplit = await this.getEligibleSingleStoreForSplit(
+      preparedCheckout.store_ids,
     );
+    const response = storeForSplit
+      ? {
+          status: true,
+          data: await this.initializeSplitTransaction({
+            email: user.email,
+            amount: preparedCheckout.amount_kobo,
+            callback_url:
+              initData.callback_url ||
+              `${process.env.FRONTEND_URL}/payment/callback`,
+            reference,
+            store_id: storeForSplit.id,
+            metadata: {
+              ...payload.metadata,
+              split_payment_applied: true,
+              split_payment_mode: "single_store_checkout",
+            },
+          }),
+        }
+      : await firstValueFrom(
+          this.httpService
+            .post(`${this.baseUrl}/transaction/initialize`, payload, {
+              headers: this.getHeaders(),
+            })
+            .pipe(map((r) => r.data)),
+        );
 
     if (!response.status) {
       throw new BadRequestException(
@@ -1978,6 +2007,8 @@ export class PaystackService {
         ),
       ];
       const isMultiSeller = storeIds.length > 1;
+      this.assertSingleStoreSplitOnly(storeIds);
+      const storeForSplit = await this.getEligibleSingleStoreForSplit(storeIds);
 
       // Build metadata
       const metadata = {
@@ -2015,6 +2046,12 @@ export class PaystackService {
         guest_order_payload: guestData.order_payload
           ? this.buildGuestOrderPayload(guestData.order_payload, reference)
           : undefined,
+        split_payment_applied: Boolean(storeForSplit),
+        split_payment_mode: storeForSplit
+          ? "single_store_guest_checkout"
+          : isMultiSeller
+          ? "not_supported_multi_store_checkout"
+          : "not_configured",
         ...guestData.metadata,
       };
 
@@ -2031,14 +2068,27 @@ export class PaystackService {
         channels: ["card", "bank", "ussd", "mobile_money"], // All payment channels
       };
 
-      // Call Paystack API using firstValueFrom
-      const response = await firstValueFrom(
-        this.httpService
-          .post(`${this.baseUrl}/transaction/initialize`, paystackPayload, {
-            headers: this.getHeaders(), // ✅ Use getHeaders() method
-          })
-          .pipe(map((r) => r.data)), // ✅ Extract data from response
-      );
+      const response = storeForSplit
+        ? {
+            status: true,
+            data: await this.initializeSplitTransaction({
+              email: guestData.guest_info.email,
+              amount: totalAmount,
+              callback_url:
+                guestData.callback_url ||
+                `${process.env.FRONTEND_URL}/guest/payment/callback`,
+              reference,
+              store_id: storeForSplit.id,
+              metadata,
+            }),
+          }
+        : await firstValueFrom(
+            this.httpService
+              .post(`${this.baseUrl}/transaction/initialize`, paystackPayload, {
+                headers: this.getHeaders(), // ✅ Use getHeaders() method
+              })
+              .pipe(map((r) => r.data)), // ✅ Extract data from response
+          );
 
       // ✅ Check response.status (not response.data.status)
       if (!response.status) {
@@ -2084,4 +2134,55 @@ export class PaystackService {
   }
 
   // GUEST USER DATA ENDS HERE
+
+  private async shouldAutoSplitExistingOrder(
+    orderId?: number,
+  ): Promise<boolean> {
+    if (!orderId) {
+      return false;
+    }
+
+    const order = await Order.findByPk(orderId);
+    if (!order?.storeId) {
+      return false;
+    }
+
+    const store = await this.storeRepository.findByPk(order.storeId);
+    return this.canUseAutomaticSplit(store);
+  }
+
+  private async getEligibleSingleStoreForSplit(
+    storeIds?: number[],
+  ): Promise<Store | null> {
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length !== 1) {
+      return null;
+    }
+
+    const store = await this.storeRepository.findByPk(uniqueStoreIds[0]);
+    return this.canUseAutomaticSplit(store) ? store : null;
+  }
+
+  private canUseAutomaticSplit(store?: Store | null): boolean {
+    return Boolean(
+      store &&
+        store.subaccount_status === "active" &&
+        resolveStoreSubaccountSelection(store),
+    );
+  }
+
+  private assertSingleStoreSplitOnly(storeIds?: number[]): void {
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length > 1) {
+      throw new BadRequestException(
+        "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
+      );
+    }
+  }
 }
