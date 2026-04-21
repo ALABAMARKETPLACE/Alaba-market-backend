@@ -13,8 +13,14 @@ describe("PaystackService", () => {
     (OrderLog as any).sequelize = undefined;
     delete process.env.PAYSTACK_SECRET_KEY;
     delete process.env.PAYSTACK_TEST_SECRET_KEY;
+    delete process.env.PAYSTACK_SECRET_KEY_OLD;
+    delete process.env.PAYSTACK_TEST_SECRET_KEY_OLD;
+    delete process.env.PAYSTACK_SECRET_KEY_NEW;
+    delete process.env.PAYSTACK_TEST_SECRET_KEY_NEW;
     delete process.env.PAYSTACK_PUBLIC_KEY;
     delete process.env.PAYSTACK_TEST_PUBLIC_KEY;
+    delete process.env.PAYSTACK_PUBLIC_KEY_NEW;
+    delete process.env.PAYSTACK_TEST_PUBLIC_KEY_NEW;
     delete process.env.NODE_ENV;
   });
 
@@ -24,8 +30,44 @@ describe("PaystackService", () => {
       post: jest.fn(),
     };
 
+    const storeRepository = {
+      findByPk: jest.fn(async () => null),
+    };
+
     const paymentSplitService = {
+      processPaymentWithSplit: jest.fn(async () => ({
+        paystack: {
+          authorization_url: "https://checkout.paystack.com/split",
+          access_code: "ACCESS_SPLIT",
+          reference: "split_ref_123",
+        },
+      })),
       syncPaymentStatusFromWebhook: jest.fn(async () => undefined),
+    };
+
+    const paystackAccountConfigService = {
+      getHeaders: jest.fn(() => ({
+        Authorization: `Bearer ${process.env.PAYSTACK_TEST_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "sk_test_123456"}`,
+        "Content-Type": "application/json",
+      })),
+      getPublicKey: jest.fn(
+        () =>
+          process.env.PAYSTACK_TEST_PUBLIC_KEY ||
+          process.env.PAYSTACK_PUBLIC_KEY ||
+          "pk_test_123456",
+      ),
+      getWebhookSecretKeys: jest.fn(() => {
+        const values = [
+          process.env.PAYSTACK_TEST_SECRET_KEY,
+          process.env.PAYSTACK_SECRET_KEY,
+          process.env.PAYSTACK_TEST_SECRET_KEY_OLD,
+          process.env.PAYSTACK_SECRET_KEY_OLD,
+          process.env.PAYSTACK_TEST_SECRET_KEY_NEW,
+          process.env.PAYSTACK_SECRET_KEY_NEW,
+        ].filter(Boolean);
+
+        return values.length > 0 ? values : ["sk_test_123456"];
+      }),
     };
 
     const guestCheckoutRepository = {
@@ -69,7 +111,8 @@ describe("PaystackService", () => {
 
     const service = new PaystackService(
       httpService as any,
-      {} as any,
+      paystackAccountConfigService as any,
+      storeRepository as any,
       guestCheckoutRepository as any,
       userCheckoutRepository as any,
       userRepository as any,
@@ -85,6 +128,8 @@ describe("PaystackService", () => {
     return {
       service,
       httpService,
+      storeRepository,
+      paystackAccountConfigService,
       paymentSplitService,
       guestCheckoutRepository,
       userCheckoutRepository,
@@ -94,6 +139,194 @@ describe("PaystackService", () => {
       orderPlaceService,
     };
   };
+
+  it("auto-applies split initialization for existing orders with active store subaccounts", async () => {
+    const { service, paymentSplitService, storeRepository } = createService();
+
+    jest.spyOn(Order, "findByPk").mockResolvedValue({
+      id: 33,
+      storeId: 7,
+    } as any);
+    storeRepository.findByPk.mockResolvedValue({
+      id: 7,
+      subaccount_status: "active",
+      paystack_subaccount_code_new: "ACCT_NEW_123",
+    });
+
+    const result = await service.initializePayment({
+      email: "buyer@example.com",
+      amount: 150000,
+      callback_url: "https://example.com/callback",
+      order_id: 33,
+    } as any);
+
+    expect(paymentSplitService.processPaymentWithSplit).toHaveBeenCalledWith(
+      33,
+      expect.objectContaining({
+        email: "buyer@example.com",
+        amount: 150000,
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        authorization_url: "https://checkout.paystack.com/split",
+      }),
+    );
+  });
+
+  it("auto-applies direct split for authenticated single-store checkout", async () => {
+    const { service, orderPlaceService, storeRepository } = createService();
+    const initializeSplitSpy = jest
+      .spyOn(service, "initializeSplitTransaction")
+      .mockResolvedValue({
+        authorization_url: "https://checkout.paystack.com/auth-single-store",
+        access_code: "ACCESS_AUTH_SPLIT",
+        reference: "auth_split_ref_123",
+      } as any);
+
+    orderPlaceService.prepareAuthenticatedCheckout.mockResolvedValue({
+      verified: { data: { amount: 1500, addressId: 12 } },
+      amount: 1500,
+      amount_kobo: 150000,
+      store_ids: [7],
+    });
+    storeRepository.findByPk.mockResolvedValue({
+      id: 7,
+      subaccount_status: "active",
+      paystack_subaccount_code_new: "ACCT_NEW_123",
+    });
+
+    const result = await service.initializeAuthenticatedCheckout(4625, {
+      order_payload: {} as any,
+      callback_url: "https://example.com/callback",
+    } as any);
+
+    expect(initializeSplitSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        store_id: 7,
+        amount: 150000,
+      }),
+    );
+    expect(result.data.reference).toBe("auth_split_ref_123");
+  });
+
+  it("auto-applies direct split for guest single-store checkout", async () => {
+    const { service, storeRepository, guestCheckoutRepository } = createService();
+    const initializeSplitSpy = jest
+      .spyOn(service, "initializeSplitTransaction")
+      .mockResolvedValue({
+        authorization_url: "https://checkout.paystack.com/guest-single-store",
+        access_code: "ACCESS_GUEST_SPLIT",
+        reference: "guest_split_ref_123",
+      } as any);
+
+    storeRepository.findByPk.mockResolvedValue({
+      id: 7,
+      subaccount_status: "active",
+      paystack_subaccount_code_new: "ACCT_NEW_123",
+    });
+
+    const result = await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      amount: 150000,
+      delivery_charge: 5000,
+      callback_url: "https://example.com/guest/callback",
+      cart_items: [
+        {
+          store_id: 7,
+          product_id: 1,
+          quantity: 1,
+        },
+      ],
+      order_payload: {
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        delivery_address: {
+          full_address: "12 Example Street",
+        },
+        delivery: {
+          delivery_token: "token_123",
+        },
+        cart_items: [
+          {
+            store_id: 7,
+            product_id: 1,
+            quantity: 1,
+          },
+        ],
+      },
+    } as any);
+
+    expect(initializeSplitSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        store_id: 7,
+        amount: 155000,
+      }),
+    );
+    expect(guestCheckoutRepository.create).toHaveBeenCalled();
+    expect(result.data.reference).toBe("guest_split_ref_123");
+  });
+
+  it("rejects authenticated multi-store checkout until split settlement supports it", async () => {
+    const { service, orderPlaceService } = createService();
+
+    orderPlaceService.prepareAuthenticatedCheckout.mockResolvedValue({
+      verified: { data: { amount: 1500, addressId: 12 } },
+      amount: 1500,
+      amount_kobo: 150000,
+      store_ids: [7, 9],
+    });
+
+    await expect(
+      service.initializeAuthenticatedCheckout(4625, {
+        order_payload: {} as any,
+        callback_url: "https://example.com/callback",
+      } as any),
+    ).rejects.toThrow(
+      "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
+    );
+  });
+
+  it("rejects guest multi-store checkout until split settlement supports it", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.initializeGuestPayment({
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        amount: 150000,
+        delivery_charge: 5000,
+        callback_url: "https://example.com/guest/callback",
+        cart_items: [
+          {
+            store_id: 7,
+            product_id: 1,
+            quantity: 1,
+          },
+          {
+            store_id: 9,
+            product_id: 2,
+            quantity: 1,
+          },
+        ],
+      } as any),
+    ).rejects.toThrow(
+      "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
+    );
+  });
 
   it("returns the full verification envelope from Paystack", async () => {
     process.env.NODE_ENV = "development";
@@ -321,14 +554,11 @@ describe("PaystackService", () => {
     expect(orderStatusCreateSpy).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects live Paystack public keys in development", () => {
-    const { service } = createService();
-    process.env.NODE_ENV = "development";
-    process.env.PAYSTACK_PUBLIC_KEY = "pk_live_123456";
+  it("delegates public key resolution to the Paystack account config service", () => {
+    const { service, paystackAccountConfigService } = createService();
 
-    expect(() => service.getPublicKey()).toThrow(
-      "Development must use Paystack test public keys",
-    );
+    expect(service.getPublicKey()).toBe("pk_test_123456");
+    expect(paystackAccountConfigService.getPublicKey).toHaveBeenCalled();
   });
 
   it("previews missing Paystack transactions without mutating local records", async () => {

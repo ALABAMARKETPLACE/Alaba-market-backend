@@ -4,6 +4,7 @@ import { SequelizeModule } from "@nestjs/sequelize";
 
 import { PaystackController } from "./paystack.controller";
 import { PaystackService } from "./paystack.service";
+import { PaystackAccountConfigService } from "./paystack-account-config.service";
 
 import { Store } from "../STORE/store.entity";
 import { StoreModule } from "../STORE/store.module";
@@ -41,9 +42,9 @@ import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
     PaystackReconciliationModule,
   ],
   controllers: [PaystackController],
-  providers: [PaystackService],
+  providers: [PaystackService, PaystackAccountConfigService],
 
   // REQUIRED so PaymentSplitModule can inject PaystackService
-  exports: [PaystackService],
+  exports: [PaystackService, PaystackAccountConfigService],
 })
 export class PaystackModule {}

@@ -25,7 +25,7 @@ export class ProductServiceMain extends ProductAttributes {
   constructor(
     @Inject("Slugify") private readonly slugify: (slug: string) => string,
     private readonly featuredProductsService: FeaturedProductsService,
-    private readonly productSearchSingle: ProductSearchServiceSingle
+    private readonly productSearchSingle: ProductSearchServiceSingle,
   ) {
     super();
   }
@@ -52,6 +52,22 @@ export class ProductServiceMain extends ProductAttributes {
     }
   }
 
+  async fetchOneProductBySlug(slug: string, userId: number) {
+    try {
+      const data = await this.findProductBySlug(slug, userId || null);
+      return new DataResponseDto(data, true, "Success");
+    } catch (err) {
+      if (err instanceof HttpException) {
+        throw err;
+      }
+
+      console.log({err})
+
+      console.error("[fetchOneProductBySlug] Unexpected error:", err?.message || err);
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
   async findProduct(identifier: string, userId: number | null | undefined) {
     try {
       const normalizedIdentifier = String(identifier || "").trim();
@@ -66,21 +82,57 @@ export class ProductServiceMain extends ProductAttributes {
           ...(userId ? this.loggedUserModels(userId) : []),
         ],
         attributes: {
-          include: [...(userId ? this.productAttributeUser : [])],
           exclude: this.fetchOneExcludeAttributes,
         },
-        order: [[Sequelize.col("productImages.id"), "ASC"]],
       });
 
       if (!data) {
         throw new NotFoundException("Product not found");
       }
 
-      if (userId) this.addtoHistory(userId, data?._id);
+      if (userId) {
+        this.applyUserFlags(data);
+        this.addtoHistory(userId, data?._id);
+      }
       return data;
     } catch (err) {
       throw err;
     }
+  }
+
+  async findProductBySlug(slug: string, userId: number | null | undefined) {
+    try {
+      const normalizedSlug = this.slugify(String(slug || "").trim());
+
+      const data: any = await Products.findOne({
+        where: { slug: normalizedSlug },
+        include: [
+          ...this.modalsToInclude,
+          ...(userId ? this.loggedUserModels(userId) : []),
+        ],
+        attributes: {
+          exclude: this.fetchOneExcludeAttributes,
+        },
+      });
+
+      if (!data) {
+        throw new NotFoundException("Product not found");
+      }
+
+      if (userId) {
+        this.applyUserFlags(data);
+        this.addtoHistory(userId, data?._id);
+      }
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  private applyUserFlags(data: any): void {
+    data.setDataValue("cart", Array.isArray(data.cartDetail) && data.cartDetail.length > 0);
+    data.setDataValue("wishlist", Array.isArray(data.wishLists) && data.wishLists.length > 0);
+    data.setDataValue("review", Array.isArray(data.productReview) && data.productReview.length > 0);
   }
 
   async addtoHistory(userId: number, productId: number) {
@@ -163,7 +215,7 @@ export class ProductServiceMain extends ProductAttributes {
             WHEN "Products"."slug" LIKE '${this.slugify(query)}%' THEN 1 
             WHEN "Products"."bar_code" LIKE '${query}%' THEN 2
             ELSE 3 
-          END`
+          END`,
           ),
           ["slug", "ASC"],
         ],
@@ -189,7 +241,7 @@ export class ProductServiceMain extends ProductAttributes {
   }
 
   async fetchBoostedCategory(
-    pageOpt: BoostedCategoryDto
+    pageOpt: BoostedCategoryDto,
   ): Promise<DataResponseDto> {
     const {
       category,
@@ -204,7 +256,7 @@ export class ProductServiceMain extends ProductAttributes {
 
     if (!category && !subCategory) {
       throw new BadRequestException(
-        "category or subCategory is required for boosted category search"
+        "category or subCategory is required for boosted category search",
       );
     }
 
@@ -258,7 +310,7 @@ export class ProductServiceMain extends ProductAttributes {
     } as ProductSearchSingleDto;
 
     const fallbackResponse = await this.productSearchSingle.fetchProductsSingle(
-      fallbackQuery
+      fallbackQuery,
     );
     const fallbackProducts = Array.isArray(fallbackResponse?.data)
       ? fallbackResponse.data
@@ -288,7 +340,7 @@ export class ProductServiceMain extends ProductAttributes {
       true,
       "Successful",
       pageOptions,
-      total
+      total,
     );
   }
 }

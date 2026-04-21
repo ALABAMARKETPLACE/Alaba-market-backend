@@ -28,9 +28,11 @@ import { MailService } from "../MAILS/Mails.services";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced";
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
+import { OrderUpdateMail } from "../MAILS/templates/orders/order_Status_update";
 import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
+import { UpdateOrderStatus } from "./dto/updateOrderStatus.dto";
 
 type GuestOrderCreationOptions = {
   skipPaymentVerification?: boolean;
@@ -266,8 +268,7 @@ export class GuestOrderService {
       };
     }
 
-    // For guest orders: is_guest_order=true OR has guest_email set
-    // Note: userId=null can catch other orphaned orders, so we prioritize is_guest_order flag
+    // For guest orders: is_guest_order=true OR has guest_email set OR missing/legacy userId values
     return {
       ...overrides,
       [Op.or]: [
@@ -279,6 +280,12 @@ export class GuestOrderService {
             { guest_email: { [Op.ne]: null as any } },
             { guest_email: { [Op.ne]: "" } },
           ],
+        },
+        {
+          userId: null,
+        },
+        {
+          userId: 0,
         },
       ],
     } as any;
@@ -406,128 +413,12 @@ export class GuestOrderService {
         };
       });
 
-      // Also fetch paid checkouts that failed to produce ORDER records
-      const fulfilledRefs = new Set(
-        orders.map((o: any) => o.payment_reference).filter(Boolean),
-      );
-
-      const unfulfilledCheckouts = await this.guestCheckoutRepository.findAll({
-        where: {
-          payment_status: "success",
-          status: { [Op.notIn]: ["completed"] },
-          ...(fulfilledRefs.size > 0
-            ? { reference: { [Op.notIn]: [...fulfilledRefs] } }
-            : {}),
-        },
-        order: [["createdAt", "DESC"]],
-      });
-
-      const checkoutStoreIds = Array.from(
-        new Set(
-          unfulfilledCheckouts
-            .flatMap((checkout: any) => checkout?.payload?.cart_items || [])
-            .map((item: any) => Number(item?.store_id))
-            .filter((id: number) => Number.isFinite(id) && id > 0),
-        ),
-      );
-
-      const checkoutStores =
-        checkoutStoreIds.length > 0
-          ? await Store.findAll({
-              where: { id: { [Op.in]: checkoutStoreIds } },
-              attributes: [
-                "id",
-                "name",
-                "store_name",
-                "email",
-                "phone",
-                "business_address",
-                "logo_upload",
-                "slug",
-              ],
-            })
-          : [];
-
-      const checkoutStoreMap = new Map<number, any>(
-        checkoutStores.map((store: any) => [Number(store.id), store]),
-      );
-
-      const checkoutOrders = unfulfilledCheckouts.map((checkout: any) => {
-        const p = checkout.payload || {};
-        const guestInfo = p.guest_info || {};
-        const deliveryAddr = p.delivery_address || {};
-        const orderSummary = p.order_summary || {};
-        const sellerIds: number[] = Array.from(
-          new Set(
-            (p.cart_items || [])
-              .map((item: any) => Number(item?.store_id))
-              .filter((id: number) => Number.isFinite(id) && id > 0),
-          ),
-        );
-        const sellers = sellerIds
-          .map((id) => checkoutStoreMap.get(id))
-          .filter(Boolean);
-        const normalizedAddress = {
-          full_name: deliveryAddr.full_name,
-          phone: deliveryAddr.phone_no,
-          address: deliveryAddr.full_address,
-          full_address: deliveryAddr.full_address,
-          city: deliveryAddr.city,
-          state: deliveryAddr.state,
-          state_id: deliveryAddr.state_id,
-          country: deliveryAddr.country,
-          country_id: deliveryAddr.country_id,
-        };
-        return {
-          id: checkout.id,
-          order_id: null,
-          checkout_reference: checkout.reference,
-          status: "payment_received",
-          fulfillment_status: checkout.status,
-          payment_status: checkout.payment_status,
-          guest_email: checkout.guest_email || guestInfo.email,
-          guest_first_name: guestInfo.first_name,
-          guest_last_name: guestInfo.last_name,
-          guest_phone: guestInfo.phone,
-          address: normalizedAddress,
-          shipping_address: normalizedAddress,
-          delivery_address: normalizedAddress,
-          store: sellers.length === 1 ? sellers[0] : null,
-          sellers,
-          items: (p.cart_items || []).map((item: any) => ({
-            id: null,
-            productId: item.product_id,
-            name: item.product_name,
-            quantity: item.quantity,
-            price: item.unit_price,
-            totalPrice: item.total_price,
-            image: item.image,
-          })),
-          total: orderSummary.total || 0,
-          grandTotal: orderSummary.total || 0,
-          payment: {
-            paymentType: "paystack",
-            status: checkout.payment_status,
-            ref: checkout.reference,
-            amount: (checkout.amount_kobo || 0) / 100,
-          },
-          fulfillment_error: checkout.error,
-          is_guest_order: true,
-          from_checkout: true,
-          createdAt: checkout.createdAt,
-          orderStatus: null,
-        };
-      });
-
-      const allOrders = [...formattedOrders, ...checkoutOrders];
-      const totalCount = Number(count) + unfulfilledCheckouts.length;
-
       return new DataResponseDto(
-        allOrders,
+        formattedOrders,
         true,
         "All guest orders retrieved successfully",
         pageOptions,
-        totalCount,
+        count,
       );
     } catch (err) {
       console.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
@@ -841,6 +732,234 @@ export class GuestOrderService {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve orders");
     }
+  }
+
+  async updateGuestOrder(id: number, data: UpdateOrderStatus) {
+    try {
+      const result = await this.orderRepository.sequelize!.transaction(
+        async (transaction: Transaction) => {
+          const order: any = await this.findGuestOrderForUpdate(id, transaction);
+
+          if (!order) {
+            throw new NotFoundException("Order not found");
+          }
+
+          const isGuestOrder =
+            order.is_guest_order === true ||
+            Boolean(order.guest_email) ||
+            order.userId === null ||
+            Number(order.userId) === 0;
+
+          if (!isGuestOrder) {
+            throw new BadRequestException("This is not a guest order");
+          }
+
+          const terminalStatuses = [
+            "failed",
+            "delivered",
+            "cancelled",
+            "rejected",
+          ];
+
+          if (terminalStatuses.includes(order.status)) {
+            throw new BadRequestException(
+              `Cannot update order with '${order.status}' status`,
+            );
+          }
+
+          order.status = data.status;
+
+          if (data?.delivery_date) {
+            order.delivery_date = data.delivery_date;
+          }
+
+          await order.save({ transaction });
+
+          if (order.paymentType === "Pay On Credit") {
+            const paymentInfo = await order.getOrderPayment({ transaction });
+            if (paymentInfo && paymentInfo.status === "pending") {
+              await paymentInfo.update({ status: "approved" }, { transaction });
+            }
+          }
+
+          if (data.status === "delivered") {
+            const paymentInfo = await order.getOrderPayment({ transaction });
+            if (paymentInfo) {
+              await paymentInfo.update({ status: "success" }, { transaction });
+            }
+
+            if (order.userId) {
+              await this.notificationService.createNotification(
+                "order",
+                `Your order has been delivered. Thank you for shopping with ${process.env.NAME}`,
+                "Order Delivered",
+                order.order_id,
+                order.userId,
+              );
+            }
+          }
+
+          await OrderStatus.create(
+            {
+              orderId: order.id,
+              status: order.status,
+              remark: data.remark ?? "Your order status has been updated.",
+            } as any,
+            { transaction },
+          );
+
+          // Post-commit side effects (email)
+          transaction.afterCommit(async () => {
+            try {
+              console.log(
+                "📧 Sending guest order status update email for order #" +
+                  order.order_id,
+              );
+
+              // Fetch complete order with relationships
+              const completedOrder: any = await this.orderRepository.findByPk(
+                order.id,
+                {
+                  include: [
+                    {
+                      model: OrderItems,
+                      as: "orderItems",
+                      attributes: [
+                        "id",
+                        "productId",
+                        "variantId",
+                        "quantity",
+                        "price",
+                        "totalPrice",
+                        "image",
+                        "name",
+                        "sku",
+                      ],
+                    },
+                    {
+                      model: Store,
+                      as: "storeDetails",
+                      attributes: [
+                        "id",
+                        "name",
+                        "store_name",
+                        "email",
+                        "phone",
+                        "business_address",
+                        "logo_upload",
+                      ],
+                    },
+                  ],
+                },
+              );
+
+              if (!completedOrder) {
+                throw new Error(
+                  "Failed to fetch complete order for email sending",
+                );
+              }
+
+              // Build guest user object
+              const guestUser = {
+                name: `${completedOrder.guest_first_name || ""} ${
+                  completedOrder.guest_last_name || ""
+                }`.trim(),
+                email: String(completedOrder.guest_email || "")
+                  .trim()
+                  .toLowerCase(),
+                phone: completedOrder.guest_phone,
+                fcmtoken: null,
+              };
+
+              // Build address object
+              const guestAddressObject = {
+                full_name: completedOrder.delivery_full_name,
+                phone: completedOrder.delivery_phone,
+                phone_no: completedOrder.delivery_phone,
+                full_address: completedOrder.delivery_address,
+                address: completedOrder.delivery_address,
+                city: completedOrder.delivery_city,
+                state: completedOrder.delivery_state,
+                state_id: completedOrder.delivery_state_id,
+                country: completedOrder.delivery_country,
+                country_id: completedOrder.delivery_country_id,
+                landmark: completedOrder.delivery_landmark,
+                address_type: completedOrder.delivery_address_type,
+              };
+
+              // Get order items details
+              const orderItems = completedOrder.orderItems || [];
+
+              // Get store details
+              const store = completedOrder.storeDetails;
+
+              if (!store) {
+                throw new Error("Store details not found for order");
+              }
+
+              // Build and send email
+              const email = (await OrderUpdateMail(
+                completedOrder,
+                guestUser,
+                store,
+                orderItems,
+                guestAddressObject,
+              )) as {
+                to?: string;
+                subject?: string;
+                template?: string;
+              };
+
+              if (!email?.template) {
+                throw new Error("Failed to build status update email");
+              }
+
+              // Ensure email recipient is set to guest
+              email.to = guestUser.email;
+
+              await this.mailService.sellerEmails(email);
+
+              console.log("✅ Status update email sent to:", guestUser.email);
+            } catch (err) {
+              // Never crash the app after commit
+              console.error(
+                "Failed to send guest order status update email:",
+                err,
+              );
+            }
+          });
+
+          return order;
+        },
+      );
+
+      return new DataResponseDto(result, true, "Successfully Updated");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(
+        `Failed to update guest order: ${
+          (err as any)?.message || "Unknown error"
+        }`,
+      );
+    }
+  }
+
+  private async findGuestOrderForUpdate(
+    identifier: number,
+    transaction: Transaction,
+  ) {
+    const orderByPrimaryKey = await this.orderRepository.findByPk(identifier, {
+      transaction,
+    });
+
+    if (orderByPrimaryKey) {
+      return orderByPrimaryKey;
+    }
+
+    return this.orderRepository.findOne({
+      where: { order_id: identifier },
+      transaction,
+    });
   }
 
   // ==================== VALIDATION ====================

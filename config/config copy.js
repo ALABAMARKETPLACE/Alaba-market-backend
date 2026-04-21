@@ -11,12 +11,15 @@ module.exports = {
     port: process.env.DATABASE_PORT,
     dialect: "postgres",
     logging: console.log,
-    dialectOptions: {
-      ssl: {
-        require: process.env.DATABASE_SSL === "true",
-        rejectUnauthorized: false,
-      },
-    },
+    dialectOptions:
+      process.env.DATABASE_SSL === "true"
+        ? {
+            ssl: {
+              require: true,
+              rejectUnauthorized: false,
+            },
+          }
+        : {},
   },
   production: {
     username: process.env.DATABASE_USER,
@@ -26,11 +29,14 @@ module.exports = {
     port: process.env.DATABASE_PORT,
     dialect: "postgres",
     logging: false,
-    dialectOptions: {
-      ssl: {
-        require: process.env.DATABASE_SSL === "true",
-        rejectUnauthorized: false,
-      },
-    },
+    dialectOptions:
+      process.env.DATABASE_SSL === "true"
+        ? {
+            ssl: {
+              require: true,
+              rejectUnauthorized: false,
+            },
+          }
+        : {},
   },
 };

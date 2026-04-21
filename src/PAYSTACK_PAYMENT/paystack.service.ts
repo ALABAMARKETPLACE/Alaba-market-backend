@@ -49,6 +49,11 @@ import { ReconcilePaystackTransactionsDto } from "./dto/reconcile-paystack-trans
 import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
 import { JwtService } from "@nestjs/jwt";
 import { OrderLog } from "../ORDER_LOG/orderlog.entity";
+import { PaystackAccountConfigService } from "./paystack-account-config.service";
+import {
+  PaystackAccountType,
+  resolveStoreSubaccountSelection,
+} from "../shared/helpers/paystack-subaccount.helper";
 
 @Injectable()
 export class PaystackService {
@@ -57,6 +62,7 @@ export class PaystackService {
 
   constructor(
     private readonly httpService: HttpService,
+    private readonly paystackAccountConfigService: PaystackAccountConfigService,
 
     @InjectModel(Store)
     private readonly storeRepository: typeof Store,
@@ -86,52 +92,12 @@ export class PaystackService {
   /* ----------------------------------
      HEADERS
   ---------------------------------- */
-  private getHeaders() {
-    return {
-      Authorization: `Bearer ${this.getPaystackSecretKey()}`,
-      "Content-Type": "application/json",
-    };
+  private getHeaders(account: PaystackAccountType = "default") {
+    return this.paystackAccountConfigService.getHeaders(account);
   }
 
   getPublicKey(): string {
-    return this.resolvePaystackKey("public");
-  }
-
-  private getPaystackSecretKey(): string {
-    return this.resolvePaystackKey("secret");
-  }
-
-  private resolvePaystackKey(type: "public" | "secret"): string {
-    const nodeEnv = (process.env.NODE_ENV || "development").replace(/"/g, "");
-    const isDevelopmentLike = nodeEnv !== "production";
-    const isSecret = type === "secret";
-    const primaryKey = isSecret
-      ? process.env.PAYSTACK_SECRET_KEY
-      : process.env.PAYSTACK_PUBLIC_KEY;
-    const testKey = isSecret
-      ? process.env.PAYSTACK_TEST_SECRET_KEY
-      : process.env.PAYSTACK_TEST_PUBLIC_KEY;
-    const expectedTestPrefix = isSecret ? "sk_test_" : "pk_test_";
-
-    const resolvedKey = isDevelopmentLike
-      ? testKey || primaryKey
-      : primaryKey || testKey;
-
-    if (!resolvedKey) {
-      throw new InternalServerErrorException(
-        `Missing Paystack ${type} key configuration.`,
-      );
-    }
-
-    if (isDevelopmentLike && !resolvedKey.startsWith(expectedTestPrefix)) {
-      throw new InternalServerErrorException(
-        `Development must use Paystack test ${type} keys. Set ${
-          isSecret ? "PAYSTACK_TEST_SECRET_KEY" : "PAYSTACK_TEST_PUBLIC_KEY"
-        } or switch PAYSTACK_${type.toUpperCase()}_KEY to a test key.`,
-      );
-    }
-
-    return resolvedKey;
+    return this.paystackAccountConfigService.getPublicKey();
   }
 
   /* ----------------------------------
@@ -155,6 +121,13 @@ export class PaystackService {
         "Order ID is required for split payments",
         HttpStatus.BAD_REQUEST,
       );
+    }
+
+    if (await this.shouldAutoSplitExistingOrder(initData.order_id)) {
+      return this.initializeWithSplit({
+        ...initData,
+        split_payment: true,
+      });
     }
 
     const payload = {
@@ -204,6 +177,7 @@ export class PaystackService {
         userId,
         initData.order_payload,
       );
+    this.assertSingleStoreSplitOnly(preparedCheckout.store_ids);
     const reference = initData.reference || this.generateReference();
 
     const payload = {
@@ -223,13 +197,34 @@ export class PaystackService {
       channels: ["card", "bank", "ussd", "mobile_money"],
     };
 
-    const response = await firstValueFrom(
-      this.httpService
-        .post(`${this.baseUrl}/transaction/initialize`, payload, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
+    const storeForSplit = await this.getEligibleSingleStoreForSplit(
+      preparedCheckout.store_ids,
     );
+    const response = storeForSplit
+      ? {
+          status: true,
+          data: await this.initializeSplitTransaction({
+            email: user.email,
+            amount: preparedCheckout.amount_kobo,
+            callback_url:
+              initData.callback_url ||
+              `${process.env.FRONTEND_URL}/payment/callback`,
+            reference,
+            store_id: storeForSplit.id,
+            metadata: {
+              ...payload.metadata,
+              split_payment_applied: true,
+              split_payment_mode: "single_store_checkout",
+            },
+          }),
+        }
+      : await firstValueFrom(
+          this.httpService
+            .post(`${this.baseUrl}/transaction/initialize`, payload, {
+              headers: this.getHeaders(),
+            })
+            .pipe(map((r) => r.data)),
+        );
 
     if (!response.status) {
       throw new BadRequestException(
@@ -270,10 +265,11 @@ export class PaystackService {
     metadata?: Record<string, any>;
   }): Promise<any> {
     const store = await this.storeRepository.findByPk(initData.store_id);
-    if (!store || !store.paystack_subaccount_code) {
-      throw new HttpException(
-        "Invalid store subaccount",
-        HttpStatus.BAD_REQUEST,
+    const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+
+    if (!store || !resolvedSubaccount) {
+      throw new BadRequestException(
+        "Store subaccount is not configured for split payments",
       );
     }
 
@@ -293,7 +289,7 @@ export class PaystackService {
     const payload = {
       email: initData.email,
       amount: amountInKobo,
-      subaccount: store.paystack_subaccount_code,
+      subaccount: resolvedSubaccount.code,
       transaction_charge: adminAmount,
       bearer: "account",
       reference: initData.reference || this.generateReference(),
@@ -308,7 +304,7 @@ export class PaystackService {
     const response = await lastValueFrom(
       this.httpService
         .post(`${this.baseUrl}/transaction/initialize`, payload, {
-          headers: this.getHeaders(),
+          headers: this.getHeaders(resolvedSubaccount.paystackAccount),
         })
         .pipe(
           map((r) => r.data),
@@ -348,27 +344,23 @@ export class PaystackService {
   async verifyPayment(
     verifyData: PaystackVerifyDto,
   ): Promise<PaystackVerificationResponseDto> {
-    const response = await lastValueFrom(
-      this.httpService
-        .get(`${this.baseUrl}/transaction/verify/${verifyData.reference}`, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
-    );
-
-    return response;
+    return await this.fetchTransactionByReference(verifyData.reference, true);
   }
 
   /* ----------------------------------
      WEBHOOK SIGNATURE
   ---------------------------------- */
   verifyWebhookSignature(payload: string, signature: string): boolean {
-    const hash = crypto
-      .createHmac("sha512", this.getPaystackSecretKey())
-      .update(payload)
-      .digest("hex");
+    const secretKeys = this.paystackAccountConfigService.getWebhookSecretKeys();
 
-    return hash === signature;
+    return secretKeys.some((secretKey) => {
+      const hash = crypto
+        .createHmac("sha512", secretKey)
+        .update(payload)
+        .digest("hex");
+
+      return hash === signature;
+    });
   }
 
   /* ----------------------------------
@@ -424,13 +416,7 @@ export class PaystackService {
    GET TRANSACTION DETAILS
 ---------------------------------------------------- */
   async getTransactionDetails(reference: string): Promise<DataResponseDto> {
-    const response = await lastValueFrom(
-      this.httpService
-        .get(`${this.baseUrl}/transaction/verify/${reference}`, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
-    );
+    const response = await this.fetchTransactionByReference(reference, true);
 
     return new DataResponseDto(response, true, "Transaction details retrieved");
   }
@@ -467,6 +453,7 @@ export class PaystackService {
     if (options.reference) {
       const transactionResponse = await this.fetchTransactionByReference(
         options.reference,
+        true,
       );
       if (!transactionResponse?.data) {
         throw new BadRequestException(
@@ -573,6 +560,7 @@ export class PaystackService {
   async diagnoseTransaction(reference: string): Promise<DataResponseDto> {
     const transactionResponse = await this.fetchTransactionByReference(
       reference,
+      true,
     );
 
     if (!transactionResponse?.data) {
@@ -827,16 +815,30 @@ export class PaystackService {
     return this.verifyPayment({ reference });
   }
 
-  private async fetchTransactionByReference(reference: string): Promise<any> {
-    const response = await lastValueFrom(
-      this.httpService
-        .get(`${this.baseUrl}/transaction/verify/${reference}`, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
-    );
+  private async fetchTransactionByReference(
+    reference: string,
+    tryAllAccounts = false,
+  ): Promise<any> {
+    const accountsToTry: PaystackAccountType[] = tryAllAccounts
+      ? ["default", "old", "new"]
+      : ["default"];
+    let lastError: any = null;
 
-    return response;
+    for (const account of [...new Set(accountsToTry)]) {
+      try {
+        return await lastValueFrom(
+          this.httpService
+            .get(`${this.baseUrl}/transaction/verify/${reference}`, {
+              headers: this.getHeaders(account),
+            })
+            .pipe(map((r) => r.data)),
+        );
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError;
   }
 
   private async fetchTransactionsPage(params: {
@@ -2005,6 +2007,8 @@ export class PaystackService {
         ),
       ];
       const isMultiSeller = storeIds.length > 1;
+      this.assertSingleStoreSplitOnly(storeIds);
+      const storeForSplit = await this.getEligibleSingleStoreForSplit(storeIds);
 
       // Build metadata
       const metadata = {
@@ -2042,6 +2046,12 @@ export class PaystackService {
         guest_order_payload: guestData.order_payload
           ? this.buildGuestOrderPayload(guestData.order_payload, reference)
           : undefined,
+        split_payment_applied: Boolean(storeForSplit),
+        split_payment_mode: storeForSplit
+          ? "single_store_guest_checkout"
+          : isMultiSeller
+          ? "not_supported_multi_store_checkout"
+          : "not_configured",
         ...guestData.metadata,
       };
 
@@ -2058,14 +2068,27 @@ export class PaystackService {
         channels: ["card", "bank", "ussd", "mobile_money"], // All payment channels
       };
 
-      // Call Paystack API using firstValueFrom
-      const response = await firstValueFrom(
-        this.httpService
-          .post(`${this.baseUrl}/transaction/initialize`, paystackPayload, {
-            headers: this.getHeaders(), // ✅ Use getHeaders() method
-          })
-          .pipe(map((r) => r.data)), // ✅ Extract data from response
-      );
+      const response = storeForSplit
+        ? {
+            status: true,
+            data: await this.initializeSplitTransaction({
+              email: guestData.guest_info.email,
+              amount: totalAmount,
+              callback_url:
+                guestData.callback_url ||
+                `${process.env.FRONTEND_URL}/guest/payment/callback`,
+              reference,
+              store_id: storeForSplit.id,
+              metadata,
+            }),
+          }
+        : await firstValueFrom(
+            this.httpService
+              .post(`${this.baseUrl}/transaction/initialize`, paystackPayload, {
+                headers: this.getHeaders(), // ✅ Use getHeaders() method
+              })
+              .pipe(map((r) => r.data)), // ✅ Extract data from response
+          );
 
       // ✅ Check response.status (not response.data.status)
       if (!response.status) {
@@ -2111,4 +2134,55 @@ export class PaystackService {
   }
 
   // GUEST USER DATA ENDS HERE
+
+  private async shouldAutoSplitExistingOrder(
+    orderId?: number,
+  ): Promise<boolean> {
+    if (!orderId) {
+      return false;
+    }
+
+    const order = await Order.findByPk(orderId);
+    if (!order?.storeId) {
+      return false;
+    }
+
+    const store = await this.storeRepository.findByPk(order.storeId);
+    return this.canUseAutomaticSplit(store);
+  }
+
+  private async getEligibleSingleStoreForSplit(
+    storeIds?: number[],
+  ): Promise<Store | null> {
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length !== 1) {
+      return null;
+    }
+
+    const store = await this.storeRepository.findByPk(uniqueStoreIds[0]);
+    return this.canUseAutomaticSplit(store) ? store : null;
+  }
+
+  private canUseAutomaticSplit(store?: Store | null): boolean {
+    return Boolean(
+      store &&
+        store.subaccount_status === "active" &&
+        resolveStoreSubaccountSelection(store),
+    );
+  }
+
+  private assertSingleStoreSplitOnly(storeIds?: number[]): void {
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length > 1) {
+      throw new BadRequestException(
+        "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
+      );
+    }
+  }
 }

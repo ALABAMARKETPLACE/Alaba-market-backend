@@ -10,13 +10,17 @@ import { BadRequestException } from "@nestjs/common";
 import { Op } from "sequelize";
 import { GuestOrderService } from "./guest-order.service";
 import { Products } from "../PRODUCTS/products.entity";
+import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 
 describe("GuestOrderService", () => {
   let service: GuestOrderService;
   let orderRepository: {
     sequelize: { transaction: any };
     findAndCountAll: any;
+    findByPk: any;
+    findOne: any;
   };
+  let guestCheckoutRepository: { findAll: any };
   let paystackService: { verifyPayment: any };
   let jwtService: { verifyAsync: any; decode: any };
 
@@ -26,7 +30,13 @@ describe("GuestOrderService", () => {
         transaction: jest.fn(),
       },
       findAndCountAll: jest.fn(),
+      findByPk: jest.fn(),
+      findOne: jest.fn(),
     };
+
+    const findAll = jest.fn();
+    (findAll as any).mockResolvedValue([]);
+    guestCheckoutRepository = { findAll };
 
     paystackService = {
       verifyPayment: jest.fn(),
@@ -39,6 +49,7 @@ describe("GuestOrderService", () => {
 
     service = new GuestOrderService(
       orderRepository as any,
+      guestCheckoutRepository as any,
       paystackService as any,
       {} as any,
       {} as any,
@@ -251,7 +262,57 @@ describe("GuestOrderService", () => {
           { guest_email: { [Op.ne]: "" } },
         ],
       },
+      { userId: null },
+      { userId: 0 },
     ]);
+    expect(guestCheckoutRepository.findAll).not.toHaveBeenCalled();
     expect(result.data).toHaveLength(1);
+  });
+
+  it("updates a guest order when the route receives the business order_id", async () => {
+    const save = jest.fn();
+    (save as any).mockResolvedValue(undefined);
+    const getOrderPayment = jest.fn();
+    (getOrderPayment as any).mockResolvedValue(null);
+
+    jest.spyOn(OrderStatus, "create").mockResolvedValue({} as any);
+
+    orderRepository.sequelize.transaction.mockImplementation(async (handler) =>
+      handler({
+        afterCommit: jest.fn(),
+      }),
+    );
+    orderRepository.findByPk.mockResolvedValue(null);
+    orderRepository.findOne.mockResolvedValue({
+      id: 55,
+      order_id: 800055,
+      status: "pending",
+      userId: null,
+      guest_email: "guest@example.com",
+      paymentType: "pay-online",
+      save,
+      getOrderPayment,
+    });
+
+    const result = await service.updateGuestOrder(800055, {
+      status: "processing",
+      remark: "Packed for dispatch",
+    } as any);
+
+    expect(orderRepository.findByPk).toHaveBeenCalledWith(
+      800055,
+      expect.objectContaining({
+        transaction: expect.anything(),
+      }),
+    );
+    expect(orderRepository.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { order_id: 800055 },
+        transaction: expect.anything(),
+      }),
+    );
+    expect(save).toHaveBeenCalled();
+    expect(result.status).toBe(true);
+    expect(result.data.status).toBe("processing");
   });
 });
