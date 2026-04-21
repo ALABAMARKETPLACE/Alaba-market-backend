@@ -265,6 +265,7 @@ describe("GuestOrderService", () => {
       { userId: null },
       { userId: 0 },
     ]);
+    expect(guestCheckoutRepository.findAll).not.toHaveBeenCalled();
     expect(result.data).toHaveLength(1);
   });
 
