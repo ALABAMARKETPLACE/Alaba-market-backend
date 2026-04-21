@@ -177,7 +177,6 @@ export class PaystackService {
         userId,
         initData.order_payload,
       );
-    this.assertSingleStoreSplitOnly(preparedCheckout.store_ids);
     const reference = initData.reference || this.generateReference();
 
     const payload = {
@@ -284,16 +283,18 @@ export class PaystackService {
     const adminAmount =
       initData.admin_amount !== undefined
         ? Number(initData.admin_amount)
-        : Math.round(amountInKobo * 0.05);
+        : Math.round(amountInKobo * 0.065);
 
-    const payload = {
+    const splitPayload = {
       email: initData.email,
       amount: amountInKobo,
+      currency: "NGN",
       subaccount: resolvedSubaccount.code,
       transaction_charge: adminAmount,
       bearer: "account",
       reference: initData.reference || this.generateReference(),
       callback_url: initData.callback_url,
+      channels: ["card", "bank", "ussd", "mobile_money"],
       metadata: {
         ...initData.metadata,
         order_id: initData.order_id,
@@ -301,23 +302,68 @@ export class PaystackService {
       },
     };
 
-    const response = await lastValueFrom(
-      this.httpService
-        .post(`${this.baseUrl}/transaction/initialize`, payload, {
-          headers: this.getHeaders(resolvedSubaccount.paystackAccount),
-        })
-        .pipe(
-          map((r) => r.data),
-          catchError((err) => {
-            throw new HttpException(
-              err.response?.data?.message || "Split initialization failed",
-              err.response?.status || HttpStatus.BAD_REQUEST,
-            );
-          }),
-        ),
-    );
+    try {
+      const response = await lastValueFrom(
+        this.httpService
+          .post(`${this.baseUrl}/transaction/initialize`, splitPayload, {
+            headers: this.getHeaders(resolvedSubaccount.paystackAccount),
+          })
+          .pipe(map((r) => r.data)),
+      );
+      return response.data;
+    } catch (err: any) {
+      const paystackMsg: string =
+        err?.response?.data?.message || err?.message || "";
+      const isSubaccountError =
+        /subaccount/i.test(paystackMsg) ||
+        err?.response?.status === 400;
 
-    return response.data;
+      if (!isSubaccountError) {
+        throw new HttpException(
+          paystackMsg || "Split initialization failed",
+          err?.response?.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Subaccount is invalid/deactivated — fall back to company account
+      this.logger.warn(
+        `Subaccount ${resolvedSubaccount.code} rejected by Paystack ("${paystackMsg}") — falling back to company account for store ${initData.store_id}`,
+      );
+
+      const fallbackPayload = {
+        email: initData.email,
+        amount: amountInKobo,
+        currency: "NGN",
+        reference: splitPayload.reference,
+        callback_url: initData.callback_url,
+        channels: ["card", "bank", "ussd", "mobile_money"],
+        metadata: {
+          ...initData.metadata,
+          order_id: initData.order_id,
+          store_id: initData.store_id,
+          split_fallback: true,
+          split_fallback_reason: paystackMsg,
+        },
+      };
+
+      const fallbackResponse = await lastValueFrom(
+        this.httpService
+          .post(`${this.baseUrl}/transaction/initialize`, fallbackPayload, {
+            headers: this.getHeaders(),
+          })
+          .pipe(
+            map((r) => r.data),
+            catchError((fallbackErr) => {
+              throw new HttpException(
+                fallbackErr?.response?.data?.message || "Payment initialization failed",
+                fallbackErr?.response?.status || HttpStatus.BAD_REQUEST,
+              );
+            }),
+          ),
+      );
+
+      return fallbackResponse.data;
+    }
   }
 
   private async initializeWithSplit(
@@ -2007,7 +2053,6 @@ export class PaystackService {
         ),
       ];
       const isMultiSeller = storeIds.length > 1;
-      this.assertSingleStoreSplitOnly(storeIds);
       const storeForSplit = await this.getEligibleSingleStoreForSplit(storeIds);
 
       // Build metadata
