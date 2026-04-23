@@ -430,8 +430,8 @@ export class GuestOrderService {
       return [];
     }
 
-    const storeIds = Array.from(
-      new Set(
+    const storeIds = Array.from<number>(
+      new Set<number>(
         orphanedCheckouts.flatMap((checkout: any) => {
           const payload = this.extractGuestCheckoutPayload(checkout.payload);
           const cartItems = Array.isArray(payload?.cart_items)
@@ -484,8 +484,8 @@ export class GuestOrderService {
         : Array.isArray(payload?.items)
         ? payload.items
         : [];
-      const stores = Array.from(
-        new Set(
+      const stores = Array.from<number>(
+        new Set<number>(
           cartItems
             .map((item: any) => Number(item?.store_id))
             .filter((storeId: number) => Number.isFinite(storeId) && storeId > 0),
