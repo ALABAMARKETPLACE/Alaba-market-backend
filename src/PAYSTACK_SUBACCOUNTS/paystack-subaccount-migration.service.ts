@@ -25,6 +25,14 @@ interface MigrationExecutionOptions {
   force?: boolean;
 }
 
+interface SyncExistingNewSubaccountsOptions {
+  dryRun?: boolean;
+  force?: boolean;
+  storeIds?: number[];
+  perPage?: number;
+  maxPages?: number;
+}
+
 interface CreateSubaccountPayload {
   business_name: string;
   settlement_bank: string;
@@ -35,6 +43,16 @@ interface CreateSubaccountPayload {
   primary_contact_name: string;
   primary_contact_phone: string;
   settlement_schedule: string;
+}
+
+interface PaystackSubaccountSummary {
+  id: number;
+  subaccount_code: string;
+  business_name?: string | null;
+  primary_contact_email?: string | null;
+  primary_contact_phone?: string | null;
+  account_number?: string | null;
+  percentage_charge?: number | null;
 }
 
 @Injectable()
@@ -50,6 +68,39 @@ export class PaystackSubaccountMigrationService {
     private readonly httpService: HttpService,
     private readonly paystackAccountConfigService: PaystackAccountConfigService,
   ) {}
+
+  private resolveSellerPercentageForNewAccount(
+    percentageCharge?: number | string | null,
+  ): number {
+    const configuredSellerPercentage =
+      this.paystackAccountConfigService.getSellerSplitPercentage("new");
+    const parsedPercentage = Number(percentageCharge);
+
+    if (
+      !Number.isFinite(parsedPercentage) ||
+      parsedPercentage <= 0 ||
+      parsedPercentage >= 100
+    ) {
+      return configuredSellerPercentage;
+    }
+
+    if (
+      Math.abs(parsedPercentage - 95) < 0.001 &&
+      Math.abs(configuredSellerPercentage - 95) > 0.001
+    ) {
+      return configuredSellerPercentage;
+    }
+
+    return Number(parsedPercentage.toFixed(2));
+  }
+
+  private toPaystackCompanyPercentageForNewAccount(
+    sellerPercentage?: number | string | null,
+  ): number {
+    const normalizedSellerPercentage =
+      this.resolveSellerPercentageForNewAccount(sellerPercentage);
+    return Number((100 - normalizedSellerPercentage).toFixed(2));
+  }
 
   async migrateStoreById(
     storeId: number,
@@ -202,6 +253,157 @@ export class PaystackSubaccountMigrationService {
       .join("\n");
   }
 
+  async syncExistingNewSubaccounts(
+    options: SyncExistingNewSubaccountsOptions = {},
+  ): Promise<DataResponseDto> {
+    const dryRun = Boolean(options.dryRun);
+    const force = Boolean(options.force);
+    const perPage = Math.min(Math.max(Number(options.perPage || 100), 1), 100);
+    const localStores = await this.findSyncCandidates(options.storeIds, force);
+    const remoteSubaccounts = await this.fetchNewAccountSubaccounts({
+      perPage,
+      maxPages: options.maxPages,
+    });
+
+    const results: Array<Record<string, any>> = [];
+    let matched = 0;
+    let updated = 0;
+    let ambiguous = 0;
+    let skipped = 0;
+    const tentativeMatches: Array<
+      | {
+          type: "matched";
+          remoteSubaccount: PaystackSubaccountSummary;
+          store: Store;
+        }
+      | {
+          type: "ambiguous";
+          remoteSubaccount: PaystackSubaccountSummary;
+          candidates: Store[];
+        }
+    > = [];
+
+    for (const remoteSubaccount of remoteSubaccounts) {
+      const match = this.matchRemoteSubaccountToStore(
+        remoteSubaccount,
+        localStores,
+      );
+
+      if (match.type === "none") {
+        continue;
+      }
+
+      if (match.type === "ambiguous") {
+        tentativeMatches.push({
+          type: "ambiguous",
+          remoteSubaccount,
+          candidates: match.candidates,
+        });
+        continue;
+      }
+
+      tentativeMatches.push({
+        type: "matched",
+        remoteSubaccount,
+        store: match.store,
+      });
+    }
+
+    const storeMatchCounts = new Map<number, number>();
+    for (const entry of tentativeMatches) {
+      if (entry.type !== "matched") {
+        continue;
+      }
+
+      storeMatchCounts.set(
+        entry.store.id,
+        (storeMatchCounts.get(entry.store.id) || 0) + 1,
+      );
+    }
+
+    for (const entry of tentativeMatches) {
+      if (entry.type === "ambiguous") {
+        ambiguous += 1;
+        results.push({
+          result: "ambiguous",
+          subaccount_code: entry.remoteSubaccount.subaccount_code,
+          remote_business_name: entry.remoteSubaccount.business_name || null,
+          remote_account_number: entry.remoteSubaccount.account_number || null,
+          candidate_store_ids: entry.candidates.map((store) => store.id),
+        });
+        continue;
+      }
+
+      const conflictingMatches = storeMatchCounts.get(entry.store.id) || 0;
+      if (conflictingMatches > 1) {
+        ambiguous += 1;
+        results.push({
+          result: "ambiguous",
+          subaccount_code: entry.remoteSubaccount.subaccount_code,
+          remote_business_name: entry.remoteSubaccount.business_name || null,
+          remote_account_number: entry.remoteSubaccount.account_number || null,
+          candidate_store_ids: [entry.store.id],
+          reason: "multiple_remote_subaccounts_matched_same_store",
+        });
+        continue;
+      }
+
+      matched += 1;
+      const sellerPercentage = Number(
+        (100 - Number(entry.remoteSubaccount.percentage_charge || 0)).toFixed(2),
+      );
+
+      if (!dryRun) {
+        await this.persistSyncedNewSubaccount(entry.store, entry.remoteSubaccount, {
+          sellerPercentage,
+        });
+        updated += 1;
+      }
+
+      results.push({
+        result: dryRun ? "preview" : "updated",
+        store_id: entry.store.id,
+        store_name:
+          entry.store.store_name || entry.store.business_name || entry.store.name,
+        subaccount_code: entry.remoteSubaccount.subaccount_code,
+        remote_business_name: entry.remoteSubaccount.business_name || null,
+        seller_percentage_charge: sellerPercentage,
+        company_percentage_charge: Number(
+          entry.remoteSubaccount.percentage_charge || 0,
+        ),
+      });
+    }
+
+    for (const store of localStores) {
+      const storeHasNewCode = Boolean(
+        this.firstNonEmptyValue(store.paystack_subaccount_code_new),
+      );
+      if (storeHasNewCode && !force) {
+        skipped += 1;
+      }
+    }
+
+    return new DataResponseDto(
+      {
+        dryRun,
+        force,
+        summary: {
+          localCandidates: localStores.length,
+          remoteSubaccounts: remoteSubaccounts.length,
+          matched,
+          updated,
+          ambiguous,
+          skippedExistingNewCode: skipped,
+        },
+        results,
+      },
+      true,
+      dryRun
+        ? "Paystack new-subaccount sync preview generated successfully"
+        : "Paystack new-subaccount sync completed successfully",
+    );
+  }
+
   private async findMigrationCandidates(
     mode: "pending" | "failed",
     force = false,
@@ -232,6 +434,229 @@ export class PaystackSubaccountMigrationService {
       where,
       order: [["id", "ASC"]],
     });
+  }
+
+  private async findSyncCandidates(
+    storeIds?: number[],
+    force = false,
+  ): Promise<Store[]> {
+    const where: any = {
+      subaccount_status: "active",
+      [Op.or]: [
+        { paystack_subaccount_code: { [Op.ne]: null } },
+        { paystack_subaccount_code_old: { [Op.ne]: null } },
+      ],
+    };
+
+    if (Array.isArray(storeIds) && storeIds.length > 0) {
+      where.id = {
+        [Op.in]: storeIds.map((entry) => Number(entry)),
+      };
+    }
+
+    if (!force) {
+      where[Op.and] = [
+        ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+        {
+          [Op.or]: [
+            { paystack_subaccount_code_new: null },
+            { paystack_subaccount_code_new: "" },
+          ],
+        },
+      ];
+    }
+
+    return this.storeRepository.findAll({
+      where,
+      order: [["id", "ASC"]],
+    });
+  }
+
+  private async fetchNewAccountSubaccounts(options: {
+    perPage: number;
+    maxPages?: number;
+  }): Promise<PaystackSubaccountSummary[]> {
+    const results: PaystackSubaccountSummary[] = [];
+    let page = 1;
+    let pageCount = 1;
+    const hardLimit = Math.max(Number(options.maxPages || 0), 0);
+
+    do {
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.paystackBaseUrl}/subaccount?perPage=${options.perPage}&page=${page}`,
+          {
+            headers: this.paystackAccountConfigService.getHeaders("new"),
+          },
+        ),
+      );
+
+      if (!response?.data?.status || !Array.isArray(response?.data?.data)) {
+        throw new BadRequestException(
+          response?.data?.message ||
+            "Unable to fetch subaccounts from the new Paystack account",
+        );
+      }
+
+      results.push(
+        ...response.data.data.map((entry) => ({
+          id: Number(entry?.id),
+          subaccount_code: String(entry?.subaccount_code || "").trim(),
+          business_name: entry?.business_name || null,
+          primary_contact_email: entry?.primary_contact_email || null,
+          primary_contact_phone: entry?.primary_contact_phone || null,
+          account_number: entry?.account_number || null,
+          percentage_charge:
+            entry?.percentage_charge == null
+              ? null
+              : Number(entry.percentage_charge),
+        })),
+      );
+
+      pageCount = Number(response?.data?.meta?.pageCount || page);
+      page += 1;
+    } while (
+      page <= pageCount &&
+      (hardLimit === 0 || page <= hardLimit)
+    );
+
+    return results.filter((entry) => entry.subaccount_code);
+  }
+
+  private matchRemoteSubaccountToStore(
+    remoteSubaccount: PaystackSubaccountSummary,
+    stores: Store[],
+  ):
+    | { type: "none" }
+    | { type: "matched"; store: Store }
+    | { type: "ambiguous"; candidates: Store[] } {
+    const normalizedAccountNumber = this.normalizeDigits(
+      remoteSubaccount.account_number,
+    );
+
+    if (!normalizedAccountNumber) {
+      return { type: "none" };
+    }
+
+    const candidates = stores.filter((store) => {
+      const localAccountNumber = this.normalizeDigits(
+        store.settlement_account_number || store.account_number,
+      );
+      return localAccountNumber === normalizedAccountNumber;
+    });
+
+    if (candidates.length === 0) {
+      return { type: "none" };
+    }
+
+    if (candidates.length === 1) {
+      return { type: "matched", store: candidates[0] };
+    }
+
+    const scoredCandidates = candidates
+      .map((store) => ({
+        store,
+        score: this.scoreRemoteStoreMatch(remoteSubaccount, store),
+      }))
+      .sort((left, right) => right.score - left.score);
+
+    const bestScore = scoredCandidates[0]?.score || 0;
+    if (bestScore <= 0) {
+      return { type: "ambiguous", candidates };
+    }
+
+    const bestMatches = scoredCandidates.filter(
+      (entry) => entry.score === bestScore,
+    );
+
+    if (bestMatches.length !== 1) {
+      return {
+        type: "ambiguous",
+        candidates: bestMatches.map((entry) => entry.store),
+      };
+    }
+
+    return { type: "matched", store: bestMatches[0].store };
+  }
+
+  private scoreRemoteStoreMatch(
+    remoteSubaccount: PaystackSubaccountSummary,
+    store: Store,
+  ): number {
+    let score = 0;
+    const remoteBusinessName = this.normalizeText(remoteSubaccount.business_name);
+    const remoteEmail = this.normalizeText(remoteSubaccount.primary_contact_email);
+    const remotePhone = this.normalizeDigits(remoteSubaccount.primary_contact_phone);
+
+    const businessCandidates = [
+      store.business_name,
+      store.store_name,
+      store.name,
+    ]
+      .map((value) => this.normalizeText(value))
+      .filter(Boolean);
+
+    if (remoteBusinessName && businessCandidates.includes(remoteBusinessName)) {
+      score += 4;
+    }
+
+    const localEmail = this.normalizeText(
+      store.primary_contact_email || store.email,
+    );
+    if (remoteEmail && localEmail && remoteEmail === localEmail) {
+      score += 3;
+    }
+
+    const localPhone = this.normalizeDigits(
+      store.primary_contact_phone || store.phone,
+    );
+    if (remotePhone && localPhone && remotePhone === localPhone) {
+      score += 2;
+    }
+
+    return score;
+  }
+
+  private async persistSyncedNewSubaccount(
+    store: Store,
+    remoteSubaccount: PaystackSubaccountSummary,
+    options: { sellerPercentage: number },
+  ): Promise<void> {
+    await this.storeRepository.sequelize.transaction(
+      async (transaction: Transaction) => {
+        await store.update(
+          {
+            paystack_subaccount_code_old:
+              store.paystack_subaccount_code_old ||
+              store.paystack_subaccount_code ||
+              null,
+            paystack_subaccount_code_new: remoteSubaccount.subaccount_code,
+            paystack_subaccount_id: remoteSubaccount.id,
+            paystack_subaccount_migrated_at: new Date(),
+            paystack_subaccount_migration_status: "success",
+            paystack_subaccount_migration_error: null,
+            percentage_charge: options.sellerPercentage,
+          },
+          { transaction },
+        );
+      },
+    );
+  }
+
+  private normalizeText(value: unknown): string {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim().toLowerCase().replace(/\s+/g, " ");
+  }
+
+  private normalizeDigits(value: unknown): string {
+    if (typeof value !== "string" && typeof value !== "number") {
+      return "";
+    }
+
+    return String(value).replace(/\D+/g, "");
   }
 
   private async migrateStoreRecord(
@@ -516,7 +941,9 @@ export class PaystackSubaccountMigrationService {
       business_name: businessName,
       settlement_bank: settlementBank,
       account_number: accountNumber,
-      percentage_charge: Number(store.percentage_charge || 95),
+      percentage_charge: this.toPaystackCompanyPercentageForNewAccount(
+        store.percentage_charge,
+      ),
       description: `Migrated subaccount for store ${store.id}`,
       primary_contact_email: primaryContactEmail,
       primary_contact_name: primaryContactName,

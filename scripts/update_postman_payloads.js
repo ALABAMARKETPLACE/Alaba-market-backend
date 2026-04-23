@@ -25,6 +25,7 @@ const collectionVariables = [
   { key: "paymentReference", value: "", type: "string" },
   { key: "reconcileReference", value: "", type: "string" },
   { key: "guestEmail", value: DEFAULT_EMAIL, type: "string" },
+  { key: "buyerEmail", value: DEFAULT_EMAIL, type: "string" },
   { key: "paystackStatus", value: "", type: "string" },
   { key: "paystackCustomerEmail", value: "", type: "string" },
   { key: "paystackAuthUrl", value: "", type: "string" },
@@ -940,6 +941,25 @@ function walkRequests(items, callback, trail = []) {
   }
 }
 
+function removeRequestsByName(items, requestName) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => item?.name !== requestName)
+    .map((item) => {
+      if (Array.isArray(item?.item)) {
+        return {
+          ...item,
+          item: removeRequestsByName(item.item, requestName),
+        };
+      }
+
+      return item;
+    });
+}
+
 function ensurePaystackReconcileRequest(collection) {
   const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
   if (!paymentsGroup) {
@@ -975,6 +995,234 @@ function ensurePaystackReconcileRequest(collection) {
       },
       description:
         "Admin-only reconciliation for historical Paystack transactions. Run with dryRun=true first, then set dryRun=false to replay reconcilable entries through the existing webhook sync flow.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackManualSettlementAuditRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  paymentsGroup.item = Array.isArray(paymentsGroup.item)
+    ? paymentsGroup.item.filter(
+        (entry) => entry?.name !== "GET /paystack/manual-settlement/audit",
+      )
+    : [];
+
+  const legacyPaystackGroup =
+    paymentsGroup.name === "PAYSTACK" ? null : findGroup(collection, "PAYSTACK");
+  if (legacyPaystackGroup && Array.isArray(legacyPaystackGroup.item)) {
+    legacyPaystackGroup.item = legacyPaystackGroup.item.filter(
+      (entry) => entry?.name !== "GET /paystack/manual-settlement/audit",
+    );
+  }
+
+  upsertRequest(paymentsGroup, {
+    name: "GET /paystack/manual-settlement/audit",
+    request: {
+      method: "GET",
+      header: [{ key: "Authorization", value: "Bearer {{authToken}}" }],
+      url: {
+        raw: "{{baseUrl}}/paystack/manual-settlement/audit?page=1&take=20&storeId={{storeId}}&reference={{reconcileReference}}&buyerEmail={{buyerEmail}}",
+        host: ["{{baseUrl}}"],
+        path: ["paystack", "manual-settlement", "audit"],
+        query: [
+          { key: "page", value: "1" },
+          { key: "take", value: "20" },
+          { key: "storeId", value: "{{storeId}}" },
+          { key: "reference", value: "{{reconcileReference}}" },
+          { key: "buyerEmail", value: "{{buyerEmail}}" },
+        ],
+      },
+      description:
+        "Admin-only audit endpoint for all non-split payments, including company-account collections and legacy payments without split metadata. Supports filtering by storeId, reference, and buyerEmail.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackSubaccountPercentageUpdateRequest(collection) {
+  collection.item = removeRequestsByName(
+    collection.item,
+    "POST /admin/paystack/subaccounts/update-percentage",
+  );
+
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  upsertRequest(paymentsGroup, {
+    name: "POST /admin/paystack/subaccounts/update-percentage",
+    request: {
+      method: "POST",
+      header: [
+        { key: "Content-Type", value: "application/json" },
+        { key: "Authorization", value: "Bearer {{authToken}}" },
+      ],
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          {
+            percentage_charge: 93.5,
+            dryRun: true,
+          },
+          null,
+          2,
+        ),
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/update-percentage",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "update-percentage"],
+      },
+      description:
+        "Admin-only bulk updater for new-account Paystack subaccounts. Omit storeIds to update every migrated store, or pass storeIds to target specific stores. Use dryRun=true first to preview affected stores, then set dryRun=false to push the update to Paystack and sync local store records.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackSubaccountSyncRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  collection.item = removeRequestsByName(
+    collection.item,
+    "POST /admin/paystack/subaccounts/sync-new-codes",
+  );
+
+  const refreshedPaymentsGroup = findFirstGroup(collection, [
+    "💳 Payments",
+    "PAYSTACK",
+  ]);
+  if (!refreshedPaymentsGroup) {
+    return;
+  }
+
+  upsertRequest(refreshedPaymentsGroup, {
+    name: "POST /admin/paystack/subaccounts/sync-new-codes",
+    request: {
+      method: "POST",
+      header: [
+        { key: "Content-Type", value: "application/json" },
+        { key: "Authorization", value: "Bearer {{authToken}}" },
+      ],
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          {
+            dryRun: true,
+            perPage: 100,
+          },
+          null,
+          2,
+        ),
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/sync-new-codes",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "sync-new-codes"],
+      },
+      description:
+        "Admin-only backfill for copied Paystack subaccounts. It fetches subaccounts from the new Paystack account, matches them to local stores, and stores paystack_subaccount_code_new locally. Use dryRun=true first.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackUnmatchedRemoteRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  collection.item = removeRequestsByName(
+    collection.item,
+    "GET /admin/paystack/subaccounts/unmatched-remote",
+  );
+
+  const refreshedPaymentsGroup = findFirstGroup(collection, [
+    "💳 Payments",
+    "PAYSTACK",
+  ]);
+  if (!refreshedPaymentsGroup) {
+    return;
+  }
+
+  upsertRequest(refreshedPaymentsGroup, {
+    name: "GET /admin/paystack/subaccounts/unmatched-remote",
+    request: {
+      method: "GET",
+      header: [{ key: "Authorization", value: "Bearer {{authToken}}" }],
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/unmatched-remote?page=1&limit=100",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "unmatched-remote"],
+        query: [
+          { key: "page", value: "1" },
+          { key: "limit", value: "100" },
+        ],
+      },
+      description:
+        "Admin-only list of live new-account Paystack subaccounts that are not currently matched to local stores targeted by the percentage update flow. Each item includes a classification, candidate_store_ids, and a reason.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackResolveUnmatchedRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  collection.item = removeRequestsByName(
+    collection.item,
+    "POST /admin/paystack/subaccounts/resolve-unmatched",
+  );
+
+  const refreshedPaymentsGroup = findFirstGroup(collection, [
+    "💳 Payments",
+    "PAYSTACK",
+  ]);
+  if (!refreshedPaymentsGroup) {
+    return;
+  }
+
+  upsertRequest(refreshedPaymentsGroup, {
+    name: "POST /admin/paystack/subaccounts/resolve-unmatched",
+    request: {
+      method: "POST",
+      header: [
+        { key: "Content-Type", value: "application/json" },
+        { key: "Authorization", value: "Bearer {{authToken}}" },
+      ],
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          {
+            dryRun: true,
+            classifications: ["missing_local_link"],
+            page: 1,
+            limit: 100,
+          },
+          null,
+          2,
+        ),
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/resolve-unmatched",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "resolve-unmatched"],
+      },
+      description:
+        "Admin-only safe auto-linker for unmatched remote Paystack subaccounts. By default it previews only missing_local_link records with exactly one candidate store. Set dryRun=false after verifying the preview.",
     },
     response: [],
   });
@@ -1256,16 +1504,19 @@ function ensureGuestOrderRequests(collection) {
       method: "GET",
       header: [{ key: "Authorization", value: "Bearer {{authToken}}" }],
       url: {
-        raw: "{{baseUrl}}/order/guest/all?page=1&take=10",
+        raw: "{{baseUrl}}/order/guest/all?page=1&take=10&status=&sort=&order=DESC",
         host: ["{{baseUrl}}"],
         path: ["order", "guest", "all"],
         query: [
           { key: "page", value: "1" },
           { key: "take", value: "10" },
+          { key: "status", value: "" },
+          { key: "sort", value: "" },
+          { key: "order", value: "DESC" },
         ],
       },
       description:
-        "Fetch all guest purchases. Admin route. Supports pagination and optional status query filters.",
+        "Admin-only guest purchases endpoint. Returns all guest orders, including paid-but-unfulfilled guest checkout records. Use this for a dedicated guest purchases screen.",
     },
     response: [],
   });
@@ -1318,6 +1569,11 @@ function updateCollectionFile(filePath) {
   normalizeExistingRequestUrls(collection);
   syncControllerRoutes(collection);
   ensurePaystackReconcileRequest(collection);
+  ensurePaystackManualSettlementAuditRequest(collection);
+  ensurePaystackSubaccountPercentageUpdateRequest(collection);
+  ensurePaystackSubaccountSyncRequest(collection);
+  ensurePaystackUnmatchedRemoteRequest(collection);
+  ensurePaystackResolveUnmatchedRequest(collection);
   ensurePaystackReconciliationRequests(collection);
   ensureUserManagementRoleRequests(collection);
   ensureGuestOrderRequests(collection);

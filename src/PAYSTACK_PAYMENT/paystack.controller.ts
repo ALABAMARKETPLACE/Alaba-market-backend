@@ -47,6 +47,7 @@ import { Roles } from "../shared/decorator/roles.decorator";
 import { Role } from "../shared/enum/role.enum";
 import { ReconcilePaystackTransactionsDto } from "./dto/reconcile-paystack-transactions.dto";
 import { DiagnosePaystackTransactionDto } from "./dto/diagnose-paystack-transaction.dto";
+import { ManualSettlementAuditDto } from "./dto/manual-settlement-audit.dto";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -115,6 +116,25 @@ export class PaystackController {
     return await this.paystackService.initializeGuestPayment(guestData);
   }
 
+  @Get("manual-settlement/audit")
+  @Roles(Role.Admin)
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "List all non-split payments for admin audit, including company-account collections and older payments without split metadata",
+  })
+  @ApiOkResponse({
+    description: "Manual settlement audit records retrieved successfully",
+    type: DataResponseDto,
+  })
+  async getManualSettlementAudit(
+    @Query() query: ManualSettlementAuditDto,
+  ): Promise<DataResponseDto> {
+    return await this.paystackService.getManualSettlementAudit(query);
+  }
+
   @Post("verify-guest")
   @Public() // ✅ No authentication required
   @HttpCode(HttpStatus.OK)
@@ -149,7 +169,7 @@ export class PaystackController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      "Initialize Paystack payment with automatic split (5% admin, 95% seller)",
+      "Initialize Paystack payment with automatic split settlement",
   })
   @ApiOkResponse({
     description: "Split payment initialized successfully",

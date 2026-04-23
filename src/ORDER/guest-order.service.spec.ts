@@ -11,12 +11,14 @@ import { Op } from "sequelize";
 import { GuestOrderService } from "./guest-order.service";
 import { Products } from "../PRODUCTS/products.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
+import { Store } from "../STORE/store.entity";
 
 describe("GuestOrderService", () => {
   let service: GuestOrderService;
   let orderRepository: {
     sequelize: { transaction: any };
     findAndCountAll: any;
+    findAll: any;
     findByPk: any;
     findOne: any;
   };
@@ -30,6 +32,7 @@ describe("GuestOrderService", () => {
         transaction: jest.fn(),
       },
       findAndCountAll: jest.fn(),
+      findAll: jest.fn(),
       findByPk: jest.fn(),
       findOne: jest.fn(),
     };
@@ -210,9 +213,7 @@ describe("GuestOrderService", () => {
   });
 
   it("fetches guest orders using guest_email even when is_guest_order was not set", async () => {
-    orderRepository.findAndCountAll.mockResolvedValue({
-      count: 1,
-      rows: [
+    orderRepository.findAll.mockResolvedValue([
         {
           id: 55,
           order_id: "ORD-55",
@@ -244,15 +245,14 @@ describe("GuestOrderService", () => {
           grandTotal: 1000,
           createdAt: new Date(),
         },
-      ],
-    });
+      ]);
 
     const result = await service.getAllGuestOrders({
       page: 1,
       take: 10,
     } as any);
 
-    const where = orderRepository.findAndCountAll.mock.calls[0][0].where;
+    const where = orderRepository.findAll.mock.calls[0][0].where;
 
     expect(where[Op.or]).toEqual([
       { is_guest_order: true },
@@ -265,8 +265,86 @@ describe("GuestOrderService", () => {
       { userId: null },
       { userId: 0 },
     ]);
-    expect(guestCheckoutRepository.findAll).not.toHaveBeenCalled();
+    expect(guestCheckoutRepository.findAll).toHaveBeenCalled();
     expect(result.data).toHaveLength(1);
+  });
+
+  it("includes successful guest checkouts that were paid but never became orders", async () => {
+    orderRepository.findAll
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    guestCheckoutRepository.findAll.mockResolvedValue([
+      {
+        id: 901,
+        reference: "guest_checkout_ref_901",
+        guest_email: "guest@example.com",
+        amount_kobo: 12500,
+        status: "ready_for_webhook",
+        payment_status: "success",
+        error: null,
+        payload: {
+          guest_info: {
+            first_name: "Jane",
+            last_name: "Doe",
+            phone: "08000000000",
+          },
+          delivery_address: {
+            full_name: "Jane Doe",
+            phone_no: "08000000000",
+            full_address: "12 Test Street",
+            city: "Lagos",
+            state: "Lagos",
+            state_id: 1,
+            country: "Nigeria",
+            country_id: 1,
+            address_type: "home",
+            country_code: "+234",
+          },
+          cart_items: [
+            {
+              product_id: 10,
+              store_id: 7,
+              quantity: 2,
+              unit_price: 6250,
+              product_name: "Phone",
+            },
+          ],
+        },
+        createdAt: new Date("2026-04-23T10:00:00.000Z"),
+      },
+    ]);
+
+    jest.spyOn(Products, "findOne").mockResolvedValue(null as any);
+    const storeFindAllSpy = jest.spyOn(Store, "findAll").mockResolvedValue([
+      {
+        id: 7,
+        store_name: "Phone Store",
+        email: "store@example.com",
+      } as any,
+    ]);
+
+    const result = await service.getAllGuestOrders({
+      page: 1,
+      take: 10,
+    } as any);
+
+    expect(storeFindAllSpy).toHaveBeenCalled();
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toEqual(
+      expect.objectContaining({
+        record_type: "orphaned_guest_checkout",
+        order_id: "guest_checkout_ref_901",
+        guest_email: "guest@example.com",
+        payment: expect.objectContaining({
+          ref: "guest_checkout_ref_901",
+          status: "success",
+        }),
+        store: expect.objectContaining({
+          id: 7,
+        }),
+      }),
+    );
   });
 
   it("updates a guest order when the route receives the business order_id", async () => {

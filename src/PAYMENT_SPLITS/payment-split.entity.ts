@@ -56,13 +56,13 @@ export class PaymentSplit extends Model<PaymentSplit> {
 
   @Column({
     type: DataType.DECIMAL(5, 2),
-    defaultValue: 5.0,
+    defaultValue: 6.5,
   })
   admin_percentage: number;
 
   @Column({
     type: DataType.DECIMAL(5, 2),
-    defaultValue: 95.0,
+    defaultValue: 93.5,
   })
   seller_percentage: number;
 

@@ -8,6 +8,42 @@ type PaystackKeyType = "public" | "secret";
 
 @Injectable()
 export class PaystackAccountConfigService {
+  getAdminSplitPercentage(account: PaystackAccountType = "default"): number {
+    const effectiveAccount = this.resolveEffectiveAccount(account);
+    const envCandidates =
+      effectiveAccount === "new"
+        ? [
+            "PAYSTACK_ADMIN_SPLIT_PERCENTAGE_NEW",
+            "PAYSTACK_ADMIN_SPLIT_PERCENTAGE",
+          ]
+        : effectiveAccount === "old"
+          ? [
+              "PAYSTACK_ADMIN_SPLIT_PERCENTAGE_OLD",
+              "PAYSTACK_ADMIN_SPLIT_PERCENTAGE",
+            ]
+          : ["PAYSTACK_ADMIN_SPLIT_PERCENTAGE"];
+
+    const configured = this.pickFirstDefined(envCandidates);
+    const fallback = effectiveAccount === "new" ? 6.5 : 5.0;
+
+    if (!configured) {
+      return fallback;
+    }
+
+    const parsed = Number(configured);
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 100) {
+      throw new InternalServerErrorException(
+        `Invalid Paystack admin split percentage for the ${effectiveAccount} account.`,
+      );
+    }
+
+    return Number(parsed.toFixed(2));
+  }
+
+  getSellerSplitPercentage(account: PaystackAccountType = "default"): number {
+    return Number((100 - this.getAdminSplitPercentage(account)).toFixed(2));
+  }
+
   getHeaders(account: PaystackAccountType = "default") {
     return {
       Authorization: `Bearer ${this.getSecretKey(account)}`,
@@ -31,6 +67,10 @@ export class PaystackAccountConfigService {
     )];
   }
 
+  getDefaultAccountType(): PaystackAccountType {
+    return this.resolveEffectiveAccount("default");
+  }
+
   private tryResolveSecretKey(account: PaystackAccountType): string | null {
     try {
       return this.resolvePaystackKey(account, "secret");
@@ -43,14 +83,19 @@ export class PaystackAccountConfigService {
     account: PaystackAccountType,
     type: PaystackKeyType,
   ): string {
+    const effectiveAccount = this.resolveEffectiveAccount(account);
     const nodeEnv = (process.env.NODE_ENV || "development").replace(/"/g, "");
     const isDevelopmentLike = nodeEnv !== "production";
-    const envName = this.resolveEnvVarName(account, type, isDevelopmentLike);
+    const envName = this.resolveEnvVarName(
+      effectiveAccount,
+      type,
+      isDevelopmentLike,
+    );
     const resolvedKey = this.pickFirstDefined(envName);
 
     if (!resolvedKey) {
       throw new InternalServerErrorException(
-        `Missing Paystack ${account} ${type} key configuration.`,
+        `Missing Paystack ${effectiveAccount} ${type} key configuration.`,
       );
     }
 
@@ -63,6 +108,40 @@ export class PaystackAccountConfigService {
     }
 
     return resolvedKey;
+  }
+
+  private resolveEffectiveAccount(
+    account: PaystackAccountType,
+  ): PaystackAccountType {
+    if (account !== "default") {
+      return account;
+    }
+
+    const configuredDefault = String(
+      process.env.PAYSTACK_DEFAULT_ACCOUNT || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (configuredDefault === "new") {
+      return "new";
+    }
+
+    if (configuredDefault === "old") {
+      return "old";
+    }
+
+    const useNewAccountAsDefault = String(
+      process.env.PAYSTACK_USE_NEW_ACCOUNT_AS_DEFAULT || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (["true", "1", "yes", "on"].includes(useNewAccountAsDefault)) {
+      return "new";
+    }
+
+    return "default";
   }
 
   private resolveEnvVarName(

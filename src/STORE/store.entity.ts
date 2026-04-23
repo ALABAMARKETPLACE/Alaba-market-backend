@@ -248,8 +248,8 @@ export class Store extends Model<Store> {
 
   @Column({ 
     type: DataType.DECIMAL(5, 2), 
-    defaultValue: 95.0,
-    comment: "Seller percentage (Admin gets 5%)"
+    defaultValue: 93.5,
+    comment: "Seller percentage (Admin gets 6.5%)"
   })
   percentage_charge: number;
 

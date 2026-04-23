@@ -50,6 +50,7 @@ describe("PaystackService", () => {
         Authorization: `Bearer ${process.env.PAYSTACK_TEST_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "sk_test_123456"}`,
         "Content-Type": "application/json",
       })),
+      getDefaultAccountType: jest.fn(() => "default"),
       getPublicKey: jest.fn(
         () =>
           process.env.PAYSTACK_TEST_PUBLIC_KEY ||

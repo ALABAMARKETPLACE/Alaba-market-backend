@@ -11410,7 +11410,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/order/guest/all",
+              "raw": "{{baseUrl}}/order/guest/all?page=1&take=10&status=&sort=&order=DESC",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -11418,8 +11418,31 @@
                 "order",
                 "guest",
                 "all"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "take",
+                  "value": "10"
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "sort",
+                  "value": ""
+                },
+                {
+                  "key": "order",
+                  "value": "DESC"
+                }
               ]
-            }
+            },
+            "description": "Admin-only guest purchases endpoint. Returns all guest orders, including paid-but-unfulfilled guest checkout records. Use this for a dedicated guest purchases screen."
           },
           "response": [],
           "event": [
@@ -14646,6 +14669,331 @@
               }
             }
           ]
+        },
+        {
+          "name": "GET /paystack/manual-settlement/audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/paystack/manual-settlement/audit?page=1&take=20&storeId={{storeId}}&reference={{reconcileReference}}&buyerEmail={{buyerEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "paystack",
+                "manual-settlement",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "take",
+                  "value": "20"
+                },
+                {
+                  "key": "storeId",
+                  "value": "{{storeId}}"
+                },
+                {
+                  "key": "reference",
+                  "value": "{{reconcileReference}}"
+                },
+                {
+                  "key": "buyerEmail",
+                  "value": "{{buyerEmail}}"
+                }
+              ]
+            },
+            "description": "Admin-only audit endpoint for all non-split payments, including company-account collections and legacy payments without split metadata. Supports filtering by storeId, reference, and buyerEmail."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const paystackReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', paystackReference);",
+                  "  setIf('reconcileReference', paystackReference);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || json?.authorization_url);",
+                  "  setIf('paystackStatus', data?.status || json?.status);",
+                  "  setIf('paystackCustomerEmail', data?.customer?.email || data?.authorization?.email);",
+                  "  setIf('paystackAmountKobo', data?.amount || json?.amount);",
+                  "  setIf('guestEmail', data?.customer?.email || data?.authorization?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /admin/paystack/subaccounts/update-percentage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"percentage_charge\": 93.5,\n  \"dryRun\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/update-percentage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "update-percentage"
+              ]
+            },
+            "description": "Admin-only bulk updater for new-account Paystack subaccounts. Omit storeIds to update every migrated store, or pass storeIds to target specific stores. Use dryRun=true first to preview affected stores, then set dryRun=false to push the update to Paystack and sync local store records."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /admin/paystack/subaccounts/sync-new-codes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dryRun\": true,\n  \"perPage\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/sync-new-codes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "sync-new-codes"
+              ]
+            },
+            "description": "Admin-only backfill for copied Paystack subaccounts. It fetches subaccounts from the new Paystack account, matches them to local stores, and stores paystack_subaccount_code_new locally. Use dryRun=true first."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /admin/paystack/subaccounts/unmatched-remote",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/unmatched-remote?page=1&limit=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "unmatched-remote"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Admin-only list of live new-account Paystack subaccounts that are not currently matched to local stores targeted by the percentage update flow. Each item includes a classification, candidate_store_ids, and a reason."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /admin/paystack/subaccounts/resolve-unmatched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dryRun\": true,\n  \"classifications\": [\n    \"missing_local_link\"\n  ],\n  \"page\": 1,\n  \"limit\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/paystack/subaccounts/resolve-unmatched",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "paystack",
+                "subaccounts",
+                "resolve-unmatched"
+              ]
+            },
+            "description": "Admin-only safe auto-linker for unmatched remote Paystack subaccounts. By default it previews only missing_local_link records with exactly one candidate store. Set dryRun=false after verifying the preview."
+          },
+          "response": []
         }
       ]
     },
@@ -29397,6 +29745,13 @@
       "key": "id",
       "type": "number",
       "value": "1",
+      "enabled": true
+    },
+    {
+      "id": "buyerEmail",
+      "key": "buyerEmail",
+      "type": "string",
+      "value": "olagiddz@gmail.com",
       "enabled": true
     }
   ]
