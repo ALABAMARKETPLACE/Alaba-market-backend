@@ -31,6 +31,8 @@ interface SyncExistingNewSubaccountsOptions {
   storeIds?: number[];
   perPage?: number;
   maxPages?: number;
+  includeResults?: boolean;
+  resultLimit?: number;
 }
 
 interface CreateSubaccountPayload {
@@ -259,6 +261,14 @@ export class PaystackSubaccountMigrationService {
     const dryRun = Boolean(options.dryRun);
     const force = Boolean(options.force);
     const perPage = Math.min(Math.max(Number(options.perPage || 100), 1), 100);
+    const includeResults =
+      typeof options.includeResults === "boolean"
+        ? options.includeResults
+        : dryRun;
+    const resultLimit = Math.min(
+      Math.max(Number(options.resultLimit || (dryRun ? 500 : 50)), 1),
+      500,
+    );
     const localStores = await this.findSyncCandidates(options.storeIds, force);
     const remoteSubaccounts = await this.fetchNewAccountSubaccounts({
       perPage,
@@ -383,6 +393,10 @@ export class PaystackSubaccountMigrationService {
       }
     }
 
+    const returnedResults = includeResults
+      ? results.slice(0, resultLimit)
+      : [];
+
     return new DataResponseDto(
       {
         dryRun,
@@ -394,8 +408,11 @@ export class PaystackSubaccountMigrationService {
           updated,
           ambiguous,
           skippedExistingNewCode: skipped,
+          totalResults: results.length,
+          returnedResults: returnedResults.length,
+          resultsTruncated: includeResults && returnedResults.length < results.length,
         },
-        results,
+        results: returnedResults,
       },
       true,
       dryRun

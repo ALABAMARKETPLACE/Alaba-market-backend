@@ -96,4 +96,26 @@ export class SyncNewSubaccountsDto {
   @IsInt()
   @Min(1)
   maxPages?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "When true, include detailed per-record results in the response. Defaults to true for dry runs and false for live runs.",
+    example: false,
+  })
+  @IsOptional()
+  @Transform(({ value }) => toBoolean(value))
+  @IsBoolean()
+  includeResults?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Maximum number of detailed result rows to return when includeResults is enabled.",
+    example: 50,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  resultLimit?: number;
 }
