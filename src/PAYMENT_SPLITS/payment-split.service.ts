@@ -21,6 +21,7 @@ import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
 import { Role } from "../shared/enum/role.enum";
 import { resolveStoreSubaccountCode } from "../shared/helpers/paystack-subaccount.helper";
+import { PaystackAccountConfigService } from "../PAYSTACK_PAYMENT/paystack-account-config.service";
 
 type PaymentSplitActor = {
   userId?: number;
@@ -42,6 +43,7 @@ export class PaymentSplitService {
 
     @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
+    private readonly paystackAccountConfigService: PaystackAccountConfigService,
   ) {}
 
   private toKobo(amount: number | string | null | undefined): number {
@@ -92,6 +94,8 @@ export class PaymentSplitService {
       delivery_kobo: this.toKobo(order.deliveryCharge),
       tax_kobo: this.toKobo(order.tax),
       discount_kobo: this.toKobo(order.discount),
+      admin_percentage:
+        this.paystackAccountConfigService.getAdminSplitPercentage(),
     });
 
     return {
