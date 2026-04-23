@@ -64,7 +64,7 @@ export class PaystackSubaccount extends Model<PaystackSubaccount> {
 
   @Column({
     type: DataType.DECIMAL(5, 2),
-    defaultValue: 95.0,
+    defaultValue: 93.5,
   })
   percentage_charge: number;
 
@@ -87,7 +87,7 @@ export class PaystackSubaccount extends Model<PaystackSubaccount> {
   admin_approved_at: Date;
 
   @Column(DataType.JSON)
-  paystack_response: JSON;
+  paystack_response: Record<string, any> | null;
 
   @IsEmail
   @Column(DataType.STRING)

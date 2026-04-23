@@ -48,6 +48,37 @@ export class OrderPayments extends Model<OrderPayments> {
   ref: string;
 
   @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment:
+      "True when the buyer paid into the company Paystack account and the seller must be settled manually",
+  })
+  requires_manual_settlement: boolean;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+    comment:
+      "How this payment was collected: store_subaccount or company_account_no_subaccount",
+  })
+  collection_mode: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+    comment: "Which Paystack account handled the charge: default, old, or new",
+  })
+  paystack_account_used: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+    comment: "Human-readable reason why manual settlement is required",
+  })
+  manual_settlement_reason: string;
+
+  @Column({
     type: DataType.DOUBLE,
     allowNull: false,
     set(value: number) {

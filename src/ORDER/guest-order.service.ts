@@ -291,6 +291,267 @@ export class GuestOrderService {
     } as any;
   }
 
+  private buildNormalizedGuestAddress(source: any = {}) {
+    return {
+      full_name: source?.full_name || source?.name || "",
+      phone: source?.phone_no || source?.phone || "",
+      phone_no: source?.phone_no || source?.phone || "",
+      address: source?.full_address || source?.address || "",
+      full_address: source?.full_address || source?.address || "",
+      fullAddress: source?.full_address || source?.address || "",
+      street: source?.full_address || source?.address || "",
+      city: source?.city || "",
+      state: source?.state || "",
+      state_id: source?.state_id || null,
+      country: source?.country || "",
+      country_id: source?.country_id || null,
+      landmark: source?.landmark || null,
+      address_type: source?.address_type || source?.type || "home",
+      type: source?.address_type || source?.type || "home",
+      pin_code: source?.pin_code || source?.pincode || "",
+      pincode: source?.pin_code || source?.pincode || "",
+      code: source?.country_code || source?.code || "",
+      country_code: source?.country_code || source?.code || "",
+      alt_phone: source?.phone_no || source?.phone || "",
+    };
+  }
+
+  private formatGuestOrderRecord(order: any) {
+    const normalizedAddress = this.buildNormalizedGuestAddress({
+      full_name: order.delivery_full_name,
+      phone_no: order.delivery_phone,
+      full_address: order.delivery_address,
+      city: order.delivery_city,
+      state: order.delivery_state,
+      state_id: order.delivery_state_id,
+      country: order.delivery_country,
+      country_id: order.delivery_country_id,
+      landmark: order.delivery_landmark,
+      address_type: order.delivery_address_type,
+      country_code: order.guest_country_code || "",
+    });
+
+    return {
+      id: order.id,
+      order_id: order.order_id,
+      status: order.status,
+      guest_email: order.guest_email,
+      guest_first_name: order.guest_first_name,
+      guest_last_name: order.guest_last_name,
+      guest_phone: order.guest_phone,
+      address: normalizedAddress,
+      shipping_address: normalizedAddress,
+      delivery_address: normalizedAddress,
+      store: order.storeDetails,
+      stores: order.storeDetails ? [order.storeDetails] : [],
+      items: order.orderItems,
+      totalItems: order.totalItems,
+      total: order.total,
+      deliveryCharge: order.deliveryCharge,
+      discount: order.discount,
+      tax: order.tax,
+      grandTotal: order.grandTotal,
+      payment: order.orderPayment,
+      delivery_date: order.delivery_date,
+      createdAt: order.createdAt,
+      orderStatus: order.orderStatus,
+      order_notes: order.order_notes,
+      is_guest_order: order.is_guest_order,
+      record_type: "order",
+    };
+  }
+
+  private extractGuestCheckoutPayload(payload: any = {}) {
+    for (const candidate of [
+      payload,
+      payload?.order_payload,
+      payload?.guest_order_payload,
+      payload?.checkout_payload,
+    ]) {
+      if (
+        candidate &&
+        (candidate?.guest_info ||
+          candidate?.delivery_address ||
+          Array.isArray(candidate?.cart_items))
+      ) {
+        return candidate;
+      }
+    }
+
+    return payload;
+  }
+
+  private async getOrphanedGuestCheckoutRecords(status?: string) {
+    const checkoutWhere: any = {
+      payment_status: "success",
+      status: { [Op.ne]: "completed" },
+    };
+
+    if (status) {
+      checkoutWhere[Op.or] = [{ status }, { payment_status: status }];
+    }
+
+    const guestCheckouts = await this.guestCheckoutRepository.findAll({
+      where: checkoutWhere,
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (!guestCheckouts.length) {
+      return [];
+    }
+
+    const references = guestCheckouts
+      .map((checkout: any) => checkout.reference)
+      .filter(Boolean);
+
+    const existingOrders = references.length
+      ? await this.orderRepository.findAll({
+          where: {
+            payment_reference: {
+              [Op.in]: references,
+            },
+          } as any,
+          attributes: ["payment_reference"],
+          raw: true,
+        })
+      : [];
+
+    const existingReferences = new Set(
+      existingOrders
+        .map((order: any) => order.payment_reference)
+        .filter(Boolean),
+    );
+
+    const orphanedCheckouts = guestCheckouts.filter(
+      (checkout: any) => !existingReferences.has(checkout.reference),
+    );
+
+    if (!orphanedCheckouts.length) {
+      return [];
+    }
+
+    const storeIds = Array.from<number>(
+      new Set<number>(
+        orphanedCheckouts.flatMap((checkout: any) => {
+          const payload = this.extractGuestCheckoutPayload(checkout.payload);
+          const cartItems = Array.isArray(payload?.cart_items)
+            ? payload.cart_items
+            : Array.isArray(payload?.items)
+            ? payload.items
+            : [];
+
+          return cartItems
+            .map((item: any) => Number(item?.store_id))
+            .filter((storeId: number) => Number.isFinite(storeId) && storeId > 0);
+        }),
+      ),
+    );
+
+    const storeMap = new Map<number, any>();
+
+    if (storeIds.length) {
+      const stores = await Store.findAll({
+        where: { id: { [Op.in]: storeIds } },
+        attributes: [
+          "id",
+          "name",
+          "store_name",
+          "email",
+          "phone",
+          "business_address",
+          "logo_upload",
+          "slug",
+        ],
+        raw: true,
+      });
+
+      for (const store of stores) {
+        storeMap.set(Number((store as any).id), store);
+      }
+    }
+
+    return orphanedCheckouts.map((checkout: any) => {
+      const payload = this.extractGuestCheckoutPayload(checkout.payload);
+      const guestInfo = payload?.guest_info || {};
+      const deliveryAddress = this.buildNormalizedGuestAddress(
+        payload?.delivery_address ||
+          payload?.address ||
+          payload?.shipping_address ||
+          {},
+      );
+      const cartItems = Array.isArray(payload?.cart_items)
+        ? payload.cart_items
+        : Array.isArray(payload?.items)
+        ? payload.items
+        : [];
+      const stores = Array.from<number>(
+        new Set<number>(
+          cartItems
+            .map((item: any) => Number(item?.store_id))
+            .filter((storeId: number) => Number.isFinite(storeId) && storeId > 0),
+        ),
+      )
+        .map((storeId) => storeMap.get(storeId))
+        .filter(Boolean);
+
+      return {
+        id: checkout.id,
+        order_id: checkout.reference,
+        status: checkout.status,
+        guest_email: checkout.guest_email,
+        guest_first_name: guestInfo?.first_name || "",
+        guest_last_name: guestInfo?.last_name || "",
+        guest_phone: guestInfo?.phone || "",
+        address: deliveryAddress,
+        shipping_address: deliveryAddress,
+        delivery_address: deliveryAddress,
+        store: stores.length === 1 ? stores[0] : stores[0] || null,
+        stores,
+        items: cartItems.map((item: any, index: number) => ({
+          id: item?.id || `${checkout.id}-${index}`,
+          productId: item?.product_id || item?.productId || null,
+          variantId: item?.variant_id || item?.variantId || null,
+          quantity: item?.quantity || 0,
+          price: item?.unit_price || item?.price || 0,
+          totalPrice:
+            item?.totalPrice ||
+            (Number(item?.quantity || 0) * Number(item?.unit_price || item?.price || 0)),
+          image: item?.image || null,
+          name: item?.product_name || item?.name || null,
+          sku: item?.sku || null,
+          combination: item?.combination || null,
+          store_id: item?.store_id || item?.storeId || null,
+        })),
+        totalItems: cartItems.reduce(
+          (sum: number, item: any) => sum + Number(item?.quantity || 0),
+          0,
+        ),
+        total: Number(checkout.amount_kobo || 0) / 100,
+        deliveryCharge: 0,
+        discount: 0,
+        tax: 0,
+        grandTotal: Number(checkout.amount_kobo || 0) / 100,
+        payment: {
+          id: null,
+          paymentType: "paystack",
+          status: checkout.payment_status,
+          ref: checkout.reference,
+          amount: Number(checkout.amount_kobo || 0) / 100,
+        },
+        delivery_date: null,
+        createdAt:
+          checkout.processed_at || checkout.createdAt || checkout.updatedAt || null,
+        orderStatus: [],
+        order_notes: checkout.error,
+        is_guest_order: true,
+        record_type: "orphaned_guest_checkout",
+        checkout_status: checkout.status,
+        payment_status: checkout.payment_status,
+        checkout_reference: checkout.reference,
+      };
+    });
+  }
+
   /** Get all Guest Orders */
   async getAllGuestOrders(
     pageOptions: PageOptionsGetOrdersDto,
@@ -307,238 +568,85 @@ export class GuestOrderService {
 
       const limit = pageOptions.take || 10;
       const offset = ((pageOptions.page || 1) - 1) * limit;
+      const orderDirection = pageOptions.order === "ASC" ? "ASC" : "DESC";
 
-      const { count, rows: orders } =
-        await this.orderRepository.findAndCountAll({
-          where: whereClause,
-          include: [
-            {
-              model: OrderItems,
-              as: "orderItems",
-              attributes: [
-                "id",
-                "productId",
-                "variantId",
-                "quantity",
-                "price",
-                "totalPrice",
-                "image",
-                "name",
-                "sku",
-                "combination",
-              ],
-            },
-            {
-              model: OrderPayments,
-              as: "orderPayment",
-              attributes: ["id", "paymentType", "status", "ref", "amount"],
-            },
-            {
-              model: OrderStatus,
-              as: "orderStatus",
-              attributes: ["id", "status", "remark", "createdAt"],
-              separate: true,
-              order: [["createdAt", "DESC"]],
-            },
-            {
-              model: Store,
-              as: "storeDetails",
-              attributes: [
-                "id",
-                "name",
-                "store_name",
-                "email",
-                "phone",
-                "business_address",
-                "logo_upload",
-                "slug",
-              ],
-            },
-          ],
-          limit,
-          offset,
-          order: [["createdAt", "DESC"]],
-          distinct: true,
-        });
-
-      const formattedOrders = orders.map((order: any) => {
-        const normalizedAddress = {
-          full_name: order.delivery_full_name,
-          phone: order.delivery_phone,
-          phone_no: order.delivery_phone,
-          address: order.delivery_address,
-          full_address: order.delivery_address,
-          fullAddress: order.delivery_address,
-          street: order.delivery_address,
-          city: order.delivery_city,
-          state: order.delivery_state,
-          state_id: order.delivery_state_id,
-          country: order.delivery_country,
-          country_id: order.delivery_country_id,
-          landmark: order.delivery_landmark,
-          address_type: order.delivery_address_type,
-          type: order.delivery_address_type,
-          pin_code: "",
-          pincode: "",
-          code: order.guest_country_code || "",
-          country_code: order.guest_country_code || "",
-          alt_phone: order.delivery_phone,
-        };
-
-        return {
-          id: order.id,
-          order_id: order.order_id,
-          status: order.status,
-          guest_email: order.guest_email,
-          guest_first_name: order.guest_first_name,
-          guest_last_name: order.guest_last_name,
-          guest_phone: order.guest_phone,
-          address: normalizedAddress,
-          shipping_address: normalizedAddress,
-          delivery_address: normalizedAddress,
-          store: order.storeDetails,
-          items: order.orderItems,
-          totalItems: order.totalItems,
-          total: order.total,
-          deliveryCharge: order.deliveryCharge,
-          discount: order.discount,
-          tax: order.tax,
-          grandTotal: order.grandTotal,
-          payment: order.orderPayment,
-          delivery_date: order.delivery_date,
-          createdAt: order.createdAt,
-          orderStatus: order.orderStatus,
-          order_notes: order.order_notes,
-          is_guest_order: order.is_guest_order,
-        };
-      });
-
-      // Also fetch paid checkouts that failed to produce ORDER records
-      const fulfilledRefs = new Set(
-        orders.map((o: any) => o.payment_reference).filter(Boolean),
-      );
-
-      const checkoutWhereClause: any = {
-        ...(fulfilledRefs.size > 0
-          ? { reference: { [Op.notIn]: [...fulfilledRefs] } }
-          : {}),
-      };
-
-      if (pageOptions.status) {
-        checkoutWhereClause.status = pageOptions.status;
-      }
-
-      const unfulfilledCheckouts = await this.guestCheckoutRepository.findAll({
-        where: checkoutWhereClause,
-        order: [["createdAt", "DESC"]],
-      });
-
-      const checkoutStoreIds = Array.from(
-        new Set(
-          unfulfilledCheckouts
-            .flatMap((checkout: any) => checkout?.payload?.cart_items || [])
-            .map((item: any) => Number(item?.store_id))
-            .filter((id: number) => Number.isFinite(id) && id > 0),
-        ),
-      );
-
-      const checkoutStores =
-        checkoutStoreIds.length > 0
-          ? await Store.findAll({
-              where: { id: { [Op.in]: checkoutStoreIds } },
-              attributes: [
-                "id",
-                "name",
-                "store_name",
-                "email",
-                "phone",
-                "business_address",
-                "logo_upload",
-                "slug",
-              ],
-            })
-          : [];
-
-      const checkoutStoreMap = new Map<number, any>(
-        checkoutStores.map((store: any) => [Number(store.id), store]),
-      );
-
-      const checkoutOrders = unfulfilledCheckouts.map((checkout: any) => {
-        const p = checkout.payload || {};
-        const guestInfo = p.guest_info || {};
-        const deliveryAddr = p.delivery_address || {};
-        const orderSummary = p.order_summary || {};
-        const sellerIds: number[] = Array.from(
-          new Set(
-            (p.cart_items || [])
-              .map((item: any) => Number(item?.store_id))
-              .filter((id: number) => Number.isFinite(id) && id > 0),
-          ),
-        );
-        const sellers = sellerIds
-          .map((id) => checkoutStoreMap.get(id))
-          .filter(Boolean);
-        const normalizedAddress = {
-          full_name: deliveryAddr.full_name,
-          phone: deliveryAddr.phone_no,
-          address: deliveryAddr.full_address,
-          full_address: deliveryAddr.full_address,
-          city: deliveryAddr.city,
-          state: deliveryAddr.state,
-          state_id: deliveryAddr.state_id,
-          country: deliveryAddr.country,
-          country_id: deliveryAddr.country_id,
-        };
-        return {
-          id: checkout.id,
-          order_id: null,
-          checkout_reference: checkout.reference,
-          status: "payment_received",
-          fulfillment_status: checkout.status,
-          payment_status: checkout.payment_status,
-          guest_email: checkout.guest_email || guestInfo.email,
-          guest_first_name: guestInfo.first_name,
-          guest_last_name: guestInfo.last_name,
-          guest_phone: guestInfo.phone,
-          address: normalizedAddress,
-          shipping_address: normalizedAddress,
-          delivery_address: normalizedAddress,
-          store: sellers.length === 1 ? sellers[0] : null,
-          sellers,
-          items: (p.cart_items || []).map((item: any) => ({
-            id: null,
-            productId: item.product_id,
-            name: item.product_name,
-            quantity: item.quantity,
-            price: item.unit_price,
-            totalPrice: item.total_price,
-            image: item.image,
-          })),
-          total: orderSummary.total || 0,
-          grandTotal: orderSummary.total || 0,
-          payment: {
-            paymentType: "paystack",
-            status: checkout.payment_status,
-            ref: checkout.reference,
-            amount: (checkout.amount_kobo || 0) / 100,
+      const orders = await this.orderRepository.findAll({
+        where: whereClause,
+        include: [
+          {
+            model: OrderItems,
+            as: "orderItems",
+            attributes: [
+              "id",
+              "productId",
+              "variantId",
+              "quantity",
+              "price",
+              "totalPrice",
+              "image",
+              "name",
+              "sku",
+              "combination",
+            ],
           },
-          fulfillment_error: checkout.error,
-          is_guest_order: true,
-          from_checkout: true,
-          createdAt: checkout.createdAt,
-          orderStatus: null,
-        };
+          {
+            model: OrderPayments,
+            as: "orderPayment",
+            attributes: ["id", "paymentType", "status", "ref", "amount"],
+          },
+          {
+            model: OrderStatus,
+            as: "orderStatus",
+            attributes: ["id", "status", "remark", "createdAt"],
+            separate: true,
+            order: [["createdAt", "DESC"]],
+          },
+          {
+            model: Store,
+            as: "storeDetails",
+            attributes: [
+              "id",
+              "name",
+              "store_name",
+              "email",
+              "phone",
+              "business_address",
+              "logo_upload",
+              "slug",
+            ],
+          },
+        ],
+        order: [["createdAt", orderDirection]],
       });
 
-      const allOrders = [...formattedOrders, ...checkoutOrders];
-      const totalCount = Number(count) + unfulfilledCheckouts.length;
+      const formattedOrders = orders.map((order: any) =>
+        this.formatGuestOrderRecord(order),
+      );
+      const orphanedCheckouts = await this.getOrphanedGuestCheckoutRecords(
+        pageOptions.status,
+      );
+      const combinedRecords = [...formattedOrders, ...orphanedCheckouts].sort(
+        (left: any, right: any) => {
+          const leftTime = left?.createdAt
+            ? new Date(left.createdAt).getTime()
+            : 0;
+          const rightTime = right?.createdAt
+            ? new Date(right.createdAt).getTime()
+            : 0;
+
+          return orderDirection === "ASC"
+            ? leftTime - rightTime
+            : rightTime - leftTime;
+        },
+      );
+      const paginatedRecords = combinedRecords.slice(offset, offset + limit);
 
       return new DataResponseDto(
-        allOrders,
+        paginatedRecords,
         true,
         "All guest orders retrieved successfully",
         pageOptions,
-        totalCount,
+        combinedRecords.length,
       );
     } catch (err) {
       console.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
@@ -858,9 +966,7 @@ export class GuestOrderService {
     try {
       const result = await this.orderRepository.sequelize!.transaction(
         async (transaction: Transaction) => {
-          const order: any = await this.orderRepository.findByPk(id, {
-            transaction,
-          });
+          const order: any = await this.findGuestOrderForUpdate(id, transaction);
 
           if (!order) {
             throw new NotFoundException("Order not found");
@@ -1064,6 +1170,24 @@ export class GuestOrderService {
         }`,
       );
     }
+  }
+
+  private async findGuestOrderForUpdate(
+    identifier: number,
+    transaction: Transaction,
+  ) {
+    const orderByPrimaryKey = await this.orderRepository.findByPk(identifier, {
+      transaction,
+    });
+
+    if (orderByPrimaryKey) {
+      return orderByPrimaryKey;
+    }
+
+    return this.orderRepository.findOne({
+      where: { order_id: identifier },
+      transaction,
+    });
   }
 
   // ==================== VALIDATION ====================

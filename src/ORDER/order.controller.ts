@@ -421,7 +421,16 @@ export class OrderController {
     @Param("id", ParseIntPipe) id: number,
     @Body() create: UpdateOrderStatus,
   ): Promise<DataResponseDto> {
-    return this.orderService.updateOrder(id, create);
+    return this.orderService.updateOrder(id, create).catch((err) => {
+      if (
+        err instanceof HttpException &&
+        err.getStatus() === HttpStatus.NOT_FOUND
+      ) {
+        return this.guestOrderService.updateGuestOrder(id, create);
+      }
+
+      throw err;
+    });
   }
 
   @Roles(Role.Seller, Role.Admin)

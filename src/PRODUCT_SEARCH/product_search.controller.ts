@@ -94,19 +94,6 @@ export class ProductSearchController {
     return this.topStoreService.getPrintStore(options);
   }
 
-  @Public()
-  @UseGuards(AuthGuard)
-  @Get("details/slug/:slug")
-  @ApiBearerAuth()
-  @ApiParam({ name: "slug", required: true })
-  @ApiDataObjectResponse(ProductsDto)
-  @UsePipes(new ValidationPipe({ transform: true }))
-  findOneBySlug(
-    @Param("slug") slug: string,
-    @UserId() userId: number,
-  ): Promise<DataResponseDto> {
-    return this.productServiceMain.fetchOneProductBySlug(slug, userId);
-  }
 
   @Public()
   @UseGuards(AuthGuard)
@@ -179,4 +166,18 @@ export class ProductSearchController {
   }
 
   //=======================================================================================old
+
+  @Public()
+  @UseGuards(AuthGuard)
+  @Get(":slug")
+  @ApiBearerAuth()
+  @ApiParam({ name: "slug", required: true })
+  @ApiDataObjectResponse(ProductsDto)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  findOneBySlug(
+    @Param("slug") slug: string,
+    @UserId() userId: number,
+  ): Promise<DataResponseDto> {
+    return this.productServiceMain.fetchOneProductBySlug(slug, userId);
+  }
 }

@@ -122,18 +122,21 @@ export class ProductAttributes {
     return [
       {
         model: CartTable,
+        as: "cartDetail",
         required: false,
         where: { userId },
         attributes: ["variantId"],
       },
       {
         model: Wishlist,
+        as: "wishLists",
         required: false,
         where: { userId },
         attributes: [],
       },
       {
         model: ProductReviews,
+        as: "productReview",
         required: false,
         where: { user_id: userId },
         attributes: [],

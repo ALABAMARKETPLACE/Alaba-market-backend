@@ -5,6 +5,7 @@ const collectionPaths = [
   path.join(__dirname, "..", "alaba-marketplace-postman-collection.json"),
   path.join(__dirname, "..", "postman_collection.json"),
 ];
+const srcRoot = path.join(__dirname, "..", "src");
 const DEFAULT_EMAIL = "olagiddz@gmail.com";
 
 const collectionVariables = [
@@ -24,6 +25,7 @@ const collectionVariables = [
   { key: "paymentReference", value: "", type: "string" },
   { key: "reconcileReference", value: "", type: "string" },
   { key: "guestEmail", value: DEFAULT_EMAIL, type: "string" },
+  { key: "buyerEmail", value: DEFAULT_EMAIL, type: "string" },
   { key: "paystackStatus", value: "", type: "string" },
   { key: "paystackCustomerEmail", value: "", type: "string" },
   { key: "paystackAuthUrl", value: "", type: "string" },
@@ -35,7 +37,266 @@ const collectionVariables = [
   { key: "subCategoryId", value: "1", type: "number" },
   { key: "storeSlug", value: "", type: "string" },
   { key: "productPid", value: "", type: "string" },
+  { key: "phone", value: "2348012345678", type: "string" },
+  { key: "slug", value: "", type: "string" },
+  { key: "token", value: "", type: "string" },
+  { key: "invoiceId", value: "1", type: "number" },
+  { key: "invoiceToken", value: "", type: "string" },
+  { key: "countryId", value: "1", type: "number" },
+  { key: "stateId", value: "1", type: "number" },
+  { key: "bannerId", value: "1", type: "number" },
+  { key: "offerId", value: "1", type: "number" },
+  { key: "notificationId", value: "1", type: "number" },
+  { key: "bankAccountId", value: "1", type: "number" },
+  { key: "companyId", value: "1", type: "number" },
+  { key: "driverId", value: "1", type: "number" },
+  { key: "position", value: "1", type: "number" },
+  { key: "reference", value: "", type: "string" },
+  { key: "bankCode", value: "", type: "string" },
+  { key: "type", value: "", type: "string" },
+  { key: "limit", value: "10", type: "number" },
 ];
+
+const controllerGroupOverrides = {
+  coorporate_store: "COORPORATE STORE",
+  product_search: "PRODUCT SEARCH",
+  store_search: "STORE SEARCH",
+  individual_seller: "INDIVIDUAL SELLER",
+  refund_request: "REFUND REQUEST",
+  payment_gateway: "PAYMENT GATEWAY",
+  payment_splits: "PAYMENT SPLITS",
+  paymentlog: "PAYMENTLOG",
+  order_status: "ORDERSTATUS",
+  print_status: "PRINTSTATUS",
+  print_configeration: "PRINT CONFIGERATION",
+  new_address: "NEW ADDRESS",
+  new_distance_charge: "NEW DISTANCE CHARGE",
+  user_bank_account: "USER BANK ACCOUNT",
+  userhistory: "USERHISTORY",
+  subscription_plans: "SUBSCRIPTION PLANS",
+  boost_requests: "BOOST REQUESTS",
+  featured_products: "FEATURED PRODUCTS",
+  paystack_subaccounts: "PAYSTACK SUBACCOUNTS",
+  subtitution_token: "SUBTITUTION TOKEN",
+  business_type: "BUSINESSTYPE",
+};
+
+function walk(dir, acc = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const target = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(target, acc);
+    } else {
+      acc.push(target);
+    }
+  }
+
+  return acc;
+}
+
+function normalizeCollectionKey(value) {
+  return String(value || "")
+    .replace(/{{baseUrl}}/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase();
+}
+
+function titleCaseSegment(value) {
+  return String(value || "")
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function guessVariableType(key) {
+  const lower = String(key || "").toLowerCase();
+  if (
+    lower.endsWith("id") ||
+    lower === "position" ||
+    lower === "page" ||
+    lower === "take" ||
+    lower === "limit"
+  ) {
+    return "number";
+  }
+
+  return "string";
+}
+
+function defaultVariableValue(key) {
+  const preset = collectionVariables.find((entry) => entry.key === key);
+  if (preset) {
+    return preset.value;
+  }
+
+  return guessVariableType(key) === "number" ? "1" : "";
+}
+
+function deriveVariableName(controllerPath, paramName) {
+  const normalizedController = String(controllerPath || "")
+    .split("/")
+    .filter(Boolean)
+    .join("_")
+    .toLowerCase();
+  const normalizedParam = String(paramName || "").trim();
+  const lowerParam = normalizedParam.toLowerCase();
+
+  if (lowerParam === "email") return "userEmail";
+  if (lowerParam === "phone") return "phone";
+  if (lowerParam === "token") {
+    if (normalizedController === "invoice") return "invoiceToken";
+    return "token";
+  }
+  if (lowerParam === "slug") {
+    if (normalizedController.includes("store_search")) return "storeSlug";
+    return "slug";
+  }
+  if (lowerParam === "reference") return "reference";
+  if (lowerParam === "bankcode") return "bankCode";
+  if (lowerParam === "type") return "type";
+  if (lowerParam !== "id") return normalizedParam;
+
+  const idMap = {
+    user: "userId",
+    users: "managedUserId",
+    products: "productId",
+    productimage: "productId",
+    productvariant: "variantId",
+    order: "orderId",
+    print: "orderId",
+    address: "addressId",
+    "new-address": "addressId",
+    category: "categoryId",
+    subcategory: "subCategoryId",
+    sub_category: "subCategoryId",
+    countries: "countryId",
+    states: "stateId",
+    banner: "bannerId",
+    enquiry: "enquiryId",
+    storereview: "storeId",
+    invoice: "invoiceId",
+    notifications: "notificationId",
+    offers: "offerId",
+    "user-bank-account": "bankAccountId",
+    "paystack-subaccounts": "storeId",
+  };
+
+  return idMap[normalizedController] || "id";
+}
+
+function replacePathParams(rawPath, controllerPath) {
+  const normalized = String(rawPath || "").replace(/\/+/g, "/");
+  const discoveredVariables = [];
+
+  const replaced = normalized.replace(/:([A-Za-z0-9_]+)/g, (_, paramName) => {
+    const variableName = deriveVariableName(controllerPath, paramName);
+    discoveredVariables.push(variableName);
+    return `{{${variableName}}}`;
+  });
+
+  return {
+    rawPath: replaced,
+    discoveredVariables,
+  };
+}
+
+function normalizeControllerGroupName(controllerPath) {
+  const base = String(controllerPath || "")
+    .split("/")
+    .filter(Boolean)
+    .join("_");
+
+  if (controllerGroupOverrides[base]) {
+    return controllerGroupOverrides[base];
+  }
+
+  return String(controllerPath || "")
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => titleCaseSegment(segment))
+    .join(" ")
+    .toUpperCase();
+}
+
+function extractControllerRoutes() {
+  const controllerFiles = walk(srcRoot).filter((file) =>
+    file.endsWith(".controller.ts"),
+  );
+  const routes = [];
+
+  for (const file of controllerFiles) {
+    const source = fs.readFileSync(file, "utf8");
+    const controllerMatch = source.match(/@Controller\(([^)]*)\)/);
+    const controllerPath = controllerMatch
+      ? controllerMatch[1].replace(/["'`\s]/g, "")
+      : "";
+    const routeRegex = /@(Get|Post|Put|Patch|Delete)\(([^)]*)\)/g;
+
+    let routeMatch;
+    while ((routeMatch = routeRegex.exec(source))) {
+      const method = routeMatch[1].toUpperCase();
+      const routeSegment = String(routeMatch[2] || "").replace(/["'`\s]/g, "");
+      const combinedPath = [controllerPath, routeSegment]
+        .filter(Boolean)
+        .join("/")
+        .replace(/\/+/g, "/");
+      const normalizedRoute = combinedPath.startsWith("/")
+        ? combinedPath
+        : `/${combinedPath}`;
+      const converted = replacePathParams(normalizedRoute, controllerPath);
+      const cleanedRawPath = converted.rawPath.replace(/\/$/, "") || "/";
+
+      routes.push({
+        controllerPath,
+        groupName: normalizeControllerGroupName(controllerPath),
+        method,
+        rawPath: cleanedRawPath,
+        regex: toRouteRegex(cleanedRawPath),
+        pathSegments: cleanedRawPath
+          .replace(/^\//, "")
+          .split("/")
+          .filter(Boolean),
+        variables: converted.discoveredVariables,
+      });
+    }
+  }
+
+  return routes;
+}
+
+function flattenRequests(items, acc = []) {
+  for (const item of items || []) {
+    if (Array.isArray(item.item)) {
+      flattenRequests(item.item, acc);
+      continue;
+    }
+
+    if (!item.request?.url?.raw) continue;
+    acc.push(item);
+  }
+
+  return acc;
+}
+
+function toRouteRegex(rawPath) {
+  const normalized = String(rawPath || "")
+    .replace("{{baseUrl}}", "")
+    .split("?")[0]
+    .replace(/\/+/g, "/")
+    .replace(/\/$/, "");
+
+  const pattern = (normalized || "/")
+    .split("/")
+    .map((segment) => {
+      if (!segment) return "";
+      if (/^\{\{.+\}\}$/.test(segment)) return "[^/]+";
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    })
+    .join("/");
+
+  return new RegExp(`^${pattern || "/"}$`);
+}
 
 function sampleForResource(resource) {
   resource = (resource || "").toLowerCase();
@@ -96,6 +357,35 @@ function sampleForResource(resource) {
   return { example: "replace_with_actual_payload" };
 }
 
+function sampleForRequest(method, pathSegments = []) {
+  const normalizedMethod = String(method || "").toUpperCase();
+  const normalizedPath = (pathSegments || []).join("/");
+
+  if (
+    normalizedMethod === "PUT" &&
+    /^(order\/guest\/update_status|order\/update_status|print\/update_status)\/.+$/.test(
+      normalizedPath,
+    )
+  ) {
+    return {
+      status: "processing",
+      remark: "Order is being processed",
+      delivery_date: "2026-04-10T00:00:00.000Z",
+    };
+  }
+
+  if (
+    normalizedMethod === "PUT" &&
+    /^products\/update_status\/.+$/.test(normalizedPath)
+  ) {
+    return {
+      status: true,
+    };
+  }
+
+  return sampleForResource(pathSegments[0]);
+}
+
 function ensureJsonHeader(headers) {
   const list = Array.isArray(headers) ? headers : [];
   const has = list.find(
@@ -127,13 +417,19 @@ function processItem(item, summary) {
     }
   } catch (error) {}
 
-  const sample = sampleForResource(resource);
+  const pathSegments =
+    Array.isArray(req.url?.path) && req.url.path.length > 0 ? req.url.path : [];
+  const sample = sampleForRequest(method, pathSegments.length ? pathSegments : [resource]);
   const hasBody =
     req.body &&
     ((req.body.raw && req.body.raw.trim() !== "") ||
       (req.body.mode && req.body[req.body.mode]));
 
-  if (!hasBody) {
+  const shouldReplaceGenericBody =
+    typeof req.body?.raw === "string" &&
+    ["{}", "{\n}"].includes(req.body.raw.trim());
+
+  if (!hasBody || shouldReplaceGenericBody) {
     req.body = { mode: "raw", raw: JSON.stringify(sample, null, 2) };
     req.header = ensureJsonHeader(req.header);
     summary.updatedBodies += 1;
@@ -239,6 +535,175 @@ function upsertRequest(group, requestItem) {
   group.item = Array.isArray(group.item) ? group.item : [];
   group.item.push(requestItem);
   return requestItem;
+}
+
+function ensureCollectionVariable(collection, key) {
+  if (!key) {
+    return;
+  }
+
+  collection.variable = Array.isArray(collection.variable)
+    ? collection.variable
+    : [];
+
+  const existing = collection.variable.find((entry) => entry.key === key);
+  if (existing) {
+    existing.type = existing.type || guessVariableType(key);
+    if (existing.value == null || existing.value === "") {
+      existing.value = defaultVariableValue(key);
+    }
+    return;
+  }
+
+  collection.variable.push({
+    id: key,
+    key,
+    type: guessVariableType(key),
+    value: defaultVariableValue(key),
+    enabled: true,
+  });
+}
+
+function ensureTopLevelGroup(collection, preferredName) {
+  collection.item = Array.isArray(collection.item) ? collection.item : [];
+  const normalizedPreferredName = normalizeCollectionKey(preferredName);
+  const existing = collection.item.find(
+    (entry) => normalizeCollectionKey(entry.name) === normalizedPreferredName,
+  );
+
+  if (existing) {
+    existing.item = Array.isArray(existing.item) ? existing.item : [];
+    return existing;
+  }
+
+  const created = { name: preferredName, item: [] };
+  collection.item.push(created);
+  return created;
+}
+
+function buildGeneratedRequest(route) {
+  const headers = [];
+  if (["POST", "PUT", "PATCH"].includes(route.method)) {
+    headers.push({ key: "Content-Type", value: "application/json" });
+  }
+  headers.push({ key: "Authorization", value: "Bearer {{authToken}}" });
+
+  const request = {
+    method: route.method,
+    header: headers,
+    url: {
+      raw: `{{baseUrl}}${route.rawPath}`,
+      host: ["{{baseUrl}}"],
+      path: route.pathSegments,
+    },
+  };
+
+  if (["POST", "PUT", "PATCH"].includes(route.method)) {
+    request.body = {
+      mode: "raw",
+      raw: JSON.stringify(
+        sampleForRequest(route.method, route.pathSegments),
+        null,
+        2,
+      ),
+      options: { raw: { language: "json" } },
+    };
+  }
+
+  return {
+    name: `${route.method} ${route.rawPath}`,
+    request,
+    response: [],
+  };
+}
+
+function normalizeExistingRequestUrls(collection) {
+  walkRequests(collection.item, (item) => {
+    const request = item?.request;
+    if (!request?.url?.raw) {
+      return;
+    }
+
+    const pathArray = Array.isArray(request.url.path)
+      ? request.url.path
+      : String(request.url.raw || "")
+          .replace("{{baseUrl}}", "")
+          .split("?")[0]
+          .replace(/^\//, "")
+          .split("/")
+          .filter(Boolean);
+    const firstSegment = pathArray[0] || "";
+    const converted = replacePathParams(
+      String(request.url.raw || "").replace("{{baseUrl}}", ""),
+      firstSegment,
+    );
+
+    request.url.raw = `{{baseUrl}}${converted.rawPath}`;
+    request.url.path = converted.rawPath
+      .replace(/^\//, "")
+      .split("/")
+      .filter(Boolean);
+
+    converted.discoveredVariables.forEach((variable) =>
+      ensureCollectionVariable(collection, variable),
+    );
+  });
+}
+
+function syncControllerRoutes(collection) {
+  const routes = extractControllerRoutes();
+  const existingRequests = new Set(
+    flattenRequests(collection.item).map((item) =>
+      normalizeCollectionKey(
+        `${String(item.request.method || "GET").toUpperCase()} ${item.request.url.raw}`,
+      ),
+    ),
+  );
+
+  for (const route of routes) {
+    route.variables.forEach((variable) =>
+      ensureCollectionVariable(collection, variable),
+    );
+
+    const requestKey = normalizeCollectionKey(
+      `${route.method} {{baseUrl}}${route.rawPath}`,
+    );
+    if (existingRequests.has(requestKey)) {
+      continue;
+    }
+
+    const group = ensureTopLevelGroup(collection, route.groupName);
+    const generatedRequest = buildGeneratedRequest(route);
+    upsertRequest(group, generatedRequest);
+    existingRequests.add(requestKey);
+  }
+}
+
+function pruneUnknownRequests(items, knownRoutes) {
+  const nextItems = [];
+
+  for (const item of items || []) {
+    if (Array.isArray(item.item)) {
+      item.item = pruneUnknownRequests(item.item, knownRoutes);
+      if (item.item.length > 0) {
+        nextItems.push(item);
+      }
+      continue;
+    }
+
+    const method = String(item?.request?.method || "GET").toUpperCase();
+    const raw = String(item?.request?.url?.raw || "");
+    const regex = toRouteRegex(raw);
+    const isKnown = knownRoutes.some(
+      (route) => route.method === method && route.regex.test(raw.replace("{{baseUrl}}", "").split("?")[0]),
+    );
+
+    if (isKnown) {
+      nextItems.push(item);
+    }
+  }
+
+  return nextItems;
 }
 
 function upsertTestScript(item, scriptLines) {
@@ -476,6 +941,25 @@ function walkRequests(items, callback, trail = []) {
   }
 }
 
+function removeRequestsByName(items, requestName) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .filter((item) => item?.name !== requestName)
+    .map((item) => {
+      if (Array.isArray(item?.item)) {
+        return {
+          ...item,
+          item: removeRequestsByName(item.item, requestName),
+        };
+      }
+
+      return item;
+    });
+}
+
 function ensurePaystackReconcileRequest(collection) {
   const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
   if (!paymentsGroup) {
@@ -511,6 +995,234 @@ function ensurePaystackReconcileRequest(collection) {
       },
       description:
         "Admin-only reconciliation for historical Paystack transactions. Run with dryRun=true first, then set dryRun=false to replay reconcilable entries through the existing webhook sync flow.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackManualSettlementAuditRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  paymentsGroup.item = Array.isArray(paymentsGroup.item)
+    ? paymentsGroup.item.filter(
+        (entry) => entry?.name !== "GET /paystack/manual-settlement/audit",
+      )
+    : [];
+
+  const legacyPaystackGroup =
+    paymentsGroup.name === "PAYSTACK" ? null : findGroup(collection, "PAYSTACK");
+  if (legacyPaystackGroup && Array.isArray(legacyPaystackGroup.item)) {
+    legacyPaystackGroup.item = legacyPaystackGroup.item.filter(
+      (entry) => entry?.name !== "GET /paystack/manual-settlement/audit",
+    );
+  }
+
+  upsertRequest(paymentsGroup, {
+    name: "GET /paystack/manual-settlement/audit",
+    request: {
+      method: "GET",
+      header: [{ key: "Authorization", value: "Bearer {{authToken}}" }],
+      url: {
+        raw: "{{baseUrl}}/paystack/manual-settlement/audit?page=1&take=20&storeId={{storeId}}&reference={{reconcileReference}}&buyerEmail={{buyerEmail}}",
+        host: ["{{baseUrl}}"],
+        path: ["paystack", "manual-settlement", "audit"],
+        query: [
+          { key: "page", value: "1" },
+          { key: "take", value: "20" },
+          { key: "storeId", value: "{{storeId}}" },
+          { key: "reference", value: "{{reconcileReference}}" },
+          { key: "buyerEmail", value: "{{buyerEmail}}" },
+        ],
+      },
+      description:
+        "Admin-only audit endpoint for all non-split payments, including company-account collections and legacy payments without split metadata. Supports filtering by storeId, reference, and buyerEmail.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackSubaccountPercentageUpdateRequest(collection) {
+  collection.item = removeRequestsByName(
+    collection.item,
+    "POST /admin/paystack/subaccounts/update-percentage",
+  );
+
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  upsertRequest(paymentsGroup, {
+    name: "POST /admin/paystack/subaccounts/update-percentage",
+    request: {
+      method: "POST",
+      header: [
+        { key: "Content-Type", value: "application/json" },
+        { key: "Authorization", value: "Bearer {{authToken}}" },
+      ],
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          {
+            percentage_charge: 93.5,
+            dryRun: true,
+          },
+          null,
+          2,
+        ),
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/update-percentage",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "update-percentage"],
+      },
+      description:
+        "Admin-only bulk updater for new-account Paystack subaccounts. Omit storeIds to update every migrated store, or pass storeIds to target specific stores. Use dryRun=true first to preview affected stores, then set dryRun=false to push the update to Paystack and sync local store records.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackSubaccountSyncRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  collection.item = removeRequestsByName(
+    collection.item,
+    "POST /admin/paystack/subaccounts/sync-new-codes",
+  );
+
+  const refreshedPaymentsGroup = findFirstGroup(collection, [
+    "💳 Payments",
+    "PAYSTACK",
+  ]);
+  if (!refreshedPaymentsGroup) {
+    return;
+  }
+
+  upsertRequest(refreshedPaymentsGroup, {
+    name: "POST /admin/paystack/subaccounts/sync-new-codes",
+    request: {
+      method: "POST",
+      header: [
+        { key: "Content-Type", value: "application/json" },
+        { key: "Authorization", value: "Bearer {{authToken}}" },
+      ],
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          {
+            dryRun: true,
+            perPage: 100,
+          },
+          null,
+          2,
+        ),
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/sync-new-codes",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "sync-new-codes"],
+      },
+      description:
+        "Admin-only backfill for copied Paystack subaccounts. It fetches subaccounts from the new Paystack account, matches them to local stores, and stores paystack_subaccount_code_new locally. Use dryRun=true first.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackUnmatchedRemoteRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  collection.item = removeRequestsByName(
+    collection.item,
+    "GET /admin/paystack/subaccounts/unmatched-remote",
+  );
+
+  const refreshedPaymentsGroup = findFirstGroup(collection, [
+    "💳 Payments",
+    "PAYSTACK",
+  ]);
+  if (!refreshedPaymentsGroup) {
+    return;
+  }
+
+  upsertRequest(refreshedPaymentsGroup, {
+    name: "GET /admin/paystack/subaccounts/unmatched-remote",
+    request: {
+      method: "GET",
+      header: [{ key: "Authorization", value: "Bearer {{authToken}}" }],
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/unmatched-remote?page=1&limit=100",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "unmatched-remote"],
+        query: [
+          { key: "page", value: "1" },
+          { key: "limit", value: "100" },
+        ],
+      },
+      description:
+        "Admin-only list of live new-account Paystack subaccounts that are not currently matched to local stores targeted by the percentage update flow. Each item includes a classification, candidate_store_ids, and a reason.",
+    },
+    response: [],
+  });
+}
+
+function ensurePaystackResolveUnmatchedRequest(collection) {
+  const paymentsGroup = findFirstGroup(collection, ["💳 Payments", "PAYSTACK"]);
+  if (!paymentsGroup) {
+    return;
+  }
+
+  collection.item = removeRequestsByName(
+    collection.item,
+    "POST /admin/paystack/subaccounts/resolve-unmatched",
+  );
+
+  const refreshedPaymentsGroup = findFirstGroup(collection, [
+    "💳 Payments",
+    "PAYSTACK",
+  ]);
+  if (!refreshedPaymentsGroup) {
+    return;
+  }
+
+  upsertRequest(refreshedPaymentsGroup, {
+    name: "POST /admin/paystack/subaccounts/resolve-unmatched",
+    request: {
+      method: "POST",
+      header: [
+        { key: "Content-Type", value: "application/json" },
+        { key: "Authorization", value: "Bearer {{authToken}}" },
+      ],
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          {
+            dryRun: true,
+            classifications: ["missing_local_link"],
+            page: 1,
+            limit: 100,
+          },
+          null,
+          2,
+        ),
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/paystack/subaccounts/resolve-unmatched",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "paystack", "subaccounts", "resolve-unmatched"],
+      },
+      description:
+        "Admin-only safe auto-linker for unmatched remote Paystack subaccounts. By default it previews only missing_local_link records with exactly one candidate store. Set dryRun=false after verifying the preview.",
     },
     response: [],
   });
@@ -792,16 +1504,19 @@ function ensureGuestOrderRequests(collection) {
       method: "GET",
       header: [{ key: "Authorization", value: "Bearer {{authToken}}" }],
       url: {
-        raw: "{{baseUrl}}/order/guest/all?page=1&take=10",
+        raw: "{{baseUrl}}/order/guest/all?page=1&take=10&status=&sort=&order=DESC",
         host: ["{{baseUrl}}"],
         path: ["order", "guest", "all"],
         query: [
           { key: "page", value: "1" },
           { key: "take", value: "10" },
+          { key: "status", value: "" },
+          { key: "sort", value: "" },
+          { key: "order", value: "DESC" },
         ],
       },
       description:
-        "Fetch all guest purchases. Admin route. Supports pagination and optional status query filters.",
+        "Admin-only guest purchases endpoint. Returns all guest orders, including paid-but-unfulfilled guest checkout records. Use this for a dedicated guest purchases screen.",
     },
     response: [],
   });
@@ -851,10 +1566,18 @@ function updateCollectionFile(filePath) {
   }
 
   upsertCollectionVariables(collection);
+  normalizeExistingRequestUrls(collection);
+  syncControllerRoutes(collection);
   ensurePaystackReconcileRequest(collection);
+  ensurePaystackManualSettlementAuditRequest(collection);
+  ensurePaystackSubaccountPercentageUpdateRequest(collection);
+  ensurePaystackSubaccountSyncRequest(collection);
+  ensurePaystackUnmatchedRemoteRequest(collection);
+  ensurePaystackResolveUnmatchedRequest(collection);
   ensurePaystackReconciliationRequests(collection);
   ensureUserManagementRoleRequests(collection);
   ensureGuestOrderRequests(collection);
+  collection.item = pruneUnknownRequests(collection.item, extractControllerRoutes());
   walkRequests(collection.item, (item) => {
     normalizeEmailsInRequest(item.request);
   });

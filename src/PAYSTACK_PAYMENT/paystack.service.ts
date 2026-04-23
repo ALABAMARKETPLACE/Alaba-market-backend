@@ -46,6 +46,7 @@ import { User } from "../USERS/user.entity";
 import { CreateOrderDto } from "../ORDER/dto/createOrder.dto";
 import { PaymentTypeEnum } from "../ORDER/dto/payment-type.enum";
 import { ReconcilePaystackTransactionsDto } from "./dto/reconcile-paystack-transactions.dto";
+import { ManualSettlementAuditDto } from "./dto/manual-settlement-audit.dto";
 import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
 import { JwtService } from "@nestjs/jwt";
 import { OrderLog } from "../ORDER_LOG/orderlog.entity";
@@ -54,6 +55,7 @@ import {
   PaystackAccountType,
   resolveStoreSubaccountSelection,
 } from "../shared/helpers/paystack-subaccount.helper";
+import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 
 @Injectable()
 export class PaystackService {
@@ -100,6 +102,161 @@ export class PaystackService {
     return this.paystackAccountConfigService.getPublicKey();
   }
 
+  async getManualSettlementAudit(
+    query: ManualSettlementAuditDto,
+  ): Promise<DataResponseDto> {
+    const orderWhere: any = {};
+    const paymentWhere: any = {
+      [Op.or]: [
+        { requires_manual_settlement: true },
+        { collection_mode: "company_account_no_subaccount" },
+        { collection_mode: { [Op.is]: null } },
+      ],
+    };
+
+    if (query.storeId) {
+      orderWhere.storeId = query.storeId;
+    }
+
+    if (query.reference) {
+      paymentWhere.ref = query.reference.trim();
+    }
+
+    if (query.buyerEmail) {
+      const normalizedEmail = query.buyerEmail.trim().toLowerCase();
+      orderWhere[Op.or] = [
+        { guest_email: normalizedEmail },
+        { "$userDetails.email$": normalizedEmail },
+      ];
+    }
+
+    const { rows, count } = await Order.findAndCountAll({
+      where: orderWhere,
+      include: [
+        {
+          model: OrderPayments,
+          as: "orderPayment",
+          required: true,
+          where: paymentWhere,
+        },
+        {
+          model: User,
+          as: "userDetails",
+          required: false,
+          attributes: [
+            "_id",
+            "name",
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+            "image",
+          ],
+        },
+        {
+          model: Store,
+          as: "storeDetails",
+          required: false,
+          attributes: [
+            "id",
+            "name",
+            "store_name",
+            "email",
+            "phone",
+            "business_address",
+            "logo_upload",
+            "slug",
+          ],
+        },
+        {
+          model: OrderItems,
+          as: "orderItems",
+          required: false,
+          attributes: [
+            "id",
+            "productId",
+            "variantId",
+            "quantity",
+            "price",
+            "totalPrice",
+            "image",
+            "name",
+            "sku",
+            "combination",
+          ],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: query.limit,
+      offset: query.offset,
+      distinct: true,
+      subQuery: false,
+    });
+
+    const data = rows.map((order: any) => ({
+      id: order.id,
+      order_id: order.order_id,
+      status: order.status,
+      is_guest_order: order.is_guest_order,
+      totalItems: order.totalItems,
+      total: order.total,
+      discount: order.discount,
+      deliveryCharge: order.deliveryCharge,
+      tax: order.tax,
+      grandTotal: order.grandTotal,
+      createdAt: order.createdAt,
+      buyer: order.is_guest_order
+        ? {
+            type: "guest",
+            name: `${order.guest_first_name || ""} ${
+              order.guest_last_name || ""
+            }`.trim(),
+            email: order.guest_email,
+            phone: order.guest_phone,
+            country_code: order.guest_country_code || null,
+          }
+        : {
+            type: "user",
+            id: order.userDetails?._id || order.userDetails?.id || null,
+            name: order.userDetails?.name || null,
+            first_name: order.userDetails?.first_name || null,
+            last_name: order.userDetails?.last_name || null,
+            email: order.userDetails?.email || null,
+            phone: order.userDetails?.phone || null,
+            image: order.userDetails?.image || null,
+          },
+      store: order.storeDetails,
+      items: order.orderItems || [],
+      payment: {
+        id: order.orderPayment?.id,
+        paymentType: order.orderPayment?.paymentType,
+        status: order.orderPayment?.status,
+        ref: order.orderPayment?.ref,
+        amount: order.orderPayment?.amount,
+        currency: order.orderPayment?.currency,
+        split_payment_applied:
+          order.orderPayment?.collection_mode === "store_subaccount",
+        collection_mode: order.orderPayment?.collection_mode,
+        paystack_account_used: order.orderPayment?.paystack_account_used,
+        requires_manual_settlement:
+          order.orderPayment?.requires_manual_settlement,
+        manual_settlement_reason:
+          order.orderPayment?.manual_settlement_reason,
+      },
+    }));
+
+    return new DataResponseDto(
+      data,
+      true,
+      "Non-split payment audit records retrieved successfully",
+      {
+        page: query.page,
+        take: query.take,
+      } as any,
+      count,
+    );
+  }
+
   /* ----------------------------------
      INITIALIZE PAYMENT
   ---------------------------------- */
@@ -121,6 +278,13 @@ export class PaystackService {
         "Order ID is required for split payments",
         HttpStatus.BAD_REQUEST,
       );
+    }
+
+    if (await this.shouldAutoSplitExistingOrder(initData.order_id)) {
+      return this.initializeWithSplit({
+        ...initData,
+        split_payment: true,
+      });
     }
 
     const payload = {
@@ -170,7 +334,14 @@ export class PaystackService {
         userId,
         initData.order_payload,
       );
+    this.assertSingleStoreSplitOnly(preparedCheckout.store_ids);
     const reference = initData.reference || this.generateReference();
+    const storeForSplit = await this.getEligibleSingleStoreForSplit(
+      preparedCheckout.store_ids,
+    );
+    const resolvedStoreSubaccount = storeForSplit
+      ? resolveStoreSubaccountSelection(storeForSplit)
+      : null;
 
     const payload = {
       email: user.email,
@@ -185,17 +356,47 @@ export class PaystackService {
         user_id: userId,
         store_ids: preparedCheckout.store_ids,
         order_count: preparedCheckout.store_ids.length,
+        split_payment_applied: Boolean(storeForSplit),
+        split_payment_mode: storeForSplit
+          ? "single_store_checkout"
+          : "company_account_no_subaccount",
+        collection_mode: storeForSplit
+          ? "store_subaccount"
+          : "company_account_no_subaccount",
+        paystack_account_target: storeForSplit
+          ? resolvedStoreSubaccount?.paystackAccount || "old"
+          : this.paystackAccountConfigService.getDefaultAccountType(),
       },
       channels: ["card", "bank", "ussd", "mobile_money"],
     };
-
-    const response = await firstValueFrom(
-      this.httpService
-        .post(`${this.baseUrl}/transaction/initialize`, payload, {
-          headers: this.getHeaders(),
-        })
-        .pipe(map((r) => r.data)),
-    );
+    const response = storeForSplit
+      ? {
+          status: true,
+          data: await this.initializeSplitTransaction({
+            email: user.email,
+            amount: preparedCheckout.amount_kobo,
+            callback_url:
+              initData.callback_url ||
+              `${process.env.FRONTEND_URL}/payment/callback`,
+            reference,
+            store_id: storeForSplit.id,
+            metadata: {
+              ...payload.metadata,
+              split_payment_applied: true,
+              split_payment_mode: "single_store_checkout",
+              collection_mode: "store_subaccount",
+              paystack_account_target:
+                resolvedStoreSubaccount?.paystackAccount || "old",
+            },
+          }),
+        }
+      : await firstValueFrom(
+          this.httpService
+            .post(`${this.baseUrl}/transaction/initialize`, payload, {
+              headers: this.getHeaders(),
+            })
+            .pipe(map((r) => r.data)),
+        );
 
     if (!response.status) {
       throw new BadRequestException(
@@ -255,16 +456,18 @@ export class PaystackService {
     const adminAmount =
       initData.admin_amount !== undefined
         ? Number(initData.admin_amount)
-        : Math.round(amountInKobo * 0.05);
+        : Math.round(amountInKobo * 0.065);
 
-    const payload = {
+    const splitPayload = {
       email: initData.email,
       amount: amountInKobo,
+      currency: "NGN",
       subaccount: resolvedSubaccount.code,
       transaction_charge: adminAmount,
       bearer: "account",
       reference: initData.reference || this.generateReference(),
       callback_url: initData.callback_url,
+      channels: ["card", "bank", "ussd", "mobile_money"],
       metadata: {
         ...initData.metadata,
         order_id: initData.order_id,
@@ -272,23 +475,68 @@ export class PaystackService {
       },
     };
 
-    const response = await lastValueFrom(
-      this.httpService
-        .post(`${this.baseUrl}/transaction/initialize`, payload, {
-          headers: this.getHeaders(resolvedSubaccount.paystackAccount),
-        })
-        .pipe(
-          map((r) => r.data),
-          catchError((err) => {
-            throw new HttpException(
-              err.response?.data?.message || "Split initialization failed",
-              err.response?.status || HttpStatus.BAD_REQUEST,
-            );
-          }),
-        ),
-    );
+    try {
+      const response = await lastValueFrom(
+        this.httpService
+          .post(`${this.baseUrl}/transaction/initialize`, splitPayload, {
+            headers: this.getHeaders(resolvedSubaccount.paystackAccount),
+          })
+          .pipe(map((r) => r.data)),
+      );
+      return response.data;
+    } catch (err: any) {
+      const paystackMsg: string =
+        err?.response?.data?.message || err?.message || "";
+      const isSubaccountError =
+        /subaccount/i.test(paystackMsg) ||
+        err?.response?.status === 400;
 
-    return response.data;
+      if (!isSubaccountError) {
+        throw new HttpException(
+          paystackMsg || "Split initialization failed",
+          err?.response?.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Subaccount is invalid/deactivated — fall back to company account
+      this.logger.warn(
+        `Subaccount ${resolvedSubaccount.code} rejected by Paystack ("${paystackMsg}") — falling back to company account for store ${initData.store_id}`,
+      );
+
+      const fallbackPayload = {
+        email: initData.email,
+        amount: amountInKobo,
+        currency: "NGN",
+        reference: splitPayload.reference,
+        callback_url: initData.callback_url,
+        channels: ["card", "bank", "ussd", "mobile_money"],
+        metadata: {
+          ...initData.metadata,
+          order_id: initData.order_id,
+          store_id: initData.store_id,
+          split_fallback: true,
+          split_fallback_reason: paystackMsg,
+        },
+      };
+
+      const fallbackResponse = await lastValueFrom(
+        this.httpService
+          .post(`${this.baseUrl}/transaction/initialize`, fallbackPayload, {
+            headers: this.getHeaders(),
+          })
+          .pipe(
+            map((r) => r.data),
+            catchError((fallbackErr) => {
+              throw new HttpException(
+                fallbackErr?.response?.data?.message || "Payment initialization failed",
+                fallbackErr?.response?.status || HttpStatus.BAD_REQUEST,
+              );
+            }),
+          ),
+      );
+
+      return fallbackResponse.data;
+    }
   }
 
   private async initializeWithSplit(
@@ -1580,6 +1828,11 @@ export class PaystackService {
     paymentData: any,
     transaction: Transaction,
   ): Promise<OrderPayments> {
+    const settlementMetadata = await this.buildSettlementAuditMetadata(
+      order,
+      paymentData,
+      transaction,
+    );
     const existingPayment = await OrderPayments.findOne({
       where: { orderId: order.id },
       transaction,
@@ -1587,9 +1840,20 @@ export class PaystackService {
     });
 
     if (existingPayment) {
+      const updatePayload: Record<string, any> = {
+        collection_mode: settlementMetadata.collection_mode,
+        paystack_account_used: settlementMetadata.paystack_account_used,
+        requires_manual_settlement:
+          settlementMetadata.requires_manual_settlement,
+        manual_settlement_reason:
+          settlementMetadata.manual_settlement_reason,
+      };
+
       if (existingPayment.ref !== reference) {
-        await existingPayment.update({ ref: reference }, { transaction });
+        updatePayload.ref = reference;
       }
+
+      await existingPayment.update(updatePayload, { transaction });
       return existingPayment;
     }
 
@@ -1602,9 +1866,58 @@ export class PaystackService {
         currency: paymentData.currency || "NGN",
         amount: Math.round(Number(order.grandTotal || 0) * 100),
         cardHolder: paymentData.customer?.email || order.guest_email || null,
+        collection_mode: settlementMetadata.collection_mode,
+        paystack_account_used: settlementMetadata.paystack_account_used,
+        requires_manual_settlement:
+          settlementMetadata.requires_manual_settlement,
+        manual_settlement_reason:
+          settlementMetadata.manual_settlement_reason,
       } as any,
       { transaction },
     );
+  }
+
+  private async buildSettlementAuditMetadata(
+    order: Order,
+    paymentData: any,
+    transaction: Transaction,
+  ): Promise<{
+    collection_mode: string;
+    paystack_account_used: string;
+    requires_manual_settlement: boolean;
+    manual_settlement_reason: string | null;
+  }> {
+    const metadata = paymentData?.metadata || {};
+    const store = await this.storeRepository.findByPk(order.storeId, {
+      transaction,
+    });
+    const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+    const hasUsableStoreSubaccount = Boolean(
+      store && store.subaccount_status === "active" && resolvedSubaccount,
+    );
+
+    const collectionMode =
+      metadata.collection_mode ||
+      metadata.split_payment_mode ||
+      (hasUsableStoreSubaccount
+        ? "store_subaccount"
+        : "company_account_no_subaccount");
+    const paystackAccountUsed =
+      metadata.paystack_account_target ||
+      (collectionMode === "store_subaccount"
+        ? resolvedSubaccount?.paystackAccount || "old"
+        : this.paystackAccountConfigService.getDefaultAccountType());
+    const requiresManualSettlement =
+      collectionMode === "company_account_no_subaccount";
+
+    return {
+      collection_mode: collectionMode,
+      paystack_account_used: paystackAccountUsed,
+      requires_manual_settlement: requiresManualSettlement,
+      manual_settlement_reason: requiresManualSettlement
+        ? "Seller does not have an active Paystack subaccount, so funds were collected into the company account for manual payout."
+        : null,
+    };
   }
 
   private getOrderStatusForPayment(
@@ -1978,6 +2291,11 @@ export class PaystackService {
         ),
       ];
       const isMultiSeller = storeIds.length > 1;
+      this.assertSingleStoreSplitOnly(storeIds);
+      const storeForSplit = await this.getEligibleSingleStoreForSplit(storeIds);
+      const resolvedStoreSubaccount = storeForSplit
+        ? resolveStoreSubaccountSelection(storeForSplit)
+        : null;
 
       // Build metadata
       const metadata = {
@@ -2015,6 +2333,18 @@ export class PaystackService {
         guest_order_payload: guestData.order_payload
           ? this.buildGuestOrderPayload(guestData.order_payload, reference)
           : undefined,
+        split_payment_applied: Boolean(storeForSplit),
+        split_payment_mode: storeForSplit
+          ? "single_store_guest_checkout"
+          : isMultiSeller
+          ? "not_supported_multi_store_checkout"
+          : "company_account_no_subaccount",
+        collection_mode: storeForSplit
+          ? "store_subaccount"
+          : "company_account_no_subaccount",
+        paystack_account_target: storeForSplit
+          ? resolvedStoreSubaccount?.paystackAccount || "old"
+          : this.paystackAccountConfigService.getDefaultAccountType(),
         ...guestData.metadata,
       };
 
@@ -2031,14 +2361,27 @@ export class PaystackService {
         channels: ["card", "bank", "ussd", "mobile_money"], // All payment channels
       };
 
-      // Call Paystack API using firstValueFrom
-      const response = await firstValueFrom(
-        this.httpService
-          .post(`${this.baseUrl}/transaction/initialize`, paystackPayload, {
-            headers: this.getHeaders(), // ✅ Use getHeaders() method
-          })
-          .pipe(map((r) => r.data)), // ✅ Extract data from response
-      );
+      const response = storeForSplit
+        ? {
+            status: true,
+            data: await this.initializeSplitTransaction({
+              email: guestData.guest_info.email,
+              amount: totalAmount,
+              callback_url:
+                guestData.callback_url ||
+                `${process.env.FRONTEND_URL}/guest/payment/callback`,
+              reference,
+              store_id: storeForSplit.id,
+              metadata,
+            }),
+          }
+        : await firstValueFrom(
+            this.httpService
+              .post(`${this.baseUrl}/transaction/initialize`, paystackPayload, {
+                headers: this.getHeaders(), // ✅ Use getHeaders() method
+              })
+              .pipe(map((r) => r.data)), // ✅ Extract data from response
+          );
 
       // ✅ Check response.status (not response.data.status)
       if (!response.status) {
@@ -2084,4 +2427,55 @@ export class PaystackService {
   }
 
   // GUEST USER DATA ENDS HERE
+
+  private async shouldAutoSplitExistingOrder(
+    orderId?: number,
+  ): Promise<boolean> {
+    if (!orderId) {
+      return false;
+    }
+
+    const order = await Order.findByPk(orderId);
+    if (!order?.storeId) {
+      return false;
+    }
+
+    const store = await this.storeRepository.findByPk(order.storeId);
+    return this.canUseAutomaticSplit(store);
+  }
+
+  private async getEligibleSingleStoreForSplit(
+    storeIds?: number[],
+  ): Promise<Store | null> {
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length !== 1) {
+      return null;
+    }
+
+    const store = await this.storeRepository.findByPk(uniqueStoreIds[0]);
+    return this.canUseAutomaticSplit(store) ? store : null;
+  }
+
+  private canUseAutomaticSplit(store?: Store | null): boolean {
+    return Boolean(
+      store &&
+        store.subaccount_status === "active" &&
+        resolveStoreSubaccountSelection(store),
+    );
+  }
+
+  private assertSingleStoreSplitOnly(storeIds?: number[]): void {
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length > 1) {
+      throw new BadRequestException(
+        "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
+      );
+    }
+  }
 }

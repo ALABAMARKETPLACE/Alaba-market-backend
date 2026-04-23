@@ -25,14 +25,15 @@ describe("PaystackSubaccountMigrationService", () => {
     ...overrides,
   });
 
-  let httpService: { post: any };
+  let httpService: { post: any; get: any };
   let storeRepository: any;
-  let paystackAccountConfigService: { getHeaders: any };
+  let paystackAccountConfigService: { getHeaders: any; getSellerSplitPercentage: any };
   let service: PaystackSubaccountMigrationService;
 
   beforeEach(() => {
     httpService = {
       post: jest.fn(),
+      get: jest.fn(),
     };
 
     storeRepository = {
@@ -50,6 +51,7 @@ describe("PaystackSubaccountMigrationService", () => {
         Authorization: "Bearer sk_test_new_123",
         "Content-Type": "application/json",
       })),
+      getSellerSplitPercentage: jest.fn(() => 93.5),
     };
 
     service = new PaystackSubaccountMigrationService(
@@ -130,6 +132,14 @@ describe("PaystackSubaccountMigrationService", () => {
 
     expect(result.data.result).toBe("success");
     expect(paystackAccountConfigService.getHeaders).toHaveBeenCalledWith("new");
+    expect(paystackAccountConfigService.getSellerSplitPercentage).toHaveBeenCalledWith("new");
+    expect(httpService.post).toHaveBeenCalledWith(
+      expect.stringContaining("/subaccount"),
+      expect.objectContaining({
+        percentage_charge: 6.5,
+      }),
+      expect.any(Object),
+    );
     expect(store.update).toHaveBeenCalledWith(
       expect.objectContaining({
         paystack_subaccount_code_old: "ACCT_LEGACY_123",
@@ -139,5 +149,132 @@ describe("PaystackSubaccountMigrationService", () => {
       }),
       expect.any(Object),
     );
+  });
+
+  it("syncs copied new-account subaccounts back into local stores", async () => {
+    const store = buildStore({
+      paystack_subaccount_code_new: null,
+      paystack_subaccount_migration_status: "pending",
+    });
+    storeRepository.findAll.mockResolvedValue([store]);
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: [
+            {
+              id: 3001,
+              subaccount_code: "ACCT_NEW_SYNCED",
+              business_name: "Seller Store Ltd",
+              primary_contact_email: "seller@example.com",
+              primary_contact_phone: "08012345678",
+              account_number: "0123456789",
+              percentage_charge: 6.5,
+            },
+          ],
+          meta: {
+            pageCount: 1,
+          },
+        },
+      }),
+    );
+
+    const result = await service.syncExistingNewSubaccounts({
+      dryRun: false,
+      perPage: 100,
+    });
+
+    expect(httpService.get).toHaveBeenCalledWith(
+      expect.stringContaining("/subaccount?perPage=100&page=1"),
+      expect.objectContaining({
+        headers: expect.any(Object),
+      }),
+    );
+    expect(paystackAccountConfigService.getHeaders).toHaveBeenCalledWith("new");
+    expect(store.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paystack_subaccount_code_new: "ACCT_NEW_SYNCED",
+        paystack_subaccount_id: 3001,
+        paystack_subaccount_migration_status: "success",
+        percentage_charge: 93.5,
+      }),
+      expect.any(Object),
+    );
+    expect(result.data.summary.updated).toBe(1);
+    expect(result.data.results[0]).toEqual(
+      expect.objectContaining({
+        result: "updated",
+        store_id: 7,
+        subaccount_code: "ACCT_NEW_SYNCED",
+        seller_percentage_charge: 93.5,
+        company_percentage_charge: 6.5,
+      }),
+    );
+  });
+
+  it("marks duplicate remote matches for the same store as ambiguous", async () => {
+    const store = buildStore({
+      id: 3198,
+      store_name: "Social Electrical Store",
+      business_name: "Social Electrical Store",
+      settlement_account_number: "0123456789",
+      paystack_subaccount_code_new: null,
+    });
+
+    storeRepository.findAll.mockResolvedValue([store]);
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          data: [
+            {
+              id: 3001,
+              subaccount_code: "ACCT_FIRST",
+              business_name: "Social Electrical Store",
+              primary_contact_email: "seller@example.com",
+              primary_contact_phone: "08012345678",
+              account_number: "0123456789",
+              percentage_charge: 95,
+            },
+            {
+              id: 3002,
+              subaccount_code: "ACCT_SECOND",
+              business_name: "Social Electrical Store",
+              primary_contact_email: "seller@example.com",
+              primary_contact_phone: "08012345678",
+              account_number: "0123456789",
+              percentage_charge: 95,
+            },
+          ],
+          meta: {
+            pageCount: 1,
+          },
+        },
+      }),
+    );
+
+    const result = await service.syncExistingNewSubaccounts({
+      dryRun: false,
+      perPage: 100,
+    });
+
+    expect(store.update).not.toHaveBeenCalled();
+    expect(result.data.summary.matched).toBe(0);
+    expect(result.data.summary.updated).toBe(0);
+    expect(result.data.summary.ambiguous).toBe(2);
+    expect(result.data.results).toEqual([
+      expect.objectContaining({
+        result: "ambiguous",
+        subaccount_code: "ACCT_FIRST",
+        candidate_store_ids: [3198],
+        reason: "multiple_remote_subaccounts_matched_same_store",
+      }),
+      expect.objectContaining({
+        result: "ambiguous",
+        subaccount_code: "ACCT_SECOND",
+        candidate_store_ids: [3198],
+        reason: "multiple_remote_subaccounts_matched_same_store",
+      }),
+    ]);
   });
 });

@@ -264,6 +264,18 @@ export class StoreService {
     }
   }
 
+  async findStoreBySlug(slug: string) {
+    try {
+      const store = await this.StoreRepository.findOne({ where: { slug } });
+      if (!store) throw new NotFoundException("Store not found");
+      const storeData = new StoreDto(store);
+      return new DataResponseDto(storeData, true, "Successfully fetched");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
   async getAccountDetails(storeId: number) {
     try {
       const store = await this.StoreRepository.findByPk(storeId);
@@ -413,7 +425,7 @@ export class StoreService {
                 primary_contact_email, primary_contact_name, primary_contact_phone,
                 percentage_charge, status, admin_approval_status, is_active,
                 "createdAt", "updatedAt")
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 95.0, 'pending', 'pending', false, NOW(), NOW())`,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 93.5, 'pending', 'pending', false, NOW(), NOW())`,
                 {
                   replacements: [
                     created.id,
@@ -590,7 +602,7 @@ export class StoreService {
                 primary_contact_email, primary_contact_name, primary_contact_phone,
                 percentage_charge, status, admin_approval_status, is_active,
                 "createdAt", "updatedAt")
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 95.0, 'pending', 'pending', false, NOW(), NOW())`,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 93.5, 'pending', 'pending', false, NOW(), NOW())`,
                 {
                   replacements: [
                     created.id,

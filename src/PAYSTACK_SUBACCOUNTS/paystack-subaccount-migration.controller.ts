@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -21,6 +22,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { Response } from "express";
+import { PaystackSubaccountService } from "./paystack-subaccount.service";
 import { Roles } from "../shared/decorator/roles.decorator";
 import { Role } from "../shared/enum/role.enum";
 import { AuthGuard } from "../shared/guards/auth.guard";
@@ -30,6 +32,10 @@ import {
   PaystackSubaccountMigrationStatusQueryDto,
 } from "./dto/paystack-subaccount-migration.dto";
 import { PaystackSubaccountMigrationService } from "./paystack-subaccount-migration.service";
+import { UpdateSubaccountPercentageDto } from "./dto/update-subaccount-percentage.dto";
+import { SyncNewSubaccountsDto } from "./dto/sync-new-subaccounts.dto";
+import { UnmatchedRemoteSubaccountsQueryDto } from "./dto/unmatched-remote-subaccounts.dto";
+import { ResolveUnmatchedRemoteSubaccountsDto } from "./dto/resolve-unmatched-remote-subaccounts.dto";
 
 @Controller("admin/paystack/subaccounts")
 @ApiTags("admin-paystack-subaccounts")
@@ -40,6 +46,7 @@ import { PaystackSubaccountMigrationService } from "./paystack-subaccount-migrat
 export class PaystackSubaccountMigrationController {
   constructor(
     private readonly paystackSubaccountMigrationService: PaystackSubaccountMigrationService,
+    private readonly paystackSubaccountService: PaystackSubaccountService,
   ) {}
 
   @Post("migrate")
@@ -117,6 +124,66 @@ export class PaystackSubaccountMigrationController {
 
     return this.paystackSubaccountMigrationService.exportMigrationStatusCsv(
       query,
+    );
+  }
+
+  @Post("update-percentage")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Update percentage_charge on new-account Paystack subaccounts and sync the local store records",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  updatePercentage(
+    @Body() payload: UpdateSubaccountPercentageDto,
+  ): Promise<DataResponseDto> {
+    return this.paystackSubaccountService.bulkUpdateNewAccountSubaccountPercentages(
+      payload,
+    );
+  }
+
+  @Get("unmatched-remote")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "List live new-account Paystack subaccounts that are not currently matched to local stores targeted by the percentage update flow",
+  })
+  @ApiQuery({ name: "page", required: false, type: Number })
+  @ApiQuery({ name: "limit", required: false, type: Number })
+  @ApiOkResponse({ type: DataResponseDto })
+  getUnmatchedRemoteSubaccounts(
+    @Query() query: UnmatchedRemoteSubaccountsQueryDto,
+  ): Promise<DataResponseDto> {
+    return this.paystackSubaccountService.getUnmatchedRemoteSubaccounts(query);
+  }
+
+  @Post("resolve-unmatched")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Auto-link safe unmatched remote Paystack subaccounts to local stores. By default, only resolves missing_local_link records with exactly one candidate store.",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  resolveUnmatchedRemoteSubaccounts(
+    @Body() payload: ResolveUnmatchedRemoteSubaccountsDto,
+  ): Promise<DataResponseDto> {
+    return this.paystackSubaccountService.resolveUnmatchedRemoteSubaccounts(
+      payload,
+    );
+  }
+
+  @Post("sync-new-codes")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Backfill local paystack_subaccount_code_new values by matching copied new-account Paystack subaccounts to stores",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  syncNewCodes(
+    @Body() payload: SyncNewSubaccountsDto,
+  ): Promise<DataResponseDto> {
+    return this.paystackSubaccountMigrationService.syncExistingNewSubaccounts(
+      payload,
     );
   }
 }
