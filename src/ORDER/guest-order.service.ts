@@ -60,7 +60,7 @@ export class GuestOrderService {
     const paymentStatus = String(checkout?.payment_status || "").toLowerCase();
 
     if (paymentStatus === "success" && checkoutStatus !== "completed") {
-      return "paid_not_created";
+      return "payment_received_processing";
     }
 
     if (paymentStatus === "pending") {
@@ -75,7 +75,7 @@ export class GuestOrderService {
     const paymentStatus = String(checkout?.payment_status || "").toLowerCase();
 
     if (paymentStatus === "success" && checkoutStatus !== "completed") {
-      return "Payment was successful, but the order record was not created automatically.";
+      return "Payment was successful and is awaiting backend order finalization.";
     }
 
     return checkout?.error || null;
@@ -417,7 +417,10 @@ export class GuestOrderService {
       const normalizedStatus = String(status).toLowerCase();
       const statusFilters: any[] = [{ status }, { payment_status: status }];
 
-      if (normalizedStatus === "paid_not_created") {
+      if (
+        normalizedStatus === "payment_received_processing" ||
+        normalizedStatus === "paid_not_created"
+      ) {
         statusFilters.push({
           payment_status: "success",
           status: { [Op.ne]: "completed" },
@@ -700,6 +703,235 @@ export class GuestOrderService {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve guest orders");
     }
+  }
+
+  async reconcileGuestCheckout(id: number): Promise<DataResponseDto> {
+    const checkout = await this.guestCheckoutRepository.findByPk(id as any);
+
+    if (!checkout) {
+      throw new NotFoundException("Guest checkout not found");
+    }
+
+    if (checkout.payment_status !== "success") {
+      throw new BadRequestException(
+        "Only successfully paid guest checkouts can be reconciled",
+      );
+    }
+
+    if (checkout.status === "completed") {
+      const existingOrders = await this.orderRepository.findAll({
+        where: {
+          payment_reference: checkout.reference,
+        } as any,
+        order: [["createdAt", "ASC"]],
+      });
+
+      return new DataResponseDto(
+        this.formatOrderSummary(existingOrders),
+        true,
+        "Guest checkout has already been reconciled",
+      );
+    }
+
+    const rawPayload = this.extractGuestCheckoutPayload(checkout.payload);
+    if (!rawPayload || !Array.isArray(rawPayload?.cart_items)) {
+      throw new BadRequestException(
+        "Guest checkout payload is missing cart items and cannot be reconciled",
+      );
+    }
+
+    const paymentReference =
+      rawPayload?.payment?.payment_reference || checkout.reference;
+    const paystackResponse: any = await this.paystackService.verifyPayment({
+      reference: paymentReference,
+    });
+
+    const payload: CreateGuestOrderDto = {
+      ...rawPayload,
+      payment: {
+        ...(rawPayload?.payment || {}),
+        payment_reference: paymentReference,
+        payment_status: "success",
+      },
+    };
+
+    await checkout.update({
+      status: "processing",
+      error: null,
+    });
+
+    try {
+      const orders = await this.replayGuestCheckout(checkout, payload, paystackResponse?.data);
+
+      return new DataResponseDto(
+        orders,
+        true,
+        "Guest checkout reconciled successfully",
+      );
+    } catch (error) {
+      await checkout.update({
+        status: "failed",
+        error:
+          (error as any)?.message || "Guest checkout reconciliation failed",
+      });
+      throw error;
+    }
+  }
+
+  async reconcileAllGuestCheckouts(): Promise<DataResponseDto> {
+    const checkoutWhere: any = {
+      payment_status: "success",
+      status: { [Op.ne]: "completed" },
+    };
+
+    const guestCheckouts = await this.guestCheckoutRepository.findAll({
+      where: checkoutWhere,
+      order: [["createdAt", "ASC"]],
+    });
+
+    if (!guestCheckouts.length) {
+      return new DataResponseDto(
+        {
+          summary: {
+            total: 0,
+            reconciled: 0,
+            skipped: 0,
+            failed: 0,
+          },
+          results: [],
+        },
+        true,
+        "No guest checkouts available for reconciliation",
+      );
+    }
+
+    const references = guestCheckouts
+      .map((checkout: any) => checkout.reference)
+      .filter(Boolean);
+
+    const existingOrders = references.length
+      ? await this.orderRepository.findAll({
+          where: {
+            payment_reference: {
+              [Op.in]: references,
+            },
+          } as any,
+          attributes: ["payment_reference"],
+          raw: true,
+        })
+      : [];
+
+    const existingReferences = new Set(
+      existingOrders
+        .map((order: any) => order.payment_reference)
+        .filter(Boolean),
+    );
+
+    const results: Array<{
+      id: number;
+      reference: string;
+      action: "reconciled" | "skipped" | "failed";
+      reason: string;
+      order_ids?: number[];
+    }> = [];
+
+    for (const checkout of guestCheckouts) {
+      if (existingReferences.has(checkout.reference)) {
+        results.push({
+          id: checkout.id,
+          reference: checkout.reference,
+          action: "skipped",
+          reason: "Order already exists for this payment reference",
+        });
+        continue;
+      }
+
+      const rawPayload = this.extractGuestCheckoutPayload(checkout.payload);
+      if (!rawPayload || !Array.isArray(rawPayload?.cart_items)) {
+        results.push({
+          id: checkout.id,
+          reference: checkout.reference,
+          action: "skipped",
+          reason:
+            "Guest checkout payload is missing cart items and cannot be reconciled",
+        });
+        continue;
+      }
+
+      const paymentReference =
+        rawPayload?.payment?.payment_reference || checkout.reference;
+
+      try {
+        const paystackResponse: any = await this.paystackService.verifyPayment({
+          reference: paymentReference,
+        });
+
+        const payload: CreateGuestOrderDto = {
+          ...rawPayload,
+          payment: {
+            ...(rawPayload?.payment || {}),
+            payment_reference: paymentReference,
+            payment_status: "success",
+          },
+        };
+
+        await checkout.update({
+          status: "processing",
+          error: null,
+        });
+
+        const orders = await this.replayGuestCheckout(
+          checkout,
+          payload,
+          paystackResponse?.data,
+        );
+
+        results.push({
+          id: checkout.id,
+          reference: checkout.reference,
+          action: "reconciled",
+          reason: "Guest checkout reconciled successfully",
+          order_ids: orders.map((order: any) => Number(order?.id)).filter(Boolean),
+        });
+      } catch (error) {
+        await checkout.update({
+          status: "failed",
+          error:
+            (error as any)?.message || "Guest checkout reconciliation failed",
+        });
+
+        results.push({
+          id: checkout.id,
+          reference: checkout.reference,
+          action: "failed",
+          reason:
+            (error as any)?.message || "Guest checkout reconciliation failed",
+        });
+      }
+    }
+
+    const summary = results.reduce(
+      (acc, result) => {
+        acc.total += 1;
+        acc[result.action] += 1;
+        return acc;
+      },
+      {
+        total: 0,
+        reconciled: 0,
+        skipped: 0,
+        failed: 0,
+      },
+    );
+
+    return new DataResponseDto(
+      {
+        summary,
+        results,
+      },
+      true,
+      "Guest checkout bulk reconciliation completed",
+    );
   }
 
   async getGuestOrdersByStore(
@@ -1525,6 +1757,71 @@ export class GuestOrderService {
 
     const numericDiscount = Number(discount);
     return Number.isFinite(numericDiscount) ? numericDiscount : 0;
+  }
+
+  private buildVerifiedDeliveryDataFromGuestPayload(
+    payload: CreateGuestOrderDto,
+  ): {
+    data: {
+      amount: number;
+      status: boolean;
+      addressId: string | number | null;
+      discount: number;
+      tax: number;
+      totalWeight: number;
+      isGuest: boolean;
+    };
+  } {
+    const deliveryCharge = Number(
+      payload?.delivery?.delivery_charge ??
+        payload?.order_summary?.delivery_fee,
+    );
+    const discount = Number(payload?.order_summary?.discount);
+    const tax = Number(payload?.order_summary?.tax);
+    const totalWeight = Array.isArray(payload?.cart_items)
+      ? payload.cart_items.reduce((sum, item) => {
+          const quantity = Number(item?.quantity || 0);
+          const weight = Number(item?.weight || 0);
+          return sum + (Number.isFinite(quantity) ? quantity : 0) * (Number.isFinite(weight) ? weight : 0);
+        }, 0)
+      : 0;
+
+    return {
+      data: {
+        amount: Number.isFinite(deliveryCharge) ? deliveryCharge : 0,
+        status: true,
+        addressId: payload?.delivery_address?.id ?? null,
+        discount: Number.isFinite(discount) ? discount : 0,
+        tax: Number.isFinite(tax) ? tax : 0,
+        totalWeight: totalWeight > 0 ? totalWeight : 1,
+        isGuest: true,
+      },
+    };
+  }
+
+  private async replayGuestCheckout(
+    checkout: any,
+    payload: CreateGuestOrderDto,
+    verifiedPaymentData: any,
+  ): Promise<any[]> {
+    const result = await this.createGuestOrder(payload, {
+      skipPaymentVerification: true,
+      verifiedPaymentData,
+      skipDeliveryTokenVerification: true,
+      verifiedDeliveryData:
+        this.buildVerifiedDeliveryDataFromGuestPayload(payload),
+    });
+
+    const orders = Array.isArray(result?.data) ? result.data : [];
+
+    await checkout.update({
+      status: "completed",
+      processed_at: new Date(),
+      order_ids: orders.map((order: any) => Number(order?.id)).filter(Boolean),
+      error: null,
+    });
+
+    return orders;
   }
 
   private formatOrderSummary(orders: Array<Partial<Order>>) {
