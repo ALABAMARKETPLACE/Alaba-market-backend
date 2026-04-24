@@ -150,6 +150,31 @@ export class OrderController {
     return this.guestOrderService.getGuestOrdersByStore(storeId, pageOptions);
   }
 
+  @Get("guest/details/:id")
+  @UseGuards(AuthGuard)
+  @Roles(Role.Seller, Role.Admin)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get one guest order detail (seller/admin)",
+    description:
+      "Returns a single guest order or paid orphaned guest checkout by database id for seller/admin detail views.",
+  })
+  @ApiParam({
+    name: "id",
+    required: true,
+    description: "Database primary key of the guest order or guest checkout",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  async getGuestOrderDetails(
+    @Req() req: any,
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<DataResponseDto> {
+    const role = req.user?.active_role || req.user?.role;
+    const storeId = req.user?.store_id || req.user?.storeId;
+
+    return this.guestOrderService.getGuestOrderDetails(id, role, storeId);
+  }
+
   //to update guest order status only for sellers/admin
   @Roles(Role.Seller, Role.Admin)
   @UseGuards(AuthGuard)

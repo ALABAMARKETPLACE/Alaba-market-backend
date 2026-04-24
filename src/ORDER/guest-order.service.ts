@@ -33,6 +33,7 @@ import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 import { UpdateOrderStatus } from "./dto/updateOrderStatus.dto";
+import { Role } from "../shared/enum/role.enum";
 
 type GuestOrderCreationOptions = {
   skipPaymentVerification?: boolean;
@@ -387,6 +388,100 @@ export class GuestOrderService {
     };
   }
 
+  private formatOrphanedGuestCheckoutRecord(
+    checkout: any,
+    storeMap: Map<number, any> = new Map(),
+  ) {
+    const payload = this.extractGuestCheckoutPayload(checkout.payload);
+    const guestInfo = payload?.guest_info || {};
+    const deliveryAddress = this.buildNormalizedGuestAddress(
+      payload?.delivery_address ||
+        payload?.address ||
+        payload?.shipping_address ||
+        {},
+    );
+    const cartItems = Array.isArray(payload?.cart_items)
+      ? payload.cart_items
+      : Array.isArray(payload?.items)
+      ? payload.items
+      : [];
+    const stores = Array.from<number>(
+      new Set<number>(
+        cartItems
+          .map((item: any) => Number(item?.store_id))
+          .filter((storeId: number) => Number.isFinite(storeId) && storeId > 0),
+      ),
+    )
+      .map((storeId) => storeMap.get(storeId))
+      .filter(Boolean);
+
+    const displayStatus = this.getOrphanedGuestCheckoutDisplayStatus(checkout);
+    const statusRemark = this.getOrphanedGuestCheckoutStatusRemark(checkout);
+
+    return {
+      id: checkout.id,
+      order_id: checkout.reference,
+      status: displayStatus,
+      guest_email: checkout.guest_email,
+      guest_first_name: guestInfo?.first_name || "",
+      guest_last_name: guestInfo?.last_name || "",
+      guest_phone: guestInfo?.phone || "",
+      address: deliveryAddress,
+      shipping_address: deliveryAddress,
+      delivery_address: deliveryAddress,
+      store: stores.length === 1 ? stores[0] : stores[0] || null,
+      stores,
+      items: cartItems.map((item: any, index: number) => ({
+        id: item?.id || `${checkout.id}-${index}`,
+        productId:
+          item?.product_id ||
+          item?.productId ||
+          item?.product_pid ||
+          item?.productPid ||
+          null,
+        variantId: item?.variant_id || item?.variantId || null,
+        quantity: item?.quantity || 0,
+        price: item?.unit_price || item?.price || 0,
+        totalPrice:
+          item?.totalPrice ||
+          Number(item?.quantity || 0) *
+            Number(item?.unit_price || item?.price || 0),
+        image: item?.image || null,
+        name: item?.product_name || item?.name || null,
+        sku: item?.sku || null,
+        combination: item?.combination || null,
+        store_id: item?.store_id || item?.storeId || null,
+      })),
+      totalItems: cartItems.reduce(
+        (sum: number, item: any) => sum + Number(item?.quantity || 0),
+        0,
+      ),
+      total: Number(checkout.amount_kobo || 0) / 100,
+      deliveryCharge: 0,
+      discount: 0,
+      tax: 0,
+      grandTotal: Number(checkout.amount_kobo || 0) / 100,
+      payment: {
+        id: null,
+        paymentType: "paystack",
+        status: checkout.payment_status,
+        ref: checkout.reference,
+        amount: Number(checkout.amount_kobo || 0) / 100,
+      },
+      delivery_date: null,
+      createdAt:
+        checkout.processed_at || checkout.createdAt || checkout.updatedAt || null,
+      orderStatus: [],
+      order_notes: checkout.error,
+      is_guest_order: true,
+      record_type: "orphaned_guest_checkout",
+      checkout_status: checkout.status,
+      payment_status: checkout.payment_status,
+      checkout_reference: checkout.reference,
+      status_remark: statusRemark,
+    };
+  }
+
   private extractGuestCheckoutPayload(payload: any = {}) {
     for (const candidate of [
       payload,
@@ -509,95 +604,138 @@ export class GuestOrderService {
       }
     }
 
-    return orphanedCheckouts.map((checkout: any) => {
-      const payload = this.extractGuestCheckoutPayload(checkout.payload);
-      const guestInfo = payload?.guest_info || {};
-      const deliveryAddress = this.buildNormalizedGuestAddress(
-        payload?.delivery_address ||
-          payload?.address ||
-          payload?.shipping_address ||
-          {},
-      );
-      const cartItems = Array.isArray(payload?.cart_items)
-        ? payload.cart_items
-        : Array.isArray(payload?.items)
-        ? payload.items
-        : [];
-      const stores = Array.from<number>(
-        new Set<number>(
-          cartItems
-            .map((item: any) => Number(item?.store_id))
-            .filter((storeId: number) => Number.isFinite(storeId) && storeId > 0),
-        ),
-      )
-        .map((storeId) => storeMap.get(storeId))
-        .filter(Boolean);
+    return orphanedCheckouts.map((checkout: any) =>
+      this.formatOrphanedGuestCheckoutRecord(checkout, storeMap),
+    );
+  }
 
-      const displayStatus = this.getOrphanedGuestCheckoutDisplayStatus(checkout);
-      const statusRemark = this.getOrphanedGuestCheckoutStatusRemark(checkout);
-
-      return {
-        id: checkout.id,
-        order_id: checkout.reference,
-        status: displayStatus,
-        guest_email: checkout.guest_email,
-        guest_first_name: guestInfo?.first_name || "",
-        guest_last_name: guestInfo?.last_name || "",
-        guest_phone: guestInfo?.phone || "",
-        address: deliveryAddress,
-        shipping_address: deliveryAddress,
-        delivery_address: deliveryAddress,
-        store: stores.length === 1 ? stores[0] : stores[0] || null,
-        stores,
-        items: cartItems.map((item: any, index: number) => ({
-          id: item?.id || `${checkout.id}-${index}`,
-          productId:
-            item?.product_id ||
-            item?.productId ||
-            item?.product_pid ||
-            item?.productPid ||
-            null,
-          variantId: item?.variant_id || item?.variantId || null,
-          quantity: item?.quantity || 0,
-          price: item?.unit_price || item?.price || 0,
-          totalPrice:
-            item?.totalPrice ||
-            (Number(item?.quantity || 0) * Number(item?.unit_price || item?.price || 0)),
-          image: item?.image || null,
-          name: item?.product_name || item?.name || null,
-          sku: item?.sku || null,
-          combination: item?.combination || null,
-          store_id: item?.store_id || item?.storeId || null,
-        })),
-        totalItems: cartItems.reduce(
-          (sum: number, item: any) => sum + Number(item?.quantity || 0),
-          0,
-        ),
-        total: Number(checkout.amount_kobo || 0) / 100,
-        deliveryCharge: 0,
-        discount: 0,
-        tax: 0,
-        grandTotal: Number(checkout.amount_kobo || 0) / 100,
-        payment: {
-          id: null,
-          paymentType: "paystack",
-          status: checkout.payment_status,
-          ref: checkout.reference,
-          amount: Number(checkout.amount_kobo || 0) / 100,
+  async getGuestOrderDetails(
+    id: number,
+    role: string,
+    storeId?: number,
+  ): Promise<DataResponseDto> {
+    const order = await this.orderRepository.findByPk(id, {
+      include: [
+        {
+          model: OrderItems,
+          as: "orderItems",
+          attributes: [
+            "id",
+            "productId",
+            "variantId",
+            "quantity",
+            "price",
+            "totalPrice",
+            "image",
+            "name",
+            "sku",
+            "combination",
+          ],
         },
-        delivery_date: null,
-        createdAt:
-          checkout.processed_at || checkout.createdAt || checkout.updatedAt || null,
-        orderStatus: [],
-        order_notes: checkout.error,
-        is_guest_order: true,
-        record_type: "orphaned_guest_checkout",
-        checkout_status: checkout.status,
-        payment_status: checkout.payment_status,
-        checkout_reference: checkout.reference,
-        status_remark: statusRemark,
-      };
+        {
+          model: OrderPayments,
+          as: "orderPayment",
+          attributes: ["id", "paymentType", "status", "ref", "amount"],
+        },
+        {
+          model: OrderStatus,
+          as: "orderStatus",
+          attributes: ["id", "status", "remark", "createdAt"],
+          separate: true,
+          order: [["createdAt", "DESC"]],
+        },
+        {
+          model: Store,
+          as: "storeDetails",
+          attributes: [
+            "id",
+            "name",
+            "store_name",
+            "email",
+            "phone",
+            "business_address",
+            "logo_upload",
+            "slug",
+          ],
+        },
+      ],
     });
+
+    if (order) {
+      const isGuestOrder =
+        order.is_guest_order === true ||
+        Boolean(order.guest_email) ||
+        order.userId === null ||
+        Number(order.userId) === 0;
+
+      if (!isGuestOrder) {
+        throw new NotFoundException("Guest order not found");
+      }
+
+      if (role !== Role.Admin && Number(order.storeId) !== Number(storeId)) {
+        throw new NotFoundException("Guest order not found");
+      }
+
+      return new DataResponseDto(
+        this.formatGuestOrderRecord(order),
+        true,
+        "Guest order retrieved successfully",
+      );
+    }
+
+    const checkout = await this.guestCheckoutRepository.findByPk(id as any);
+
+    if (!checkout) {
+      throw new NotFoundException("Guest order not found");
+    }
+
+    const payload = this.extractGuestCheckoutPayload(checkout.payload);
+    const cartItems = Array.isArray(payload?.cart_items)
+      ? payload.cart_items
+      : Array.isArray(payload?.items)
+      ? payload.items
+      : [];
+    const storeIds = Array.from<number>(
+      new Set(
+        cartItems
+          .map((item: any) => Number(item?.store_id ?? item?.storeId))
+          .filter((value: number) => Number.isFinite(value) && value > 0),
+      ),
+    );
+
+    if (role !== Role.Admin) {
+      if (!storeIds.length || !storeIds.includes(Number(storeId))) {
+        throw new NotFoundException("Guest order not found");
+      }
+    }
+
+    const stores = storeIds.length
+      ? await Store.findAll({
+          where: { id: { [Op.in]: storeIds } },
+          attributes: [
+            "id",
+            "name",
+            "store_name",
+            "email",
+            "phone",
+            "business_address",
+            "logo_upload",
+            "slug",
+          ],
+          raw: true,
+        })
+      : [];
+
+    const storeMap = new Map<number, any>();
+    for (const store of stores) {
+      storeMap.set(Number((store as any).id), store);
+    }
+
+    return new DataResponseDto(
+      this.formatOrphanedGuestCheckoutRecord(checkout, storeMap),
+      true,
+      "Guest order retrieved successfully",
+    );
   }
 
   /** Get all Guest Orders */
