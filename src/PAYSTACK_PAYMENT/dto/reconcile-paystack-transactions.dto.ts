@@ -1,5 +1,6 @@
 import { Transform, Type } from "class-transformer";
 import {
+  IsIn,
   IsBoolean,
   IsDateString,
   IsInt,
@@ -11,6 +12,19 @@ import {
 import { ApiPropertyOptional } from "@nestjs/swagger";
 
 export class ReconcilePaystackTransactionsDto {
+  @ApiPropertyOptional({
+    description:
+      "Which Paystack account to inspect. Use all to scan default, old, and new accounts in one run.",
+    example: "all",
+    default: "default",
+    enum: ["default", "old", "new", "all"],
+  })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => value?.trim().toLowerCase())
+  @IsIn(["default", "old", "new", "all"])
+  account?: "default" | "old" | "new" | "all" = "default";
+
   @ApiPropertyOptional({
     description: "Starting Paystack page to inspect",
     example: 1,

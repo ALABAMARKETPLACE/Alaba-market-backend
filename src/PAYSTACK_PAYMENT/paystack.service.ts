@@ -56,6 +56,7 @@ import {
   resolveStoreSubaccountSelection,
 } from "../shared/helpers/paystack-subaccount.helper";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
+import computeSplit from "../shared/helpers/computeSplit";
 
 @Injectable()
 export class PaystackService {
@@ -102,6 +103,98 @@ export class PaystackService {
     return this.paystackAccountConfigService.getPublicKey();
   }
 
+  private buildSettlementAuditReason(
+    order: Order,
+    payment: OrderPayments | null | undefined,
+    store: Store | null | undefined,
+  ): string {
+    if (!order.storeId) {
+      return "Order is not tied to a seller/store, so the payment should be reviewed as a company-side collection.";
+    }
+
+    if (!store) {
+      return "Order references a seller/store that could not be loaded, so payout cannot be automated and requires admin review.";
+    }
+
+    const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+    const hasActiveSubaccount = Boolean(
+      store.subaccount_status === "active" && resolvedSubaccount,
+    );
+
+    if (
+      payment?.collection_mode === "company_account_no_subaccount" ||
+      payment?.requires_manual_settlement
+    ) {
+      return (
+        payment?.manual_settlement_reason ||
+        "Funds were collected into the company account, so the seller payout must be handled manually."
+      );
+    }
+
+    if (!payment?.collection_mode) {
+      return hasActiveSubaccount
+        ? "Payment predates split metadata. Seller/store exists, so confirm whether payout was already settled manually."
+        : "Payment predates split metadata and the seller/store does not have an active Paystack subaccount, so manual payout review is required.";
+    }
+
+    return "Payment requires admin settlement review.";
+  }
+
+  private buildSettlementAuditEstimate(
+    order: Order,
+    payment: OrderPayments | null | undefined,
+    store: Store | null | undefined,
+  ) {
+    const hasStoreAssignment = Boolean(order.storeId);
+    const hasStoreRecord = Boolean(store);
+    const paystackAccountUsed = (payment?.paystack_account_used ||
+      this.paystackAccountConfigService.getDefaultAccountType()) as PaystackAccountType;
+    const adminPercentage =
+      this.paystackAccountConfigService.getAdminSplitPercentage(
+        paystackAccountUsed,
+      );
+    const split = computeSplit({
+      product_total_kobo: Math.round(Number(order.total || 0) * 100),
+      delivery_kobo: Math.round(Number(order.deliveryCharge || 0) * 100),
+      tax_kobo: Math.round(Number(order.tax || 0) * 100),
+      discount_kobo: Math.round(Number(order.discount || 0) * 100),
+      admin_percentage: adminPercentage,
+    });
+
+    const sellerAmount = Number((split.seller_amount_kobo / 100).toFixed(2));
+    const companyAmount = Number((split.admin_amount_kobo / 100).toFixed(2));
+    const category =
+      !hasStoreAssignment || !hasStoreRecord
+        ? "company_only_or_unassigned"
+        : payment?.collection_mode === "company_account_no_subaccount" ||
+            payment?.requires_manual_settlement
+          ? "manual_seller_payout"
+          : "legacy_review_required";
+
+    return {
+      category,
+      requires_manual_payout: category === "manual_seller_payout",
+      requires_review: category !== "manual_seller_payout",
+      seller_amount: hasStoreAssignment && hasStoreRecord ? sellerAmount : null,
+      company_amount: companyAmount,
+      order_amount: Number(
+        (
+          (split.admin_amount_kobo + split.seller_amount_kobo) /
+          100
+        ).toFixed(2),
+      ),
+      admin_percentage: split.admin_percentage,
+      seller_percentage: split.seller_percentage,
+      has_store_assignment: hasStoreAssignment,
+      has_store_record: hasStoreRecord,
+      has_active_subaccount: Boolean(
+        store &&
+          store.subaccount_status === "active" &&
+          resolveStoreSubaccountSelection(store),
+      ),
+    };
+  }
+
   async getManualSettlementAudit(
     query: ManualSettlementAuditDto,
   ): Promise<DataResponseDto> {
@@ -118,8 +211,24 @@ export class PaystackService {
       orderWhere.storeId = query.storeId;
     }
 
+    if (query.status) {
+      orderWhere.status = query.status.trim().toLowerCase();
+    }
+
     if (query.reference) {
       paymentWhere.ref = query.reference.trim();
+    }
+
+    if (query.collectionMode) {
+      if (query.collectionMode === "legacy") {
+        paymentWhere.collection_mode = { [Op.is]: null };
+      } else {
+        paymentWhere.collection_mode = query.collectionMode;
+      }
+    }
+
+    if (query.paystackAccountUsed) {
+      paymentWhere.paystack_account_used = query.paystackAccountUsed;
     }
 
     if (query.buyerEmail) {
@@ -128,6 +237,24 @@ export class PaystackService {
         { guest_email: normalizedEmail },
         { "$userDetails.email$": normalizedEmail },
       ];
+    }
+
+    if (query.from || query.to) {
+      const createdAt: any = {};
+
+      if (query.from) {
+        const fromDate = new Date(query.from);
+        fromDate.setHours(0, 0, 0, 0);
+        createdAt[Op.gte] = fromDate;
+      }
+
+      if (query.to) {
+        const toDate = new Date(query.to);
+        toDate.setHours(23, 59, 59, 999);
+        createdAt[Op.lte] = toDate;
+      }
+
+      orderWhere.createdAt = createdAt;
     }
 
     const { rows, count } = await Order.findAndCountAll({
@@ -193,62 +320,153 @@ export class PaystackService {
       subQuery: false,
     });
 
-    const data = rows.map((order: any) => ({
-      id: order.id,
-      order_id: order.order_id,
-      status: order.status,
-      is_guest_order: order.is_guest_order,
-      totalItems: order.totalItems,
-      total: order.total,
-      discount: order.discount,
-      deliveryCharge: order.deliveryCharge,
-      tax: order.tax,
-      grandTotal: order.grandTotal,
-      createdAt: order.createdAt,
-      buyer: order.is_guest_order
-        ? {
-            type: "guest",
-            name: `${order.guest_first_name || ""} ${
-              order.guest_last_name || ""
-            }`.trim(),
-            email: order.guest_email,
-            phone: order.guest_phone,
-            country_code: order.guest_country_code || null,
-          }
-        : {
-            type: "user",
-            id: order.userDetails?._id || order.userDetails?.id || null,
-            name: order.userDetails?.name || null,
-            first_name: order.userDetails?.first_name || null,
-            last_name: order.userDetails?.last_name || null,
-            email: order.userDetails?.email || null,
-            phone: order.userDetails?.phone || null,
-            image: order.userDetails?.image || null,
+    const records = rows.map((order: any) => {
+      const settlementEstimate = this.buildSettlementAuditEstimate(
+        order,
+        order.orderPayment,
+        order.storeDetails,
+      );
+
+      return {
+        id: order.id,
+        order_id: order.order_id,
+        status: order.status,
+        is_guest_order: order.is_guest_order,
+        totalItems: order.totalItems,
+        total: order.total,
+        discount: order.discount,
+        deliveryCharge: order.deliveryCharge,
+        tax: order.tax,
+        grandTotal: order.grandTotal,
+        createdAt: order.createdAt,
+        buyer: order.is_guest_order
+          ? {
+              type: "guest",
+              name: `${order.guest_first_name || ""} ${
+                order.guest_last_name || ""
+              }`.trim(),
+              email: order.guest_email,
+              phone: order.guest_phone,
+              country_code: order.guest_country_code || null,
+            }
+          : {
+              type: "user",
+              id: order.userDetails?._id || order.userDetails?.id || null,
+              name: order.userDetails?.name || null,
+              first_name: order.userDetails?.first_name || null,
+              last_name: order.userDetails?.last_name || null,
+              email: order.userDetails?.email || null,
+              phone: order.userDetails?.phone || null,
+              image: order.userDetails?.image || null,
+            },
+        store: order.storeDetails
+          ? {
+              ...order.storeDetails.toJSON(),
+              subaccount_status: order.storeDetails.subaccount_status || null,
+              paystack_subaccount_code:
+                resolveStoreSubaccountSelection(order.storeDetails)?.code ||
+                null,
+            }
+          : null,
+        items: order.orderItems || [],
+        audit: {
+          category: settlementEstimate.category,
+          reason: this.buildSettlementAuditReason(
+            order,
+            order.orderPayment,
+            order.storeDetails,
+          ),
+          requires_manual_payout:
+            settlementEstimate.requires_manual_payout,
+          requires_review: settlementEstimate.requires_review,
+          settlement_estimate: {
+            order_amount: settlementEstimate.order_amount,
+            seller_amount: settlementEstimate.seller_amount,
+            company_amount: settlementEstimate.company_amount,
+            admin_percentage: settlementEstimate.admin_percentage,
+            seller_percentage: settlementEstimate.seller_percentage,
+            currency: order.orderPayment?.currency || "NGN",
           },
-      store: order.storeDetails,
-      items: order.orderItems || [],
-      payment: {
-        id: order.orderPayment?.id,
-        paymentType: order.orderPayment?.paymentType,
-        status: order.orderPayment?.status,
-        ref: order.orderPayment?.ref,
-        amount: order.orderPayment?.amount,
-        currency: order.orderPayment?.currency,
-        split_payment_applied:
-          order.orderPayment?.collection_mode === "store_subaccount",
-        collection_mode: order.orderPayment?.collection_mode,
-        paystack_account_used: order.orderPayment?.paystack_account_used,
-        requires_manual_settlement:
-          order.orderPayment?.requires_manual_settlement,
-        manual_settlement_reason:
-          order.orderPayment?.manual_settlement_reason,
+          store_link: {
+            has_store_assignment:
+              settlementEstimate.has_store_assignment,
+            has_store_record: settlementEstimate.has_store_record,
+            has_active_subaccount:
+              settlementEstimate.has_active_subaccount,
+          },
+        },
+        payment: {
+          id: order.orderPayment?.id,
+          paymentType: order.orderPayment?.paymentType,
+          status: order.orderPayment?.status,
+          ref: order.orderPayment?.ref,
+          amount: order.orderPayment?.amount,
+          currency: order.orderPayment?.currency,
+          split_payment_applied:
+            order.orderPayment?.collection_mode === "store_subaccount",
+          collection_mode:
+            order.orderPayment?.collection_mode || "legacy",
+          paystack_account_used: order.orderPayment?.paystack_account_used,
+          requires_manual_settlement:
+            order.orderPayment?.requires_manual_settlement,
+          manual_settlement_reason:
+            order.orderPayment?.manual_settlement_reason,
+        },
+      };
+    });
+
+    const summary = records.reduce(
+      (acc, record) => {
+        acc.total_order_amount = Number(
+          (acc.total_order_amount + Number(record.payment.amount || 0)).toFixed(
+            2,
+          ),
+        );
+        acc.total_company_amount = Number(
+          (
+            acc.total_company_amount +
+            Number(record.audit.settlement_estimate.company_amount || 0)
+          ).toFixed(2),
+        );
+
+        if (record.audit.requires_manual_payout) {
+          acc.manual_payout_count += 1;
+          acc.total_manual_payout_amount = Number(
+            (
+              acc.total_manual_payout_amount +
+              Number(record.audit.settlement_estimate.seller_amount || 0)
+            ).toFixed(2),
+          );
+        }
+
+        if (record.audit.category === "company_only_or_unassigned") {
+          acc.unassigned_company_collection_count += 1;
+        }
+
+        if (record.audit.category === "legacy_review_required") {
+          acc.legacy_review_count += 1;
+        }
+
+        return acc;
       },
-    }));
+      {
+        total_records: records.length,
+        total_order_amount: 0,
+        total_company_amount: 0,
+        total_manual_payout_amount: 0,
+        manual_payout_count: 0,
+        unassigned_company_collection_count: 0,
+        legacy_review_count: 0,
+      },
+    );
 
     return new DataResponseDto(
-      data,
+      {
+        summary,
+        records,
+      },
       true,
-      "Non-split payment audit records retrieved successfully",
+      "Manual settlement audit records retrieved successfully",
       {
         page: query.page,
         take: query.take,
@@ -334,7 +552,6 @@ export class PaystackService {
         userId,
         initData.order_payload,
       );
-    this.assertSingleStoreSplitOnly(preparedCheckout.store_ids);
     const reference = initData.reference || this.generateReference();
     const storeForSplit = await this.getEligibleSingleStoreForSplit(
       preparedCheckout.store_ids,
@@ -342,6 +559,12 @@ export class PaystackService {
     const resolvedStoreSubaccount = storeForSplit
       ? resolveStoreSubaccountSelection(storeForSplit)
       : null;
+    const multiStoreSplitConfig =
+      !storeForSplit && preparedCheckout.store_ids.length > 1
+        ? await this.getEligibleMultiStoreAuthenticatedSplitConfig(
+            preparedCheckout,
+          )
+        : null;
 
     const payload = {
       email: user.email,
@@ -356,16 +579,23 @@ export class PaystackService {
         user_id: userId,
         store_ids: preparedCheckout.store_ids,
         order_count: preparedCheckout.store_ids.length,
-        split_payment_applied: Boolean(storeForSplit),
+        split_payment_applied: Boolean(
+          storeForSplit || multiStoreSplitConfig,
+        ),
         split_payment_mode: storeForSplit
           ? "single_store_checkout"
+          : multiStoreSplitConfig
+          ? "multi_store_checkout"
           : "company_account_no_subaccount",
-        collection_mode: storeForSplit
+        collection_mode: storeForSplit || multiStoreSplitConfig
           ? "store_subaccount"
           : "company_account_no_subaccount",
         paystack_account_target: storeForSplit
           ? resolvedStoreSubaccount?.paystackAccount || "old"
+          : multiStoreSplitConfig?.paystackAccount
+          ? multiStoreSplitConfig.paystackAccount
           : this.paystackAccountConfigService.getDefaultAccountType(),
+        split_subaccounts: multiStoreSplitConfig?.allocations || undefined,
       },
       channels: ["card", "bank", "ussd", "mobile_money"],
     };
@@ -388,6 +618,27 @@ export class PaystackService {
               paystack_account_target:
                 resolvedStoreSubaccount?.paystackAccount || "old",
             },
+          }),
+        }
+      : multiStoreSplitConfig
+      ? {
+          status: true,
+          data: await this.initializeDynamicSplitTransaction({
+            email: user.email,
+            amount: preparedCheckout.amount_kobo,
+            callback_url:
+              initData.callback_url ||
+              `${process.env.FRONTEND_URL}/payment/callback`,
+            reference,
+            split: multiStoreSplitConfig.split,
+            metadata: {
+              ...payload.metadata,
+              split_payment_applied: true,
+              split_payment_mode: "multi_store_checkout",
+              collection_mode: "store_subaccount",
+              paystack_account_target: multiStoreSplitConfig.paystackAccount,
+            },
+            paystack_account: multiStoreSplitConfig.paystackAccount,
           }),
         }
       : await firstValueFrom(
@@ -539,6 +790,102 @@ export class PaystackService {
     }
   }
 
+  async initializeDynamicSplitTransaction(initData: {
+    email: string;
+    amount: number;
+    callback_url: string;
+    split: {
+      type: "flat";
+      bearer_type: "account";
+      subaccounts: Array<{ subaccount: string; share: number }>;
+    };
+    reference?: string;
+    metadata?: Record<string, any>;
+    paystack_account: PaystackAccountType;
+  }): Promise<any> {
+    const amountInKobo = Number(initData.amount);
+    if (amountInKobo < 100) {
+      throw new HttpException(
+        "Amount must be at least 100 kobo",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const payload = {
+      email: initData.email,
+      amount: amountInKobo,
+      currency: "NGN",
+      reference: initData.reference || this.generateReference(),
+      callback_url: initData.callback_url,
+      channels: ["card", "bank", "ussd", "mobile_money"],
+      split: initData.split,
+      metadata: initData.metadata,
+    };
+
+    try {
+      const response = await lastValueFrom(
+        this.httpService
+          .post(`${this.baseUrl}/transaction/initialize`, payload, {
+            headers: this.getHeaders(initData.paystack_account),
+          })
+          .pipe(map((r) => r.data)),
+      );
+
+      return response.data;
+    } catch (err: any) {
+      const paystackMsg: string =
+        err?.response?.data?.message || err?.message || "";
+      const isSubaccountError =
+        /subaccount/i.test(paystackMsg) ||
+        err?.response?.status === 400;
+
+      if (!isSubaccountError) {
+        throw new HttpException(
+          paystackMsg || "Split initialization failed",
+          err?.response?.status || HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      this.logger.warn(
+        `Dynamic split rejected by Paystack ("${paystackMsg}") — falling back to company account`,
+      );
+
+      const fallbackPayload = {
+        email: initData.email,
+        amount: amountInKobo,
+        currency: "NGN",
+        reference: payload.reference,
+        callback_url: initData.callback_url,
+        channels: ["card", "bank", "ussd", "mobile_money"],
+        metadata: {
+          ...initData.metadata,
+          split_fallback: true,
+          split_fallback_reason: paystackMsg,
+          collection_mode: "company_account_no_subaccount",
+        },
+      };
+
+      const fallbackResponse = await lastValueFrom(
+        this.httpService
+          .post(`${this.baseUrl}/transaction/initialize`, fallbackPayload, {
+            headers: this.getHeaders(),
+          })
+          .pipe(
+            map((r) => r.data),
+            catchError((fallbackErr) => {
+              throw new HttpException(
+                fallbackErr?.response?.data?.message ||
+                  "Payment initialization failed",
+                fallbackErr?.response?.status || HttpStatus.BAD_REQUEST,
+              );
+            }),
+          ),
+      );
+
+      return fallbackResponse.data;
+    }
+  }
+
   private async initializeWithSplit(
     initData: PaystackInitializeDto,
   ): Promise<any> {
@@ -667,12 +1014,17 @@ export class PaystackService {
     const perPage = options.perPage || 50;
     const maxPages = options.maxPages || 1;
     const normalizedStatus = options.status?.trim().toLowerCase() || "success";
+    const requestedAccount = options.account || "default";
     const results: any[] = [];
 
     if (options.reference) {
-      const transactionResponse = await this.fetchTransactionByReference(
+      const referenceAccounts: PaystackAccountType[] =
+        requestedAccount === "all"
+          ? ["default", "old", "new"]
+          : [requestedAccount as PaystackAccountType];
+      const transactionResponse = await this.fetchTransactionByReferenceAcrossAccounts(
         options.reference,
-        true,
+        referenceAccounts,
       );
       if (!transactionResponse?.data) {
         throw new BadRequestException(
@@ -684,37 +1036,55 @@ export class PaystackService {
         await this.reconcileSingleTransaction(transactionResponse.data, dryRun),
       );
     } else {
-      let currentPage = startPage;
-      let pagesProcessed = 0;
+      const accountsToScan: PaystackAccountType[] =
+        requestedAccount === "all"
+          ? ["default", "old", "new"]
+          : [requestedAccount as PaystackAccountType];
+      const seenReferences = new Set<string>();
 
-      while (pagesProcessed < maxPages) {
-        const response = await this.fetchTransactionsPage({
-          page: currentPage,
-          perPage,
-          status: normalizedStatus,
-          from: options.from,
-          to: options.to,
-        });
-        const transactions = Array.isArray(response?.data) ? response.data : [];
+      for (const account of [...new Set(accountsToScan)]) {
+        let currentPage = startPage;
+        let pagesProcessed = 0;
 
-        if (transactions.length === 0) {
-          break;
+        while (pagesProcessed < maxPages) {
+          const response = await this.fetchTransactionsPage({
+            account,
+            page: currentPage,
+            perPage,
+            status: normalizedStatus,
+            from: options.from,
+            to: options.to,
+          });
+          const transactions = Array.isArray(response?.data) ? response.data : [];
+
+          if (transactions.length === 0) {
+            break;
+          }
+
+          for (const transaction of transactions) {
+            const reference = transaction?.reference;
+            if (reference && seenReferences.has(reference)) {
+              continue;
+            }
+
+            if (reference) {
+              seenReferences.add(reference);
+            }
+
+            results.push(
+              await this.reconcileSingleTransaction(transaction, dryRun),
+            );
+          }
+
+          pagesProcessed += 1;
+
+          const pageCount = Number(response?.meta?.pageCount || 0);
+          if (!pageCount || currentPage >= pageCount) {
+            break;
+          }
+
+          currentPage += 1;
         }
-
-        for (const transaction of transactions) {
-          results.push(
-            await this.reconcileSingleTransaction(transaction, dryRun),
-          );
-        }
-
-        pagesProcessed += 1;
-
-        const pageCount = Number(response?.meta?.pageCount || 0);
-        if (!pageCount || currentPage >= pageCount) {
-          break;
-        }
-
-        currentPage += 1;
       }
     }
 
@@ -759,6 +1129,7 @@ export class PaystackService {
         dryRun,
         filters: {
           reference: options.reference || null,
+          account: requestedAccount,
           status: normalizedStatus,
           from: options.from || null,
           to: options.to || null,
@@ -1041,6 +1412,16 @@ export class PaystackService {
     const accountsToTry: PaystackAccountType[] = tryAllAccounts
       ? ["default", "old", "new"]
       : ["default"];
+    return this.fetchTransactionByReferenceAcrossAccounts(
+      reference,
+      accountsToTry,
+    );
+  }
+
+  private async fetchTransactionByReferenceAcrossAccounts(
+    reference: string,
+    accountsToTry: PaystackAccountType[],
+  ): Promise<any> {
     let lastError: any = null;
 
     for (const account of [...new Set(accountsToTry)]) {
@@ -1061,6 +1442,7 @@ export class PaystackService {
   }
 
   private async fetchTransactionsPage(params: {
+    account?: PaystackAccountType;
     page: number;
     perPage: number;
     status?: string;
@@ -1070,7 +1452,7 @@ export class PaystackService {
     const response = await lastValueFrom(
       this.httpService
         .get(`${this.baseUrl}/transaction`, {
-          headers: this.getHeaders(),
+          headers: this.getHeaders(params.account || "default"),
           params: {
             page: params.page,
             perPage: params.perPage,
@@ -2185,12 +2567,197 @@ export class PaystackService {
     };
   }
 
+  private normalizeGuestCartItems(cartItems: any[] = []): any[] {
+    return cartItems.map((item: any) => {
+      const rawProductIdentifier =
+        item?.product_id ?? item?.productId ?? item?.product_pid ?? item?.productPid;
+      const normalizedProductId = Number(rawProductIdentifier);
+      const normalizedVariantIdRaw = item?.variant_id ?? item?.variantId;
+      const normalizedStoreIdRaw = item?.store_id ?? item?.storeId;
+      const normalizedQuantity = Number(item?.quantity ?? 0);
+      const normalizedUnitPrice = Number(
+        item?.unit_price ?? item?.unitPrice ?? item?.price ?? 0,
+      );
+      const normalizedTotalPrice = Number(
+        item?.total_price ?? item?.totalPrice,
+      );
+      const normalizedWeight = Number(item?.weight);
+      const normalizedProductPid =
+        typeof rawProductIdentifier === "string" &&
+        rawProductIdentifier.trim().length > 0 &&
+        !Number.isFinite(normalizedProductId)
+          ? rawProductIdentifier.trim()
+          : typeof item?.product_pid === "string" &&
+              item.product_pid.trim().length > 0
+            ? item.product_pid.trim()
+            : undefined;
+
+      return {
+        ...item,
+        product_id: Number.isFinite(normalizedProductId)
+          ? normalizedProductId
+          : undefined,
+        product_pid: normalizedProductPid,
+        variant_id:
+          normalizedVariantIdRaw != null &&
+          Number.isFinite(Number(normalizedVariantIdRaw))
+            ? Number(normalizedVariantIdRaw)
+            : null,
+        store_id:
+          normalizedStoreIdRaw != null &&
+          Number.isFinite(Number(normalizedStoreIdRaw))
+            ? Number(normalizedStoreIdRaw)
+            : undefined,
+        quantity: Number.isFinite(normalizedQuantity) ? normalizedQuantity : 0,
+        unit_price: Number.isFinite(normalizedUnitPrice)
+          ? normalizedUnitPrice
+          : 0,
+        total_price: Number.isFinite(normalizedTotalPrice)
+          ? normalizedTotalPrice
+          : Number.isFinite(normalizedUnitPrice) &&
+              Number.isFinite(normalizedQuantity)
+            ? normalizedUnitPrice * normalizedQuantity
+            : undefined,
+        product_name: item?.product_name ?? item?.name,
+        variant_name: item?.variant_name ?? item?.variantName,
+        image: item?.image ?? null,
+        weight: Number.isFinite(normalizedWeight)
+          ? normalizedWeight
+          : undefined,
+      };
+    });
+  }
+
+  private buildMultiStoreGuestSplit(
+    cartItems: any[] = [],
+    stores: Store[] = [],
+    paystackAccount: PaystackAccountType,
+    totalDiscount = 0,
+  ): {
+    split: {
+      type: "flat";
+      bearer_type: "account";
+      subaccounts: Array<{ subaccount: string; share: number }>;
+    };
+    allocations: Array<{
+      store_id: number;
+      subaccount: string;
+      seller_amount_kobo: number;
+      product_total_kobo: number;
+      discount_kobo: number;
+    }>;
+  } | null {
+    const normalizedCartItems = this.normalizeGuestCartItems(cartItems);
+    if (!normalizedCartItems.length || !stores.length) {
+      return null;
+    }
+
+    const adminPercentage =
+      this.paystackAccountConfigService.getAdminSplitPercentage(
+        paystackAccount,
+      );
+    const subtotalByStore = new Map<number, number>();
+
+    for (const item of normalizedCartItems) {
+      const storeId = Number(item?.store_id);
+      const unitPrice = Number(item?.unit_price ?? 0);
+      const quantity = Number(item?.quantity ?? 0);
+      const totalPrice = Number(
+        item?.total_price ?? unitPrice * quantity,
+      );
+
+      if (!Number.isFinite(storeId) || storeId <= 0) {
+        return null;
+      }
+
+      if (!Number.isFinite(totalPrice) || totalPrice < 0) {
+        return null;
+      }
+
+      subtotalByStore.set(
+        storeId,
+        Number((subtotalByStore.get(storeId) || 0) + totalPrice),
+      );
+    }
+
+    const subtotalKobo = Array.from(subtotalByStore.values()).reduce(
+      (sum, value) => sum + Math.round(Number(value) * 100),
+      0,
+    );
+
+    if (subtotalKobo <= 0) {
+      return null;
+    }
+
+    const storeMap = new Map<number, Store>(
+      stores.map((store) => [Number(store.id), store]),
+    );
+    const storeIds = Array.from(subtotalByStore.keys());
+    const totalDiscountKobo = Math.max(0, Math.round(Number(totalDiscount) * 100));
+    let allocatedDiscountKobo = 0;
+
+    const allocations = storeIds
+      .map((storeId, index) => {
+        const store = storeMap.get(storeId);
+        const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+
+        if (!store || !resolvedSubaccount) {
+          return null;
+        }
+
+        const productTotalKobo = Math.round(
+          Number(subtotalByStore.get(storeId) || 0) * 100,
+        );
+        const remainingDiscountKobo =
+          totalDiscountKobo - allocatedDiscountKobo;
+        const proportionalDiscountKobo =
+          index === storeIds.length - 1
+            ? remainingDiscountKobo
+            : Math.round((productTotalKobo / subtotalKobo) * totalDiscountKobo);
+
+        allocatedDiscountKobo += proportionalDiscountKobo;
+
+        const split = computeSplit({
+          product_total_kobo: productTotalKobo,
+          discount_kobo: proportionalDiscountKobo,
+          admin_percentage: adminPercentage,
+        });
+
+        return {
+          store_id: storeId,
+          subaccount: resolvedSubaccount.code,
+          seller_amount_kobo: split.seller_amount_kobo,
+          product_total_kobo: productTotalKobo,
+          discount_kobo: proportionalDiscountKobo,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .filter((entry) => entry.seller_amount_kobo > 0);
+
+    if (!allocations.length) {
+      return null;
+    }
+
+    return {
+      split: {
+        type: "flat",
+        bearer_type: "account",
+        subaccounts: allocations.map((entry) => ({
+          subaccount: entry.subaccount,
+          share: entry.seller_amount_kobo,
+        })),
+      },
+      allocations,
+    };
+  }
+
   private buildGuestOrderPayload(
     payload: CreateGuestOrderDto,
     reference: string,
   ): CreateGuestOrderDto {
     return {
       ...payload,
+      cart_items: this.normalizeGuestCartItems(payload?.cart_items || []),
       payment: {
         ...payload.payment,
         payment_reference: reference,
@@ -2242,6 +2809,11 @@ export class PaystackService {
       verified: any;
       amount_kobo: number;
       store_ids: number[];
+      store_summaries?: Array<{
+        store_id: number;
+        product_total: number;
+        discount: number;
+      }>;
     },
   ) {
     await this.userCheckoutRepository.create({
@@ -2291,11 +2863,14 @@ export class PaystackService {
         ),
       ];
       const isMultiSeller = storeIds.length > 1;
-      this.assertSingleStoreSplitOnly(storeIds);
       const storeForSplit = await this.getEligibleSingleStoreForSplit(storeIds);
       const resolvedStoreSubaccount = storeForSplit
         ? resolveStoreSubaccountSelection(storeForSplit)
         : null;
+      const multiStoreSplitConfig =
+        !storeForSplit && isMultiSeller
+          ? await this.getEligibleMultiStoreGuestSplitConfig(guestData, storeIds)
+          : null;
 
       // Build metadata
       const metadata = {
@@ -2333,18 +2908,25 @@ export class PaystackService {
         guest_order_payload: guestData.order_payload
           ? this.buildGuestOrderPayload(guestData.order_payload, reference)
           : undefined,
-        split_payment_applied: Boolean(storeForSplit),
+        split_payment_applied: Boolean(
+          storeForSplit || multiStoreSplitConfig,
+        ),
         split_payment_mode: storeForSplit
           ? "single_store_guest_checkout"
+          : multiStoreSplitConfig
+          ? "multi_store_guest_checkout"
           : isMultiSeller
-          ? "not_supported_multi_store_checkout"
+          ? "company_account_multi_store_fallback"
           : "company_account_no_subaccount",
-        collection_mode: storeForSplit
+        collection_mode: storeForSplit || multiStoreSplitConfig
           ? "store_subaccount"
           : "company_account_no_subaccount",
         paystack_account_target: storeForSplit
           ? resolvedStoreSubaccount?.paystackAccount || "old"
+          : multiStoreSplitConfig?.paystackAccount
+          ? multiStoreSplitConfig.paystackAccount
           : this.paystackAccountConfigService.getDefaultAccountType(),
+        split_subaccounts: multiStoreSplitConfig?.allocations || undefined,
         ...guestData.metadata,
       };
 
@@ -2373,6 +2955,21 @@ export class PaystackService {
               reference,
               store_id: storeForSplit.id,
               metadata,
+            }),
+          }
+        : multiStoreSplitConfig
+        ? {
+            status: true,
+            data: await this.initializeDynamicSplitTransaction({
+              email: guestData.guest_info.email,
+              amount: totalAmount,
+              callback_url:
+                guestData.callback_url ||
+                `${process.env.FRONTEND_URL}/guest/payment/callback`,
+              reference,
+              split: multiStoreSplitConfig.split,
+              metadata,
+              paystack_account: multiStoreSplitConfig.paystackAccount,
             }),
           }
         : await firstValueFrom(
@@ -2467,15 +3064,204 @@ export class PaystackService {
     );
   }
 
-  private assertSingleStoreSplitOnly(storeIds?: number[]): void {
+  private async getEligibleMultiStoreGuestSplitConfig(
+    guestData: PaystackGuestInitializeDto,
+    storeIds?: number[],
+  ): Promise<{
+    split: {
+      type: "flat";
+      bearer_type: "account";
+      subaccounts: Array<{ subaccount: string; share: number }>;
+    };
+    allocations: Array<{
+      store_id: number;
+      subaccount: string;
+      seller_amount_kobo: number;
+      product_total_kobo: number;
+      discount_kobo: number;
+    }>;
+    paystackAccount: PaystackAccountType;
+  } | null> {
     const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
       (storeId) => Number.isFinite(storeId) && storeId > 0,
     );
 
-    if (uniqueStoreIds.length > 1) {
-      throw new BadRequestException(
-        "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
-      );
+    if (uniqueStoreIds.length <= 1) {
+      return null;
     }
+
+    const stores = (
+      await Promise.all(
+        uniqueStoreIds.map((storeId) => this.storeRepository.findByPk(storeId)),
+      )
+    ).filter((store): store is Store => Boolean(store));
+
+    if (stores.length !== uniqueStoreIds.length) {
+      return null;
+    }
+
+    const resolvedSelections = stores.map((store) => ({
+      store,
+      selection: resolveStoreSubaccountSelection(store),
+    }));
+
+    if (
+      resolvedSelections.some(
+        ({ store, selection }) =>
+          !selection || store.subaccount_status !== "active",
+      )
+    ) {
+      return null;
+    }
+
+    const paystackAccounts = new Set(
+      resolvedSelections.map(({ selection }) => selection!.paystackAccount),
+    );
+
+    if (paystackAccounts.size !== 1) {
+      return null;
+    }
+
+    const paystackAccount = Array.from(paystackAccounts)[0];
+    const sourceCartItems =
+      guestData.order_payload?.cart_items || guestData.cart_items || [];
+    const splitConfig = this.buildMultiStoreGuestSplit(
+      sourceCartItems,
+      stores,
+      paystackAccount,
+      Number(guestData.order_payload?.order_summary?.discount || 0),
+    );
+
+    if (!splitConfig) {
+      return null;
+    }
+
+    return {
+      ...splitConfig,
+      paystackAccount,
+    };
+  }
+
+  private async getEligibleMultiStoreAuthenticatedSplitConfig(preparedCheckout: {
+    store_ids: number[];
+    store_summaries?: Array<{
+      store_id: number;
+      product_total: number;
+      discount: number;
+    }>;
+  }): Promise<{
+    split: {
+      type: "flat";
+      bearer_type: "account";
+      subaccounts: Array<{ subaccount: string; share: number }>;
+    };
+    allocations: Array<{
+      store_id: number;
+      subaccount: string;
+      seller_amount_kobo: number;
+      product_total_kobo: number;
+      discount_kobo: number;
+    }>;
+    paystackAccount: PaystackAccountType;
+  } | null> {
+    const uniqueStoreIds = [...new Set((preparedCheckout.store_ids || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length <= 1) {
+      return null;
+    }
+
+    const stores = (
+      await Promise.all(
+        uniqueStoreIds.map((storeId) => this.storeRepository.findByPk(storeId)),
+      )
+    ).filter((store): store is Store => Boolean(store));
+
+    if (stores.length !== uniqueStoreIds.length) {
+      return null;
+    }
+
+    const resolvedSelections = stores.map((store) => ({
+      store,
+      selection: resolveStoreSubaccountSelection(store),
+    }));
+
+    if (
+      resolvedSelections.some(
+        ({ store, selection }) =>
+          !selection || store.subaccount_status !== "active",
+      )
+    ) {
+      return null;
+    }
+
+    const paystackAccounts = new Set(
+      resolvedSelections.map(({ selection }) => selection!.paystackAccount),
+    );
+
+    if (paystackAccounts.size !== 1) {
+      return null;
+    }
+
+    const storeSummaries = preparedCheckout.store_summaries || [];
+    if (storeSummaries.length !== uniqueStoreIds.length) {
+      return null;
+    }
+
+    const adminPercentage =
+      this.paystackAccountConfigService.getAdminSplitPercentage(
+        Array.from(paystackAccounts)[0],
+      );
+
+    const storeMap = new Map<number, Store>(
+      stores.map((store) => [Number(store.id), store]),
+    );
+
+    const allocations = storeSummaries
+      .map((summary) => {
+        const store = storeMap.get(Number(summary.store_id));
+        const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+
+        if (!store || !resolvedSubaccount) {
+          return null;
+        }
+
+        const split = computeSplit({
+          product_total_kobo: Math.round(Number(summary.product_total || 0) * 100),
+          discount_kobo: Math.max(
+            0,
+            Math.round(Number(summary.discount || 0) * 100),
+          ),
+          admin_percentage: adminPercentage,
+        });
+
+        return {
+          store_id: Number(summary.store_id),
+          subaccount: resolvedSubaccount.code,
+          seller_amount_kobo: split.seller_amount_kobo,
+          product_total_kobo: split.product_amount_kobo + split.discount_kobo,
+          discount_kobo: split.discount_kobo,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .filter((entry) => entry.seller_amount_kobo > 0);
+
+    if (!allocations.length) {
+      return null;
+    }
+
+    return {
+      split: {
+        type: "flat",
+        bearer_type: "account",
+        subaccounts: allocations.map((entry) => ({
+          subaccount: entry.subaccount,
+          share: entry.seller_amount_kobo,
+        })),
+      },
+      allocations,
+      paystackAccount: Array.from(paystackAccounts)[0],
+    };
   }
 }

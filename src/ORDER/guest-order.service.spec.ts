@@ -12,6 +12,7 @@ import { GuestOrderService } from "./guest-order.service";
 import { Products } from "../PRODUCTS/products.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 import { Store } from "../STORE/store.entity";
+import { DataResponseDto } from "../shared/dto/data-response-dto";
 
 describe("GuestOrderService", () => {
   let service: GuestOrderService;
@@ -164,6 +165,98 @@ describe("GuestOrderService", () => {
             productId: 10,
             quantity: 2,
             productName: "Phone",
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("resolves a guest product UUID pid into the internal numeric product id", async () => {
+    jest.spyOn(Products, "findOne").mockResolvedValue({
+      _id: 10,
+      pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+      store_id: 7,
+      status: true,
+      name: "Phone",
+    } as any);
+
+    const result = await (service as any).groupProducts(
+      [
+        {
+          product_pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+          quantity: 1,
+          product_name: "Phone",
+        },
+      ],
+      {} as any,
+    );
+
+    expect(Products.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+        },
+      }),
+    );
+    expect(result).toEqual([
+      {
+        storeId: 7,
+        products: [
+          expect.objectContaining({
+            productId: 10,
+            quantity: 1,
+            productName: "Phone",
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("falls back to a unique store and item metadata match when guest payload lost the product id", async () => {
+    jest.spyOn(Products, "findOne").mockResolvedValue(null);
+    jest.spyOn(Products, "findAll").mockResolvedValue([
+      {
+        _id: 13197,
+        pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+        store_id: 4548,
+        status: true,
+        name: "Iphone 17 Max",
+        image:
+          "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771582286947.jpg",
+      } as any,
+    ]);
+
+    const result = await (service as any).groupProducts(
+      [
+        {
+          quantity: 1,
+          store_id: 4548,
+          product_name: "Iphone 17 Max",
+          image:
+            "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771582286947.jpg",
+        },
+      ],
+      {} as any,
+    );
+
+    expect(Products.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          store_id: 4548,
+          name: "Iphone 17 Max",
+          image:
+            "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771582286947.jpg",
+        },
+      }),
+    );
+    expect(result).toEqual([
+      {
+        storeId: 4548,
+        products: [
+          expect.objectContaining({
+            productId: 13197,
+            quantity: 1,
+            productName: "Iphone 17 Max",
           }),
         ],
       },
@@ -335,15 +428,222 @@ describe("GuestOrderService", () => {
       expect.objectContaining({
         record_type: "orphaned_guest_checkout",
         order_id: "guest_checkout_ref_901",
+        status: "payment_received_processing",
+        checkout_status: "ready_for_webhook",
         guest_email: "guest@example.com",
         payment: expect.objectContaining({
           ref: "guest_checkout_ref_901",
           status: "success",
         }),
+        status_remark:
+          "Payment was successful and is awaiting backend order finalization.",
         store: expect.objectContaining({
           id: 7,
         }),
       }),
+    );
+  });
+
+  it("reconciles a paid orphaned guest checkout from stored payload", async () => {
+    const checkoutUpdate = jest.fn();
+    (checkoutUpdate as any).mockResolvedValue(undefined);
+
+    (guestCheckoutRepository as any).findByPk = jest.fn();
+    (guestCheckoutRepository as any).findByPk.mockResolvedValue({
+      id: 901,
+      reference: "guest_checkout_ref_901",
+      payment_status: "success",
+      status: "failed",
+      payload: {
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Jane",
+          last_name: "Doe",
+          phone: "08000000000",
+        },
+        delivery_address: {
+          id: "guest_123",
+          state_id: 1,
+          full_address: "12 Test Street",
+        },
+        payment: {
+          payment_reference: "guest_checkout_ref_901",
+        },
+        delivery: {
+          delivery_token: "signed-token",
+        },
+        cart_items: [
+          {
+            product_pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+            quantity: 1,
+            store_id: 7,
+            unit_price: 6250,
+            product_name: "Phone",
+          },
+        ],
+        order_summary: {
+          total: 62.5,
+        },
+      },
+      update: checkoutUpdate,
+    });
+
+    paystackService.verifyPayment.mockResolvedValue({
+      status: true,
+      data: {
+        status: "success",
+        reference: "guest_checkout_ref_901",
+        amount: 6250,
+        customer: {
+          email: "guest@example.com",
+        },
+      },
+    });
+
+    jest.spyOn(service, "createGuestOrder").mockResolvedValue(
+      new DataResponseDto(
+        [
+          {
+            id: 77,
+            order_id: 800077,
+          },
+        ],
+        true,
+        "Created 1 order(s) for 1 seller(s)",
+      ),
+    );
+
+    const result = await service.reconcileGuestCheckout(901);
+
+    expect(paystackService.verifyPayment).toHaveBeenCalledWith({
+      reference: "guest_checkout_ref_901",
+    });
+    expect(service.createGuestOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment: expect.objectContaining({
+          payment_reference: "guest_checkout_ref_901",
+          payment_status: "success",
+        }),
+      }),
+      expect.objectContaining({
+        skipPaymentVerification: true,
+        skipDeliveryTokenVerification: true,
+      }),
+    );
+    expect(checkoutUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "completed",
+        order_ids: [77],
+      }),
+    );
+    expect(result.message).toBe("Guest checkout reconciled successfully");
+  });
+
+  it("bulk reconciles paid orphaned guest checkouts and summarizes outcomes", async () => {
+    const firstUpdate = jest.fn();
+    const secondUpdate = jest.fn();
+    (firstUpdate as any).mockResolvedValue(undefined);
+    (secondUpdate as any).mockResolvedValue(undefined);
+
+    guestCheckoutRepository.findAll.mockResolvedValue([
+      {
+        id: 901,
+        reference: "guest_checkout_ref_901",
+        payment_status: "success",
+        status: "failed",
+        payload: {
+          guest_info: {
+            email: "guest@example.com",
+            first_name: "Jane",
+            last_name: "Doe",
+            phone: "08000000000",
+          },
+          delivery_address: {
+            id: "guest_123",
+            state_id: 1,
+            full_address: "12 Test Street",
+          },
+          payment: {
+            payment_reference: "guest_checkout_ref_901",
+          },
+          delivery: {
+            delivery_token: "signed-token",
+          },
+          cart_items: [
+            {
+              product_pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+              quantity: 1,
+              store_id: 7,
+              unit_price: 6250,
+              product_name: "Phone",
+            },
+          ],
+          order_summary: {
+            total: 62.5,
+          },
+        },
+        update: firstUpdate,
+      },
+      {
+        id: 902,
+        reference: "guest_checkout_ref_902",
+        payment_status: "success",
+        status: "failed",
+        payload: {},
+        update: secondUpdate,
+      },
+    ]);
+
+    orderRepository.findAll
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    paystackService.verifyPayment.mockResolvedValue({
+      status: true,
+      data: {
+        status: "success",
+        reference: "guest_checkout_ref_901",
+        amount: 6250,
+        customer: {
+          email: "guest@example.com",
+        },
+      },
+    });
+
+    jest.spyOn(service, "createGuestOrder").mockResolvedValue(
+      new DataResponseDto(
+        [
+          {
+            id: 77,
+            order_id: 800077,
+          },
+        ],
+        true,
+        "Created 1 order(s) for 1 seller(s)",
+      ),
+    );
+
+    const result = await service.reconcileAllGuestCheckouts();
+
+    expect(result.data.summary).toEqual({
+      total: 2,
+      reconciled: 1,
+      skipped: 1,
+      failed: 0,
+    });
+    expect(result.data.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 901,
+          reference: "guest_checkout_ref_901",
+          action: "reconciled",
+        }),
+        expect.objectContaining({
+          id: 902,
+          reference: "guest_checkout_ref_902",
+          action: "skipped",
+        }),
+      ]),
     );
   });
 

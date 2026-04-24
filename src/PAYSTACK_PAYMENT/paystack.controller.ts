@@ -117,13 +117,14 @@ export class PaystackController {
   }
 
   @Get("manual-settlement/audit")
+  @Get("settlement-audit")
   @Roles(Role.Admin)
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      "List all non-split payments for admin audit, including company-account collections and older payments without split metadata",
+      "Audit company-account collections, legacy non-split payments, and manual seller-payout exposure",
   })
   @ApiOkResponse({
     description: "Manual settlement audit records retrieved successfully",
