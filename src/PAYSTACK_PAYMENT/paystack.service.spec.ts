@@ -277,6 +277,79 @@ describe("PaystackService", () => {
     expect(result.data.reference).toBe("guest_split_ref_123");
   });
 
+  it("normalizes camelCase guest cart item ids before persisting checkout payload", async () => {
+    const { service, guestCheckoutRepository, storeRepository } = createService();
+
+    jest.spyOn(service, "initializeSplitTransaction").mockResolvedValue({
+      authorization_url: "https://checkout.paystack.com/guest-single-store",
+      access_code: "ACCESS_GUEST_SPLIT",
+      reference: "guest_split_ref_1386",
+    } as any);
+
+    storeRepository.findByPk.mockResolvedValue({
+      id: 4548,
+      subaccount_status: "active",
+      paystack_subaccount_code_new: "ACCT_NEW_4548",
+    });
+
+    await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      amount: 500000,
+      delivery_charge: 0,
+      callback_url: "https://example.com/guest/callback",
+      cart_items: [
+        {
+          store_id: 4548,
+          product_id: 1386,
+          quantity: 1,
+        },
+      ],
+      order_payload: {
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        delivery_address: {
+          full_address: "12 Example Street",
+        },
+        delivery: {
+          delivery_token: "token_123",
+        },
+        cart_items: [
+          {
+            storeId: 4548,
+            productId: 1386,
+            quantity: 1,
+            unitPrice: 5000,
+            name: "Iphone 17 Max",
+          },
+        ],
+      },
+    } as any);
+
+    expect(guestCheckoutRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          cart_items: [
+            expect.objectContaining({
+              product_id: 1386,
+              store_id: 4548,
+              unit_price: 5000,
+              product_name: "Iphone 17 Max",
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it("rejects authenticated multi-store checkout until split settlement supports it", async () => {
     const { service, orderPlaceService } = createService();
 
