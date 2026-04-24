@@ -667,12 +667,17 @@ export class PaystackService {
     const perPage = options.perPage || 50;
     const maxPages = options.maxPages || 1;
     const normalizedStatus = options.status?.trim().toLowerCase() || "success";
+    const requestedAccount = options.account || "default";
     const results: any[] = [];
 
     if (options.reference) {
-      const transactionResponse = await this.fetchTransactionByReference(
+      const referenceAccounts: PaystackAccountType[] =
+        requestedAccount === "all"
+          ? ["default", "old", "new"]
+          : [requestedAccount as PaystackAccountType];
+      const transactionResponse = await this.fetchTransactionByReferenceAcrossAccounts(
         options.reference,
-        true,
+        referenceAccounts,
       );
       if (!transactionResponse?.data) {
         throw new BadRequestException(
@@ -684,37 +689,55 @@ export class PaystackService {
         await this.reconcileSingleTransaction(transactionResponse.data, dryRun),
       );
     } else {
-      let currentPage = startPage;
-      let pagesProcessed = 0;
+      const accountsToScan: PaystackAccountType[] =
+        requestedAccount === "all"
+          ? ["default", "old", "new"]
+          : [requestedAccount as PaystackAccountType];
+      const seenReferences = new Set<string>();
 
-      while (pagesProcessed < maxPages) {
-        const response = await this.fetchTransactionsPage({
-          page: currentPage,
-          perPage,
-          status: normalizedStatus,
-          from: options.from,
-          to: options.to,
-        });
-        const transactions = Array.isArray(response?.data) ? response.data : [];
+      for (const account of [...new Set(accountsToScan)]) {
+        let currentPage = startPage;
+        let pagesProcessed = 0;
 
-        if (transactions.length === 0) {
-          break;
+        while (pagesProcessed < maxPages) {
+          const response = await this.fetchTransactionsPage({
+            account,
+            page: currentPage,
+            perPage,
+            status: normalizedStatus,
+            from: options.from,
+            to: options.to,
+          });
+          const transactions = Array.isArray(response?.data) ? response.data : [];
+
+          if (transactions.length === 0) {
+            break;
+          }
+
+          for (const transaction of transactions) {
+            const reference = transaction?.reference;
+            if (reference && seenReferences.has(reference)) {
+              continue;
+            }
+
+            if (reference) {
+              seenReferences.add(reference);
+            }
+
+            results.push(
+              await this.reconcileSingleTransaction(transaction, dryRun),
+            );
+          }
+
+          pagesProcessed += 1;
+
+          const pageCount = Number(response?.meta?.pageCount || 0);
+          if (!pageCount || currentPage >= pageCount) {
+            break;
+          }
+
+          currentPage += 1;
         }
-
-        for (const transaction of transactions) {
-          results.push(
-            await this.reconcileSingleTransaction(transaction, dryRun),
-          );
-        }
-
-        pagesProcessed += 1;
-
-        const pageCount = Number(response?.meta?.pageCount || 0);
-        if (!pageCount || currentPage >= pageCount) {
-          break;
-        }
-
-        currentPage += 1;
       }
     }
 
@@ -759,6 +782,7 @@ export class PaystackService {
         dryRun,
         filters: {
           reference: options.reference || null,
+          account: requestedAccount,
           status: normalizedStatus,
           from: options.from || null,
           to: options.to || null,
@@ -1041,6 +1065,16 @@ export class PaystackService {
     const accountsToTry: PaystackAccountType[] = tryAllAccounts
       ? ["default", "old", "new"]
       : ["default"];
+    return this.fetchTransactionByReferenceAcrossAccounts(
+      reference,
+      accountsToTry,
+    );
+  }
+
+  private async fetchTransactionByReferenceAcrossAccounts(
+    reference: string,
+    accountsToTry: PaystackAccountType[],
+  ): Promise<any> {
     let lastError: any = null;
 
     for (const account of [...new Set(accountsToTry)]) {
@@ -1061,6 +1095,7 @@ export class PaystackService {
   }
 
   private async fetchTransactionsPage(params: {
+    account?: PaystackAccountType;
     page: number;
     perPage: number;
     status?: string;
@@ -1070,7 +1105,7 @@ export class PaystackService {
     const response = await lastValueFrom(
       this.httpService
         .get(`${this.baseUrl}/transaction`, {
-          headers: this.getHeaders(),
+          headers: this.getHeaders(params.account || "default"),
           params: {
             page: params.page,
             perPage: params.perPage,
