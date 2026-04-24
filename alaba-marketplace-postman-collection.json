@@ -5293,7 +5293,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"guest_info\":{\"email\":\"{{guestEmail}}\",\"first_name\":\"John\",\"last_name\":\"Doe\",\"phone\":\"08000000000\"},\"delivery_address\":{\"full_name\":\"John Doe\",\"phone_no\":\"08000000000\",\"full_address\":\"123 Test Street\",\"city\":\"Lagos\",\"state\":\"Lagos\",\"state_id\":1,\"country\":\"Nigeria\",\"country_id\":1},\"cart_items\":[{\"product_id\":{{productId}},\"product_name\":\"Sample Product\",\"quantity\":1}],\"payment\":{\"payment_reference\":\"{{paymentReference}}\",\"transaction_reference\":\"{{paymentReference}}\",\"payment_status\":\"success\"},\"delivery\":{\"delivery_token\":\"{{deliveryToken}}\"}}"
+              "raw": "{\"guest_info\":{\"email\":\"{{guestEmail}}\",\"first_name\":\"Arua\",\"last_name\":\"Ibiam\",\"phone\":\"07066026820\"},\"delivery_address\":{\"id\":\"guest_address_001\",\"full_name\":\"Arua Ibiam\",\"phone_no\":\"07066026820\",\"full_address\":\"4 Test street, Lagos\",\"city\":\"Lagos\",\"state\":\"Lagos\",\"state_id\":1,\"country\":\"Nigeria\",\"country_id\":8},\"cart_items\":[{\"product_id\":13197,\"store_id\":4548,\"product_name\":\"Iphone 17 Max\",\"quantity\":1,\"unit_price\":5000,\"total_price\":5000}],\"payment\":{\"payment_reference\":\"{{paymentReference}}\",\"transaction_reference\":\"{{paymentReference}}\",\"payment_status\":\"success\"},\"delivery\":{\"delivery_token\":\"{{deliveryToken}}\"},\"order_summary\":{\"subtotal\":5000,\"delivery_fee\":0,\"discount\":0,\"tax\":0,\"total\":5000}}"
             },
             "url": {
               "raw": "{{baseUrl}}/order/guest",
@@ -5798,7 +5798,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"guest_info\":{\"email\":\"{{guestEmail}}\",\"first_name\":\"John\",\"last_name\":\"Doe\",\"phone\":\"08000000000\"},\"cart_items\":[{\"product_id\":{{productId}},\"store_id\":{{storeId}},\"quantity\":1,\"unit_price\":50000}],\"amount\":50000,\"delivery_charge\":0,\"callback_url\":\"{{baseUrl}}/paystack/callback\"}"
+              "raw": "{\"guest_info\":{\"email\":\"{{guestEmail}}\",\"first_name\":\"Arua\",\"last_name\":\"Ibiam\",\"phone\":\"07066026820\"},\"cart_items\":[{\"product_id\":13197,\"store_id\":4548,\"quantity\":1,\"unit_price\":5000}],\"amount\":500000,\"delivery_charge\":0,\"callback_url\":\"https://example.com/guest/payment/callback\",\"order_payload\":{\"guest_info\":{\"email\":\"{{guestEmail}}\",\"first_name\":\"Arua\",\"last_name\":\"Ibiam\",\"phone\":\"07066026820\"},\"delivery_address\":{\"id\":\"guest_address_001\",\"full_name\":\"Arua Ibiam\",\"phone_no\":\"07066026820\",\"full_address\":\"4 Test street, Lagos\",\"city\":\"Lagos\",\"state\":\"Lagos\",\"state_id\":1,\"country\":\"Nigeria\",\"country_id\":8},\"cart_items\":[{\"product_id\":13197,\"store_id\":4548,\"product_name\":\"Iphone 17 Max\",\"quantity\":1,\"unit_price\":5000,\"total_price\":5000}],\"payment\":{\"payment_status\":\"pending\"},\"delivery\":{\"delivery_token\":\"{{deliveryToken}}\"},\"order_summary\":{\"subtotal\":5000,\"delivery_fee\":0,\"discount\":0,\"tax\":0,\"total\":5000}}}"
             },
             "url": {
               "raw": "{{baseUrl}}/paystack/initialize-guest",
@@ -9403,7 +9403,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"example\": \"replace_with_actual_payload\"\n}",
+              "raw": "{\n  \"cart\": [\n    {\n      \"id\": 12,\n      \"userId\": {{userId}},\n      \"productId\": 13197,\n      \"variantId\": null,\n      \"storeId\": 4548,\n      \"quantity\": 1,\n      \"image\": \"https://example.com/product.jpg\",\n      \"totalPrice\": 5000,\n      \"productDetails\": {\n        \"image\": \"https://example.com/product.jpg\",\n        \"name\": \"Iphone 17 Max\",\n        \"price\": 5000\n      },\n      \"storeDetails\": {},\n      \"buyPrice\": 5000,\n      \"name\": \"Iphone 17 Max\"\n    }\n  ],\n  \"address\": {\n    \"id\": {{addressId}},\n    \"userId\": {{userId}},\n    \"flat\": \"\",\n    \"fullAddress\": \"Test address one\",\n    \"pin_code\": \"\",\n    \"state\": \"Lagos\",\n    \"city\": \"Ebute Metta\",\n    \"street\": \"Test address one\",\n    \"alt_phone\": \"08000000000\",\n    \"code\": \"+234\",\n    \"geo_location\": \"\",\n    \"type\": \"Home\",\n    \"lat\": null,\n    \"long\": null\n  },\n  \"total\": 5000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11057,7 +11057,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"example\": \"replace_with_actual_payload\"\n}",
+              "raw": "{\n  \"cart\": [\n    {\n      \"id\": 1,\n      \"name\": \"Iphone 17 Max\",\n      \"quantity\": 1,\n      \"weight\": 1,\n      \"totalPrice\": 5000,\n      \"storeId\": 4548,\n      \"productId\": 13197,\n      \"variantId\": null\n    }\n  ],\n  \"address\": {\n    \"id\": \"guest_address_001\",\n    \"full_name\": \"Arua Ibiam\",\n    \"phone_no\": \"07066026820\",\n    \"full_address\": \"4 Test street, Lagos\",\n    \"country_id\": 8,\n    \"state_id\": 1,\n    \"country\": \"Nigeria\",\n    \"state\": \"Lagos\",\n    \"is_guest\": true\n  },\n  \"total\": 5000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11137,7 +11137,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"example\": \"replace_with_actual_payload\"\n}",
+              "raw": "{\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": 12,\n        \"productId\": 13197,\n        \"variantId\": null,\n        \"storeId\": 4548,\n        \"quantity\": 1\n      }\n    ],\n    \"payment\": {\n      \"type\": \"paystack\",\n      \"callback_url\": \"https://example.com/payment/callback\"\n    },\n    \"address\": {\n      \"id\": {{addressId}}\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11532,7 +11532,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": 1,\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"productId\": \"{{productPid}}\",\n  \"quantity\": 1\n}",
               "options": {
                 "raw": {
                   "language": "json"

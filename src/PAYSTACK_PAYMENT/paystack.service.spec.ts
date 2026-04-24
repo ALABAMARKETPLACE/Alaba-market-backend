@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import * as crypto from "crypto";
-import { of } from "rxjs";
+import { of, throwError } from "rxjs";
 import { PaystackService } from "./paystack.service";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
 import { Order } from "../ORDER/order.entity";
@@ -26,12 +26,12 @@ describe("PaystackService", () => {
 
   const createService = () => {
     const httpService = {
-      get: jest.fn<any, any[]>(),
-      post: jest.fn<any, any[]>(),
+      get: jest.fn(),
+      post: jest.fn(),
     };
 
     const storeRepository = {
-      findByPk: jest.fn<any, any[]>(async () => null),
+      findByPk: jest.fn(async () => null as any),
     };
 
     const paymentSplitService = {
@@ -73,13 +73,13 @@ describe("PaystackService", () => {
     };
 
     const guestCheckoutRepository = {
-      findOne: jest.fn<any, any[]>(async () => null),
-      create: jest.fn<any, any[]>(async () => null),
+      findOne: jest.fn(async () => null as any),
+      create: jest.fn(async () => null as any),
     };
 
     const userCheckoutRepository = {
-      findOne: jest.fn<any, any[]>(async () => null),
-      create: jest.fn<any, any[]>(async () => null),
+      findOne: jest.fn(async () => null as any),
+      create: jest.fn(async () => null as any),
     };
 
     const userRepository = {
@@ -90,7 +90,7 @@ describe("PaystackService", () => {
     };
 
     const paymentLogRepository = {
-      findOne: jest.fn<any, any[]>(async () => null),
+      findOne: jest.fn(async () => null as any),
     };
 
     const guestOrderService = {
@@ -105,7 +105,7 @@ describe("PaystackService", () => {
         amount: 1500,
         amount_kobo: 150000,
         store_ids: [7],
-      })),
+      }) as any),
       create: jest.fn(async () => ({
         data: [],
       })),
@@ -191,7 +191,14 @@ describe("PaystackService", () => {
       amount: 1500,
       amount_kobo: 150000,
       store_ids: [7],
-    });
+      store_summaries: [
+        {
+          store_id: 7,
+          product_total: 1500,
+          discount: 0,
+        },
+      ],
+    } as any);
     storeRepository.findByPk.mockResolvedValue({
       id: 7,
       subaccount_status: "active",
@@ -351,24 +358,70 @@ describe("PaystackService", () => {
     );
   });
 
-  it("rejects authenticated multi-store checkout until split settlement supports it", async () => {
-    const { service, orderPlaceService } = createService();
+  it("auto-applies dynamic split for authenticated multi-store checkout when all stores are eligible", async () => {
+    const { service, orderPlaceService, storeRepository } = createService();
+    const initializeDynamicSplitSpy = jest
+      .spyOn(service, "initializeDynamicSplitTransaction")
+      .mockResolvedValue({
+        authorization_url: "https://checkout.paystack.com/auth-multi-store",
+        access_code: "ACCESS_AUTH_MULTI",
+        reference: "auth_multi_split_ref_123",
+      } as any);
 
     orderPlaceService.prepareAuthenticatedCheckout.mockResolvedValue({
       verified: { data: { amount: 1500, addressId: 12 } },
       amount: 1500,
       amount_kobo: 150000,
       store_ids: [7, 9],
-    });
+      store_summaries: [
+        {
+          store_id: 7,
+          product_total: 1000,
+          discount: 0,
+        },
+        {
+          store_id: 9,
+          product_total: 500,
+          discount: 0,
+        },
+      ],
+    } as any);
+    storeRepository.findByPk
+      .mockResolvedValueOnce({
+        id: 7,
+        subaccount_status: "active",
+        paystack_subaccount_code_new: "ACCT_NEW_007",
+      })
+      .mockResolvedValueOnce({
+        id: 9,
+        subaccount_status: "active",
+        paystack_subaccount_code_new: "ACCT_NEW_009",
+      });
 
-    await expect(
-      service.initializeAuthenticatedCheckout(4625, {
-        order_payload: {} as any,
-        callback_url: "https://example.com/callback",
-      } as any),
-    ).rejects.toThrow(
-      "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
+    const result = await service.initializeAuthenticatedCheckout(4625, {
+      order_payload: {} as any,
+      callback_url: "https://example.com/callback",
+    } as any);
+
+    expect(initializeDynamicSplitSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 150000,
+        paystack_account: "new",
+        split: expect.objectContaining({
+          type: "flat",
+          bearer_type: "account",
+          subaccounts: [
+            expect.objectContaining({
+              subaccount: "ACCT_NEW_007",
+            }),
+            expect.objectContaining({
+              subaccount: "ACCT_NEW_009",
+            }),
+          ],
+        }),
+      }),
     );
+    expect(result.data.reference).toBe("auth_multi_split_ref_123");
   });
 
   it("auto-applies dynamic split for guest multi-store checkout when all stores are eligible", async () => {
@@ -469,6 +522,116 @@ describe("PaystackService", () => {
     );
     expect(guestCheckoutRepository.create).toHaveBeenCalled();
     expect(result.data.reference).toBe("guest_multi_split_ref_123");
+  });
+
+  it("falls back to company account when guest multi-store split subaccounts are rejected", async () => {
+    const { service, storeRepository, httpService } = createService();
+
+    storeRepository.findByPk
+      .mockResolvedValueOnce({
+        id: 7,
+        subaccount_status: "active",
+        paystack_subaccount_code_new: "ACCT_NEW_007",
+      })
+      .mockResolvedValueOnce({
+        id: 9,
+        subaccount_status: "active",
+        paystack_subaccount_code_new: "ACCT_NEW_009",
+      });
+
+    httpService.post.mockReturnValueOnce(
+      throwError(() => ({
+        response: {
+          status: 400,
+          data: {
+            message: "Some subaccount(s) could not be found",
+          },
+        },
+      })),
+    );
+    httpService.post.mockReturnValueOnce(
+      of({
+        data: {
+          status: true,
+          data: {
+            authorization_url:
+              "https://checkout.paystack.com/guest-multi-store-fallback",
+            access_code: "ACCESS_GUEST_MULTI_FB",
+            reference: "guest_multi_split_ref_fallback",
+          },
+        },
+      }),
+    );
+
+    const result = await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      amount: 150000,
+      delivery_charge: 5000,
+      callback_url: "https://example.com/guest/callback",
+      cart_items: [
+        {
+          store_id: 7,
+          product_id: 1,
+          quantity: 1,
+          unit_price: 1000,
+        },
+        {
+          store_id: 9,
+          product_id: 2,
+          quantity: 1,
+          unit_price: 500,
+        },
+      ],
+      order_payload: {
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        delivery_address: {
+          full_address: "12 Example Street",
+        },
+        delivery: {
+          delivery_token: "token_123",
+        },
+        cart_items: [
+          {
+            store_id: 7,
+            product_id: 1,
+            quantity: 1,
+            unit_price: 1000,
+            total_price: 1000,
+          },
+          {
+            store_id: 9,
+            product_id: 2,
+            quantity: 1,
+            unit_price: 500,
+            total_price: 500,
+          },
+        ],
+      },
+    } as any);
+
+    expect(httpService.post).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("/transaction/initialize"),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          split_fallback: true,
+          split_fallback_reason: "Some subaccount(s) could not be found",
+          collection_mode: "company_account_no_subaccount",
+        }),
+      }),
+      expect.any(Object),
+    );
+    expect(result.data.reference).toBe("guest_multi_split_ref_fallback");
   });
 
   it("returns the full verification envelope from Paystack", async () => {

@@ -1567,7 +1567,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"example\": \"replace_with_actual_payload\"\n}"
+              "raw": "{\n  \"cart\": [\n    {\n      \"id\": 12,\n      \"userId\": {{userId}},\n      \"productId\": 13197,\n      \"variantId\": null,\n      \"storeId\": 4548,\n      \"quantity\": 1,\n      \"image\": \"https://example.com/product.jpg\",\n      \"totalPrice\": 5000,\n      \"productDetails\": {\n        \"image\": \"https://example.com/product.jpg\",\n        \"name\": \"Iphone 17 Max\",\n        \"price\": 5000\n      },\n      \"storeDetails\": {},\n      \"buyPrice\": 5000,\n      \"name\": \"Iphone 17 Max\"\n    }\n  ],\n  \"address\": {\n    \"id\": {{addressId}},\n    \"userId\": {{userId}},\n    \"flat\": \"\",\n    \"fullAddress\": \"Test address one\",\n    \"pin_code\": \"\",\n    \"state\": \"Lagos\",\n    \"city\": \"Ebute Metta\",\n    \"street\": \"Test address one\",\n    \"alt_phone\": \"08000000000\",\n    \"code\": \"+234\",\n    \"geo_location\": \"\",\n    \"type\": \"Home\",\n    \"lat\": null,\n    \"long\": null\n  },\n  \"total\": 5000\n}"
             }
           },
           "event": [
@@ -1937,7 +1937,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"example\": \"replace_with_actual_payload\"\n}",
+              "raw": "{\n  \"cart\": [\n    {\n      \"id\": 1,\n      \"name\": \"Iphone 17 Max\",\n      \"quantity\": 1,\n      \"weight\": 1,\n      \"totalPrice\": 5000,\n      \"storeId\": 4548,\n      \"productId\": 13197,\n      \"variantId\": null\n    }\n  ],\n  \"address\": {\n    \"id\": \"guest_address_001\",\n    \"full_name\": \"Arua Ibiam\",\n    \"phone_no\": \"07066026820\",\n    \"full_address\": \"4 Test street, Lagos\",\n    \"country_id\": 8,\n    \"state_id\": 1,\n    \"country\": \"Nigeria\",\n    \"state\": \"Lagos\",\n    \"is_guest\": true\n  },\n  \"total\": 5000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2091,7 +2091,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": 1,\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
+              "raw": "{\n  \"productId\": \"{{productPid}}\",\n  \"quantity\": 1\n}"
             }
           },
           "event": [
@@ -11250,7 +11250,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": 1,\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"quantity\": 2\n    }\n  ],\n  \"shippingAddressId\": 1,\n  \"paymentMethod\": \"card\"\n}",
+              "raw": "{\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Arua\",\n    \"last_name\": \"Ibiam\",\n    \"phone\": \"07066026820\"\n  },\n  \"delivery_address\": {\n    \"id\": \"guest_address_001\",\n    \"full_name\": \"Arua Ibiam\",\n    \"phone_no\": \"07066026820\",\n    \"full_address\": \"4 Test street, Lagos\",\n    \"city\": \"Lagos\",\n    \"state\": \"Lagos\",\n    \"state_id\": 1,\n    \"country\": \"Nigeria\",\n    \"country_id\": 8\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": 13197,\n      \"store_id\": 4548,\n      \"product_name\": \"Iphone 17 Max\",\n      \"quantity\": 1,\n      \"unit_price\": 5000,\n      \"total_price\": 5000\n    }\n  ],\n  \"payment\": {\n    \"payment_reference\": \"{{paymentReference}}\",\n    \"transaction_reference\": \"{{paymentReference}}\",\n    \"payment_status\": \"success\"\n  },\n  \"delivery\": {\n    \"delivery_token\": \"{{deliveryToken}}\"\n  },\n  \"order_summary\": {\n    \"subtotal\": 5000,\n    \"delivery_fee\": 0,\n    \"discount\": 0,\n    \"tax\": 0,\n    \"total\": 5000\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11338,7 +11338,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"userId\": 1,\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"quantity\": 2\n    }\n  ],\n  \"shippingAddressId\": 1,\n  \"paymentMethod\": \"card\"\n}",
+              "raw": "{\n  \"email\": \"{{guestEmail}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14343,7 +14343,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"example\": \"replace_with_actual_payload\"\n}",
+              "raw": "{\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": 12,\n        \"productId\": 13197,\n        \"variantId\": null,\n        \"storeId\": 4548,\n        \"quantity\": 1\n      }\n    ],\n    \"payment\": {\n      \"type\": \"paystack\",\n      \"callback_url\": \"https://example.com/payment/callback\"\n    },\n    \"address\": {\n      \"id\": {{addressId}}\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14431,7 +14431,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"example\": \"replace_with_actual_payload\"\n}",
+              "raw": "{\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Arua\",\n    \"last_name\": \"Ibiam\",\n    \"phone\": \"07066026820\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": 13197,\n      \"store_id\": 4548,\n      \"quantity\": 1,\n      \"unit_price\": 5000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"callback_url\": \"https://example.com/guest/payment/callback\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Arua\",\n      \"last_name\": \"Ibiam\",\n      \"phone\": \"07066026820\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Arua Ibiam\",\n      \"phone_no\": \"07066026820\",\n      \"full_address\": \"4 Test street, Lagos\",\n      \"city\": \"Lagos\",\n      \"state\": \"Lagos\",\n      \"state_id\": 1,\n      \"country\": \"Nigeria\",\n      \"country_id\": 8\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": 13197,\n        \"store_id\": 4548,\n        \"product_name\": \"Iphone 17 Max\",\n        \"quantity\": 1,\n        \"unit_price\": 5000,\n        \"total_price\": 5000\n      }\n    ],\n    \"payment\": {\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
