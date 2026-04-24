@@ -6,6 +6,7 @@ import { EnquiryMailProcessor } from "./enquiry-mail.processor";
 import { ENQUIRY_MAIL_QUEUE } from "./mail-queue.constants";
 import { PdfService } from "./pdf.services";
 import { SafeTransportFactoryProvider } from "./safe-transport.factory";
+import { MailController } from "./Mails.controller";
 
 const logger = new Logger("EmailModule");
 
@@ -117,6 +118,7 @@ const buildBullOptions = async () => {
       extraProviders: [SafeTransportFactoryProvider],
     }),
   ],
+  controllers: [MailController],
   providers: [MailService, PdfService, EnquiryMailProcessor],
   exports: [MailService, PdfService],
 })
