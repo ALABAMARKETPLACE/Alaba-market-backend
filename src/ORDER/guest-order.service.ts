@@ -1624,6 +1624,81 @@ export class GuestOrderService {
     }
   }
 
+  private async findGuestProductByStoredItemFields(
+    item: any,
+    transaction: Transaction,
+  ) {
+    const storeId = Number(item?.store_id ?? item?.storeId);
+    const productName = String(item?.product_name ?? item?.name ?? "").trim();
+    const productImage = String(item?.image ?? "").trim();
+
+    if (!Number.isFinite(storeId) || storeId <= 0 || !productName) {
+      return null;
+    }
+
+    const where: WhereOptions = {
+      store_id: storeId,
+      name: productName,
+    };
+
+    if (productImage) {
+      Object.assign(where, { image: productImage });
+    }
+
+    const matchingProducts = await Products.findAll({
+      attributes: ["_id", "pid", "store_id", "status", "name", "image"],
+      where,
+      transaction,
+      limit: 2,
+    });
+
+    if (matchingProducts.length !== 1) {
+      return null;
+    }
+
+    return matchingProducts[0];
+  }
+
+  private async resolveGuestCartProduct(item: any, transaction: Transaction) {
+    const rawProductIdentifier =
+      item?.product_id ??
+      item?.productId ??
+      item?.product_pid ??
+      item?.productPid;
+    const numericProductId = Number(rawProductIdentifier);
+    const productWhere = Number.isFinite(numericProductId)
+      ? { _id: numericProductId }
+      : typeof rawProductIdentifier === "string" &&
+          rawProductIdentifier.trim().length > 0
+        ? { pid: rawProductIdentifier.trim() }
+        : null;
+
+    if (productWhere) {
+      const product = await Products.findOne({
+        attributes: ["_id", "pid", "store_id", "status", "name", "image"],
+        where: productWhere,
+        transaction,
+      });
+
+      if (product) {
+        return product;
+      }
+    }
+
+    const fallbackProduct = await this.findGuestProductByStoredItemFields(
+      item,
+      transaction,
+    );
+
+    if (fallbackProduct) {
+      return fallbackProduct;
+    }
+
+    throw new NotFoundException(
+      `Product identifier ${String(rawProductIdentifier || 0)} not found`,
+    );
+  }
+
   // ==================== GROUPING ====================
 
   private async groupProducts(cartItems: any[], transaction: Transaction) {
@@ -1632,33 +1707,11 @@ export class GuestOrderService {
 
       for (const item of cartItems) {
         const rawProductIdentifier =
-          item?.product_id ?? item?.productId ?? item?.product_pid ?? item?.productPid;
-        const numericProductId = Number(rawProductIdentifier);
-        const productWhere = Number.isFinite(numericProductId)
-          ? { _id: numericProductId }
-          : typeof rawProductIdentifier === "string" &&
-              rawProductIdentifier.trim().length > 0
-            ? { pid: rawProductIdentifier.trim() }
-            : null;
-
-        if (!productWhere) {
-          throw new NotFoundException(
-            `Product identifier ${String(rawProductIdentifier || 0)} not found`,
-          );
-        }
-
-        // Verify product exists
-        const product = await Products.findOne({
-          attributes: ["_id", "pid", "store_id", "status", "name"],
-          where: productWhere,
-          transaction,
-        });
-
-        if (!product) {
-          throw new NotFoundException(
-            `Product identifier ${String(rawProductIdentifier || 0)} not found`,
-          );
-        }
+          item?.product_id ??
+          item?.productId ??
+          item?.product_pid ??
+          item?.productPid;
+        const product = await this.resolveGuestCartProduct(item, transaction);
 
         if (product.status === false) {
           throw new ServiceUnavailableException(
