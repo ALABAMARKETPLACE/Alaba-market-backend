@@ -1,4 +1,12 @@
-import { Body, Controller, HttpCode, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -11,6 +19,7 @@ import { AuthGuard } from "../shared/guards/auth.guard";
 import { Roles } from "../shared/decorator/roles.decorator";
 import { Role } from "../shared/enum/role.enum";
 import { SendTestMailDto } from "./dto/send-test-mail.dto";
+import { GetMailLogsDto } from "./dto/get-mail-logs.dto";
 
 @Controller("mail")
 @ApiTags("mail")
@@ -32,5 +41,21 @@ export class MailController {
     @Body() data: SendTestMailDto,
   ): Promise<DataResponseDto> {
     return this.mailService.sendTestMail(data);
+  }
+
+  @Get("logs")
+  @UseGuards(AuthGuard)
+  @Roles(Role.Admin)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get persistent mail delivery logs",
+    description:
+      "Returns stored mail delivery attempts for signup, order, update, invoice, enquiry, and test mails.",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  async getMailLogs(
+    @Query() query: GetMailLogsDto,
+  ): Promise<DataResponseDto> {
+    return this.mailService.getMailLogs(query);
   }
 }

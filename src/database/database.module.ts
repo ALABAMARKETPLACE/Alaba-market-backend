@@ -63,6 +63,7 @@ import { PaystackSubaccount } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 import { UserCheckout } from "../PAYSTACK_PAYMENT/user-checkout.entity";
 import { PaymentSplit } from "../PAYMENT_SPLITS/payment-split.entity";
+import { MailLog } from "../MAILS/mail-log.entity";
 
 @Global()
 @Module({
@@ -131,6 +132,7 @@ import { PaymentSplit } from "../PAYMENT_SPLITS/payment-split.entity";
           DriverInvitation,
           DriverOrder,
           PaymentSplit,
+          MailLog,
           PaystackSubaccount,
           GuestCheckout,
           UserCheckout,

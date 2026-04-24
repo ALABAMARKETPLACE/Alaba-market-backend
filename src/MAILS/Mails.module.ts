@@ -1,12 +1,14 @@
 import { BullModule } from "@nestjs/bull";
 import { MailerModule } from "@nestjs-modules/mailer";
 import { Global, Logger, Module } from "@nestjs/common";
+import { SequelizeModule } from "@nestjs/sequelize";
 import { MailService } from "./Mails.services";
 import { EnquiryMailProcessor } from "./enquiry-mail.processor";
 import { ENQUIRY_MAIL_QUEUE } from "./mail-queue.constants";
 import { PdfService } from "./pdf.services";
 import { SafeTransportFactoryProvider } from "./safe-transport.factory";
 import { MailController } from "./Mails.controller";
+import { MailLog } from "./mail-log.entity";
 
 const logger = new Logger("EmailModule");
 
@@ -98,6 +100,7 @@ const buildBullOptions = async () => {
 @Global()
 @Module({
   imports: [
+    SequelizeModule.forFeature([MailLog]),
     BullModule.forRootAsync({
       useFactory: async () => buildBullOptions(),
     }),
