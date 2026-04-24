@@ -170,6 +170,47 @@ describe("GuestOrderService", () => {
     ]);
   });
 
+  it("resolves a guest product UUID pid into the internal numeric product id", async () => {
+    jest.spyOn(Products, "findOne").mockResolvedValue({
+      _id: 10,
+      pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+      store_id: 7,
+      status: true,
+      name: "Phone",
+    } as any);
+
+    const result = await (service as any).groupProducts(
+      [
+        {
+          product_pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+          quantity: 1,
+          product_name: "Phone",
+        },
+      ],
+      {} as any,
+    );
+
+    expect(Products.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+        },
+      }),
+    );
+    expect(result).toEqual([
+      {
+        storeId: 7,
+        products: [
+          expect.objectContaining({
+            productId: 10,
+            quantity: 1,
+            productName: "Phone",
+          }),
+        ],
+      },
+    ]);
+  });
+
   it("verifies successful guest payments using the full Paystack response envelope", async () => {
     paystackService.verifyPayment.mockResolvedValue({
       status: true,
@@ -335,11 +376,15 @@ describe("GuestOrderService", () => {
       expect.objectContaining({
         record_type: "orphaned_guest_checkout",
         order_id: "guest_checkout_ref_901",
+        status: "paid_not_created",
+        checkout_status: "ready_for_webhook",
         guest_email: "guest@example.com",
         payment: expect.objectContaining({
           ref: "guest_checkout_ref_901",
           status: "success",
         }),
+        status_remark:
+          "Payment was successful, but the order record was not created automatically.",
         store: expect.objectContaining({
           id: 7,
         }),

@@ -55,6 +55,32 @@ export class GuestOrderService {
     private readonly jwtService: JwtService,
   ) {}
 
+  private getOrphanedGuestCheckoutDisplayStatus(checkout: any): string {
+    const checkoutStatus = String(checkout?.status || "").toLowerCase();
+    const paymentStatus = String(checkout?.payment_status || "").toLowerCase();
+
+    if (paymentStatus === "success" && checkoutStatus !== "completed") {
+      return "paid_not_created";
+    }
+
+    if (paymentStatus === "pending") {
+      return "payment_pending";
+    }
+
+    return checkout?.status || "pending";
+  }
+
+  private getOrphanedGuestCheckoutStatusRemark(checkout: any): string | null {
+    const checkoutStatus = String(checkout?.status || "").toLowerCase();
+    const paymentStatus = String(checkout?.payment_status || "").toLowerCase();
+
+    if (paymentStatus === "success" && checkoutStatus !== "completed") {
+      return "Payment was successful, but the order record was not created automatically.";
+    }
+
+    return checkout?.error || null;
+  }
+
   // ==================== MAIN ORDER CREATION ====================
 
   async createGuestOrder(
@@ -388,7 +414,17 @@ export class GuestOrderService {
     };
 
     if (status) {
-      checkoutWhere[Op.or] = [{ status }, { payment_status: status }];
+      const normalizedStatus = String(status).toLowerCase();
+      const statusFilters: any[] = [{ status }, { payment_status: status }];
+
+      if (normalizedStatus === "paid_not_created") {
+        statusFilters.push({
+          payment_status: "success",
+          status: { [Op.ne]: "completed" },
+        });
+      }
+
+      checkoutWhere[Op.or] = statusFilters;
     }
 
     const guestCheckouts = await this.guestCheckoutRepository.findAll({
@@ -494,10 +530,13 @@ export class GuestOrderService {
         .map((storeId) => storeMap.get(storeId))
         .filter(Boolean);
 
+      const displayStatus = this.getOrphanedGuestCheckoutDisplayStatus(checkout);
+      const statusRemark = this.getOrphanedGuestCheckoutStatusRemark(checkout);
+
       return {
         id: checkout.id,
         order_id: checkout.reference,
-        status: checkout.status,
+        status: displayStatus,
         guest_email: checkout.guest_email,
         guest_first_name: guestInfo?.first_name || "",
         guest_last_name: guestInfo?.last_name || "",
@@ -509,7 +548,12 @@ export class GuestOrderService {
         stores,
         items: cartItems.map((item: any, index: number) => ({
           id: item?.id || `${checkout.id}-${index}`,
-          productId: item?.product_id || item?.productId || null,
+          productId:
+            item?.product_id ||
+            item?.productId ||
+            item?.product_pid ||
+            item?.productPid ||
+            null,
           variantId: item?.variant_id || item?.variantId || null,
           quantity: item?.quantity || 0,
           price: item?.unit_price || item?.price || 0,
@@ -548,6 +592,7 @@ export class GuestOrderService {
         checkout_status: checkout.status,
         payment_status: checkout.payment_status,
         checkout_reference: checkout.reference,
+        status_remark: statusRemark,
       };
     });
   }
@@ -1354,16 +1399,32 @@ export class GuestOrderService {
       const grouped = new Map();
 
       for (const item of cartItems) {
+        const rawProductIdentifier =
+          item?.product_id ?? item?.productId ?? item?.product_pid ?? item?.productPid;
+        const numericProductId = Number(rawProductIdentifier);
+        const productWhere = Number.isFinite(numericProductId)
+          ? { _id: numericProductId }
+          : typeof rawProductIdentifier === "string" &&
+              rawProductIdentifier.trim().length > 0
+            ? { pid: rawProductIdentifier.trim() }
+            : null;
+
+        if (!productWhere) {
+          throw new NotFoundException(
+            `Product identifier ${String(rawProductIdentifier || 0)} not found`,
+          );
+        }
+
         // Verify product exists
         const product = await Products.findOne({
-          attributes: ["_id", "store_id", "status", "name"],
-          where: { _id: item.product_id },
+          attributes: ["_id", "pid", "store_id", "status", "name"],
+          where: productWhere,
           transaction,
         });
 
         if (!product) {
           throw new NotFoundException(
-            `Product ID ${item.product_id} not found`,
+            `Product identifier ${String(rawProductIdentifier || 0)} not found`,
           );
         }
 
@@ -1390,7 +1451,7 @@ export class GuestOrderService {
         }
 
         grouped.get(storeId).products.push({
-          productId: item.product_id,
+          productId: product._id,
           variantId: item.variant_id || null,
           quantity: item.quantity,
           productName: item.product_name,

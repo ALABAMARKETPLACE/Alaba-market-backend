@@ -358,6 +358,79 @@ describe("PaystackService", () => {
     );
   });
 
+  it("preserves guest product UUID pid values for webhook order creation", async () => {
+    const { service, guestCheckoutRepository, storeRepository } = createService();
+
+    jest.spyOn(service, "initializeSplitTransaction").mockResolvedValue({
+      authorization_url: "https://checkout.paystack.com/guest-single-store",
+      access_code: "ACCESS_GUEST_SPLIT",
+      reference: "guest_split_ref_uuid",
+    } as any);
+
+    storeRepository.findByPk.mockResolvedValue({
+      id: 4548,
+      subaccount_status: "active",
+      paystack_subaccount_code_new: "ACCT_NEW_4548",
+    });
+
+    await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      amount: 500000,
+      delivery_charge: 0,
+      callback_url: "https://example.com/guest/callback",
+      cart_items: [
+        {
+          store_id: 4548,
+          product_id: 1386,
+          quantity: 1,
+        },
+      ],
+      order_payload: {
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        delivery_address: {
+          full_address: "12 Example Street",
+        },
+        delivery: {
+          delivery_token: "token_123",
+        },
+        cart_items: [
+          {
+            storeId: 4548,
+            productId: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+            quantity: 1,
+            unitPrice: 5000,
+            name: "Iphone 17 Max",
+          },
+        ],
+      },
+    } as any);
+
+    expect(guestCheckoutRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          cart_items: [
+            expect.objectContaining({
+              product_id: undefined,
+              product_pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+              store_id: 4548,
+              unit_price: 5000,
+            }),
+          ],
+        }),
+      }),
+    );
+  });
+
   it("auto-applies dynamic split for authenticated multi-store checkout when all stores are eligible", async () => {
     const { service, orderPlaceService, storeRepository } = createService();
     const initializeDynamicSplitSpy = jest

@@ -2569,9 +2569,9 @@ export class PaystackService {
 
   private normalizeGuestCartItems(cartItems: any[] = []): any[] {
     return cartItems.map((item: any) => {
-      const normalizedProductId = Number(
-        item?.product_id ?? item?.productId,
-      );
+      const rawProductIdentifier =
+        item?.product_id ?? item?.productId ?? item?.product_pid ?? item?.productPid;
+      const normalizedProductId = Number(rawProductIdentifier);
       const normalizedVariantIdRaw = item?.variant_id ?? item?.variantId;
       const normalizedStoreIdRaw = item?.store_id ?? item?.storeId;
       const normalizedQuantity = Number(item?.quantity ?? 0);
@@ -2582,12 +2582,22 @@ export class PaystackService {
         item?.total_price ?? item?.totalPrice,
       );
       const normalizedWeight = Number(item?.weight);
+      const normalizedProductPid =
+        typeof rawProductIdentifier === "string" &&
+        rawProductIdentifier.trim().length > 0 &&
+        !Number.isFinite(normalizedProductId)
+          ? rawProductIdentifier.trim()
+          : typeof item?.product_pid === "string" &&
+              item.product_pid.trim().length > 0
+            ? item.product_pid.trim()
+            : undefined;
 
       return {
         ...item,
         product_id: Number.isFinite(normalizedProductId)
           ? normalizedProductId
-          : item?.product_id,
+          : undefined,
+        product_pid: normalizedProductPid,
         variant_id:
           normalizedVariantIdRaw != null &&
           Number.isFinite(Number(normalizedVariantIdRaw))
