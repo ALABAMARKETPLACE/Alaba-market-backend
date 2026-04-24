@@ -317,6 +317,11 @@ export class OrderPlaceService {
       await this.orderAddress(userId, data.address, t);
 
       let grandTotal = 0;
+      const store_summaries: Array<{
+        store_id: number;
+        product_total: number;
+        discount: number;
+      }> = [];
 
       for (const groupedProduct of products) {
         const itemsTotal = await this.calculateItemsTotal(groupedProduct, t);
@@ -325,6 +330,11 @@ export class OrderPlaceService {
           groupedProduct.storeId,
         );
         grandTotal += itemsTotal + charges.tax - charges.discount;
+        store_summaries.push({
+          store_id: groupedProduct.storeId,
+          product_total: itemsTotal,
+          discount: Number(charges.discount || 0),
+        });
       }
 
       return {
@@ -332,6 +342,7 @@ export class OrderPlaceService {
         amount: grandTotal,
         amount_kobo: Math.round(grandTotal * 100),
         store_ids: products.map((item) => item.storeId),
+        store_summaries,
       };
     });
   }
