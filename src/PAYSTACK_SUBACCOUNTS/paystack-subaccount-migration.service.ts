@@ -240,7 +240,7 @@ export class PaystackSubaccountMigrationService {
         ? store.paystack_subaccount_migrated_at.toISOString()
         : "",
       resolveStoreSubaccountCode({
-        paystack_subaccount_code_new: null,
+        paystack_subaccount_code_new: undefined,
         paystack_subaccount_code: store.paystack_subaccount_code,
         paystack_subaccount_code_old: store.paystack_subaccount_code_old,
       } as Partial<Store>) || "",
@@ -622,23 +622,21 @@ export class PaystackSubaccountMigrationService {
     remoteSubaccount: PaystackSubaccountSummary,
     options: { sellerPercentage: number },
   ): Promise<void> {
-    await this.storeRepository.sequelize.transaction(
+    await this.storeRepository.sequelize!.transaction(
       async (transaction: Transaction) => {
-        await store.update(
-          {
-            paystack_subaccount_code_old:
-              store.paystack_subaccount_code_old ||
-              store.paystack_subaccount_code ||
-              null,
-            paystack_subaccount_code_new: remoteSubaccount.subaccount_code,
-            paystack_subaccount_id: remoteSubaccount.id,
-            paystack_subaccount_migrated_at: new Date(),
-            paystack_subaccount_migration_status: "success",
-            paystack_subaccount_migration_error: null,
-            percentage_charge: options.sellerPercentage,
-          },
-          { transaction },
-        );
+        store.set({
+          paystack_subaccount_code_old:
+            store.paystack_subaccount_code_old ||
+            store.paystack_subaccount_code ||
+            undefined,
+          paystack_subaccount_code_new: remoteSubaccount.subaccount_code,
+          paystack_subaccount_id: remoteSubaccount.id,
+          paystack_subaccount_migrated_at: new Date(),
+          paystack_subaccount_migration_status: "success",
+          paystack_subaccount_migration_error: undefined,
+          percentage_charge: options.sellerPercentage,
+        } as Partial<Store>);
+        await store.save({ transaction });
       },
     );
   }
@@ -851,7 +849,8 @@ export class PaystackSubaccountMigrationService {
           return response.data.data;
         }
       } catch (error) {
-        const status = error?.response?.status;
+        const normalizedError = error as any;
+        const status = normalizedError?.response?.status;
         if (status === 404) {
           this.logger.debug(
             `Subaccount ${subaccountCode} not found in ${account} account, trying next`,
@@ -860,7 +859,7 @@ export class PaystackSubaccountMigrationService {
         }
 
         this.logger.warn(
-          `Failed to fetch legacy subaccount details for ${subaccountCode} via ${account} account: ${error?.message}`,
+          `Failed to fetch legacy subaccount details for ${subaccountCode} via ${account} account: ${normalizedError?.message}`,
         );
       }
     }
@@ -976,7 +975,7 @@ export class PaystackSubaccountMigrationService {
     newSubaccountCode: string,
     migratedAt: Date,
   ): Promise<void> {
-    await this.storeRepository.sequelize.transaction(
+    await this.storeRepository.sequelize!.transaction(
       async (transaction: Transaction) => {
         const store = await this.storeRepository.findByPk(storeId, {
           transaction,
@@ -987,17 +986,15 @@ export class PaystackSubaccountMigrationService {
         }
 
         // Preserve the legacy code path until the old account is fully retired.
-        await store.update(
-          {
-            paystack_subaccount_code_old:
-              store.paystack_subaccount_code_old || legacySubaccountCode,
-            paystack_subaccount_code_new: newSubaccountCode,
-            paystack_subaccount_migrated_at: migratedAt,
-            paystack_subaccount_migration_status: "success",
-            paystack_subaccount_migration_error: null,
-          },
-          { transaction },
-        );
+        store.set({
+          paystack_subaccount_code_old:
+            store.paystack_subaccount_code_old || legacySubaccountCode || undefined,
+          paystack_subaccount_code_new: newSubaccountCode,
+          paystack_subaccount_migrated_at: migratedAt,
+          paystack_subaccount_migration_status: "success",
+          paystack_subaccount_migration_error: undefined,
+        } as Partial<Store>);
+        await store.save({ transaction });
       },
     );
   }
@@ -1007,7 +1004,7 @@ export class PaystackSubaccountMigrationService {
     legacySubaccountCode: string | null,
     errorMessage: string,
   ): Promise<void> {
-    await this.storeRepository.sequelize.transaction(
+    await this.storeRepository.sequelize!.transaction(
       async (transaction: Transaction) => {
         const store = await this.storeRepository.findByPk(storeId, {
           transaction,
@@ -1017,15 +1014,13 @@ export class PaystackSubaccountMigrationService {
           throw new NotFoundException("Store not found");
         }
 
-        await store.update(
-          {
-            paystack_subaccount_code_old:
-              store.paystack_subaccount_code_old || legacySubaccountCode,
-            paystack_subaccount_migration_status: "failed",
-            paystack_subaccount_migration_error: errorMessage,
-          },
-          { transaction },
-        );
+        store.set({
+          paystack_subaccount_code_old:
+            store.paystack_subaccount_code_old || legacySubaccountCode || undefined,
+          paystack_subaccount_migration_status: "failed",
+          paystack_subaccount_migration_error: errorMessage,
+        } as Partial<Store>);
+        await store.save({ transaction });
       },
     );
   }
