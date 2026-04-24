@@ -1,10 +1,12 @@
 import { InjectQueue } from "@nestjs/bull";
 import { MailerService } from "@nestjs-modules/mailer";
 import { Injectable, Logger } from "@nestjs/common";
+import { InjectModel } from "@nestjs/sequelize";
 import axios from "axios";
 import { Queue } from "bull";
 import FormData from "form-data";
 import { MailtrapClient } from "mailtrap";
+import { Op } from "sequelize";
 import {
   ENQUIRY_MAIL_JOB,
   ENQUIRY_MAIL_QUEUE,
@@ -13,6 +15,8 @@ import {
 import { PdfService } from "./pdf.services";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { SendTestMailDto } from "./dto/send-test-mail.dto";
+import { MailLog } from "./mail-log.entity";
+import { GetMailLogsDto } from "./dto/get-mail-logs.dto";
 // import { DataResponseDto } from "../shared/dto/data-response-dto";
 
 type MailAttachment = {
@@ -27,6 +31,7 @@ type MailPayload = {
   text?: string;
   html?: string;
   attachments?: MailAttachment[];
+  context?: string;
 };
 
 type MailProvider = "smtp" | "mailgun" | "mailtrap" | "mailtrap_api";
@@ -38,6 +43,8 @@ export class MailService {
   constructor(
     private mailerService: MailerService,
     private pdfService: PdfService,
+    @InjectModel(MailLog)
+    private readonly mailLogRepository: typeof MailLog,
     @InjectQueue(ENQUIRY_MAIL_QUEUE)
     private readonly enquiryMailQueue: Queue<EnquiryMailJobData>,
   ) {}
@@ -183,6 +190,33 @@ export class MailService {
     return list.map((item) => item.trim()).filter(Boolean);
   }
 
+  private async recordMailLog(
+    provider: MailProvider,
+    status: "success" | "failed",
+    data: MailPayload,
+    error?: any,
+  ) {
+    try {
+      await this.mailLogRepository.create({
+        to: this.normalizeTo(data.to),
+        subject: data.subject,
+        provider: this.getProviderLabel(provider),
+        status,
+        context: data.context || null,
+        error: error ? String(error?.message || error).slice(0, 5000) : null,
+        payload: {
+          hasText: Boolean(data.text),
+          hasHtml: Boolean(data.html),
+          attachmentCount: data.attachments?.length || 0,
+        },
+      } as any);
+    } catch (logError) {
+      this.logger.error(
+        `Failed to persist mail log: ${logError?.message || logError}`,
+      );
+    }
+  }
+
   private async sendWithMailgun(data: MailPayload) {
     const domain = process.env.MAILGUN_DOMAIN;
     const apiKey = process.env.MAILGUN_API_KEY;
@@ -267,8 +301,11 @@ export class MailService {
     const primary = this.getConfiguredProvider();
 
     try {
-      return await this.sendWithProvider(primary, data);
+      const result = await this.sendWithProvider(primary, data);
+      await this.recordMailLog(primary, "success", data);
+      return result;
     } catch (primaryError) {
+      await this.recordMailLog(primary, "failed", data, primaryError);
       const fallbacks = this.getFallbackProviders(primary);
 
       if (!this.isRetryableProviderError(primaryError) || fallbacks.length === 0) {
@@ -289,8 +326,11 @@ export class MailService {
 
       for (const provider of fallbacks) {
         try {
-          return await this.sendWithProvider(provider, data);
+          const result = await this.sendWithProvider(provider, data);
+          await this.recordMailLog(provider, "success", data);
+          return result;
         } catch (fallbackError) {
+          await this.recordMailLog(provider, "failed", data, fallbackError);
           lastError = fallbackError;
           this.logger.error(
             `Mail fallback ${provider} FAILED: ${
@@ -328,6 +368,7 @@ export class MailService {
         subject: data?.subject,
         text: `${process.env.NAME} notification`,
         html: data?.template,
+        context: "auth",
       });
       this.logger.log(`AuthMail sent to: ${data?.to}`);
     } catch (err) {
@@ -344,6 +385,7 @@ export class MailService {
         to: data?.to,
         subject: data?.subject,
         text: `${process.env.NAME} notification`,
+        context: "invite",
       });
     } catch (err) {
       this.logger.error(
@@ -360,6 +402,7 @@ export class MailService {
         subject: data?.subject,
         text: `${process.env.NAME} notification`,
         html: data?.template,
+        context: "request_document",
       });
       this.logger.log(`RequestDocumentMail sent to: ${data?.to}`);
     } catch (err) {
@@ -376,6 +419,7 @@ export class MailService {
         to: data?.to,
         subject: data?.subject,
         html: data.template,
+        context: "profile_update",
       });
       this.logger.log(`updateEmailNotify sent to: ${data?.to}`);
     } catch (err) {
@@ -393,6 +437,7 @@ export class MailService {
         to: data?.to,
         subject: data?.subject,
         html: data.template,
+        context: "transactional",
       });
       this.logger.log(`sellerEmails sent to: ${data?.to}`);
     } catch (err) {
@@ -411,6 +456,7 @@ export class MailService {
         subject: "Mysubject",
         text: `${process.env.NAME} Notification`,
         html: data?.template,
+        context: "invoice",
         attachments: [
           {
             filename: `${inovice_id}.pdf`,
@@ -463,6 +509,7 @@ export class MailService {
       subject: data.subject || "New Enquiry",
       text: `${process.env.NAME} notification`,
       html: data.template,
+      context: "enquiry",
     });
     this.logger.log(`Enquiry notification sent to: ${data.to}`);
   }
@@ -487,6 +534,7 @@ export class MailService {
       subject,
       text: `Mail provider test via ${this.getProviderLabel(provider)}`,
       html,
+      context: "test",
     });
 
     return new DataResponseDto(
@@ -497,6 +545,37 @@ export class MailService {
       },
       true,
       "Test email sent successfully",
+    );
+  }
+
+  async getMailLogs(query: GetMailLogsDto): Promise<DataResponseDto> {
+    const page = query.page || 1;
+    const take = query.take || 20;
+    const offset = (page - 1) * take;
+
+    const where: any = {};
+
+    if (query.status) where.status = query.status;
+    if (query.provider) where.provider = query.provider;
+    if (query.context) {
+      where.context = {
+        [Op.iLike]: query.context,
+      };
+    }
+
+    const { rows, count } = await this.mailLogRepository.findAndCountAll({
+      where,
+      limit: take,
+      offset,
+      order: [["createdAt", "DESC"]],
+    });
+
+    return new DataResponseDto(
+      rows,
+      true,
+      "Mail logs retrieved successfully",
+      { page, take } as any,
+      count,
     );
   }
 }
