@@ -757,6 +757,49 @@ export class PaystackService {
     }
   }
 
+  async initializeDynamicSplitTransaction(initData: {
+    email: string;
+    amount: number;
+    callback_url: string;
+    split: {
+      type: "flat";
+      bearer_type: "account";
+      subaccounts: Array<{ subaccount: string; share: number }>;
+    };
+    reference?: string;
+    metadata?: Record<string, any>;
+    paystack_account: PaystackAccountType;
+  }): Promise<any> {
+    const amountInKobo = Number(initData.amount);
+    if (amountInKobo < 100) {
+      throw new HttpException(
+        "Amount must be at least 100 kobo",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const payload = {
+      email: initData.email,
+      amount: amountInKobo,
+      currency: "NGN",
+      reference: initData.reference || this.generateReference(),
+      callback_url: initData.callback_url,
+      channels: ["card", "bank", "ussd", "mobile_money"],
+      split: initData.split,
+      metadata: initData.metadata,
+    };
+
+    const response = await lastValueFrom(
+      this.httpService
+        .post(`${this.baseUrl}/transaction/initialize`, payload, {
+          headers: this.getHeaders(initData.paystack_account),
+        })
+        .pipe(map((r) => r.data)),
+    );
+
+    return response.data;
+  }
+
   private async initializeWithSplit(
     initData: PaystackInitializeDto,
   ): Promise<any> {
@@ -2489,6 +2532,129 @@ export class PaystackService {
     });
   }
 
+  private buildMultiStoreGuestSplit(
+    cartItems: any[] = [],
+    stores: Store[] = [],
+    paystackAccount: PaystackAccountType,
+    totalDiscount = 0,
+  ): {
+    split: {
+      type: "flat";
+      bearer_type: "account";
+      subaccounts: Array<{ subaccount: string; share: number }>;
+    };
+    allocations: Array<{
+      store_id: number;
+      subaccount: string;
+      seller_amount_kobo: number;
+      product_total_kobo: number;
+      discount_kobo: number;
+    }>;
+  } | null {
+    const normalizedCartItems = this.normalizeGuestCartItems(cartItems);
+    if (!normalizedCartItems.length || !stores.length) {
+      return null;
+    }
+
+    const adminPercentage =
+      this.paystackAccountConfigService.getAdminSplitPercentage(
+        paystackAccount,
+      );
+    const subtotalByStore = new Map<number, number>();
+
+    for (const item of normalizedCartItems) {
+      const storeId = Number(item?.store_id);
+      const unitPrice = Number(item?.unit_price ?? 0);
+      const quantity = Number(item?.quantity ?? 0);
+      const totalPrice = Number(
+        item?.total_price ?? unitPrice * quantity,
+      );
+
+      if (!Number.isFinite(storeId) || storeId <= 0) {
+        return null;
+      }
+
+      if (!Number.isFinite(totalPrice) || totalPrice < 0) {
+        return null;
+      }
+
+      subtotalByStore.set(
+        storeId,
+        Number((subtotalByStore.get(storeId) || 0) + totalPrice),
+      );
+    }
+
+    const subtotalKobo = Array.from(subtotalByStore.values()).reduce(
+      (sum, value) => sum + Math.round(Number(value) * 100),
+      0,
+    );
+
+    if (subtotalKobo <= 0) {
+      return null;
+    }
+
+    const storeMap = new Map<number, Store>(
+      stores.map((store) => [Number(store.id), store]),
+    );
+    const storeIds = Array.from(subtotalByStore.keys());
+    const totalDiscountKobo = Math.max(0, Math.round(Number(totalDiscount) * 100));
+    let allocatedDiscountKobo = 0;
+
+    const allocations = storeIds
+      .map((storeId, index) => {
+        const store = storeMap.get(storeId);
+        const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+
+        if (!store || !resolvedSubaccount) {
+          return null;
+        }
+
+        const productTotalKobo = Math.round(
+          Number(subtotalByStore.get(storeId) || 0) * 100,
+        );
+        const remainingDiscountKobo =
+          totalDiscountKobo - allocatedDiscountKobo;
+        const proportionalDiscountKobo =
+          index === storeIds.length - 1
+            ? remainingDiscountKobo
+            : Math.round((productTotalKobo / subtotalKobo) * totalDiscountKobo);
+
+        allocatedDiscountKobo += proportionalDiscountKobo;
+
+        const split = computeSplit({
+          product_total_kobo: productTotalKobo,
+          discount_kobo: proportionalDiscountKobo,
+          admin_percentage: adminPercentage,
+        });
+
+        return {
+          store_id: storeId,
+          subaccount: resolvedSubaccount.code,
+          seller_amount_kobo: split.seller_amount_kobo,
+          product_total_kobo: productTotalKobo,
+          discount_kobo: proportionalDiscountKobo,
+        };
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .filter((entry) => entry.seller_amount_kobo > 0);
+
+    if (!allocations.length) {
+      return null;
+    }
+
+    return {
+      split: {
+        type: "flat",
+        bearer_type: "account",
+        subaccounts: allocations.map((entry) => ({
+          subaccount: entry.subaccount,
+          share: entry.seller_amount_kobo,
+        })),
+      },
+      allocations,
+    };
+  }
+
   private buildGuestOrderPayload(
     payload: CreateGuestOrderDto,
     reference: string,
@@ -2596,11 +2762,14 @@ export class PaystackService {
         ),
       ];
       const isMultiSeller = storeIds.length > 1;
-      this.assertSingleStoreSplitOnly(storeIds);
       const storeForSplit = await this.getEligibleSingleStoreForSplit(storeIds);
       const resolvedStoreSubaccount = storeForSplit
         ? resolveStoreSubaccountSelection(storeForSplit)
         : null;
+      const multiStoreSplitConfig =
+        !storeForSplit && isMultiSeller
+          ? await this.getEligibleMultiStoreGuestSplitConfig(guestData, storeIds)
+          : null;
 
       // Build metadata
       const metadata = {
@@ -2638,18 +2807,25 @@ export class PaystackService {
         guest_order_payload: guestData.order_payload
           ? this.buildGuestOrderPayload(guestData.order_payload, reference)
           : undefined,
-        split_payment_applied: Boolean(storeForSplit),
+        split_payment_applied: Boolean(
+          storeForSplit || multiStoreSplitConfig,
+        ),
         split_payment_mode: storeForSplit
           ? "single_store_guest_checkout"
+          : multiStoreSplitConfig
+          ? "multi_store_guest_checkout"
           : isMultiSeller
-          ? "not_supported_multi_store_checkout"
+          ? "company_account_multi_store_fallback"
           : "company_account_no_subaccount",
-        collection_mode: storeForSplit
+        collection_mode: storeForSplit || multiStoreSplitConfig
           ? "store_subaccount"
           : "company_account_no_subaccount",
         paystack_account_target: storeForSplit
           ? resolvedStoreSubaccount?.paystackAccount || "old"
+          : multiStoreSplitConfig?.paystackAccount
+          ? multiStoreSplitConfig.paystackAccount
           : this.paystackAccountConfigService.getDefaultAccountType(),
+        split_subaccounts: multiStoreSplitConfig?.allocations || undefined,
         ...guestData.metadata,
       };
 
@@ -2678,6 +2854,21 @@ export class PaystackService {
               reference,
               store_id: storeForSplit.id,
               metadata,
+            }),
+          }
+        : multiStoreSplitConfig
+        ? {
+            status: true,
+            data: await this.initializeDynamicSplitTransaction({
+              email: guestData.guest_info.email,
+              amount: totalAmount,
+              callback_url:
+                guestData.callback_url ||
+                `${process.env.FRONTEND_URL}/guest/payment/callback`,
+              reference,
+              split: multiStoreSplitConfig.split,
+              metadata,
+              paystack_account: multiStoreSplitConfig.paystackAccount,
             }),
           }
         : await firstValueFrom(
@@ -2770,6 +2961,84 @@ export class PaystackService {
         store.subaccount_status === "active" &&
         resolveStoreSubaccountSelection(store),
     );
+  }
+
+  private async getEligibleMultiStoreGuestSplitConfig(
+    guestData: PaystackGuestInitializeDto,
+    storeIds?: number[],
+  ): Promise<{
+    split: {
+      type: "flat";
+      bearer_type: "account";
+      subaccounts: Array<{ subaccount: string; share: number }>;
+    };
+    allocations: Array<{
+      store_id: number;
+      subaccount: string;
+      seller_amount_kobo: number;
+      product_total_kobo: number;
+      discount_kobo: number;
+    }>;
+    paystackAccount: PaystackAccountType;
+  } | null> {
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+
+    if (uniqueStoreIds.length <= 1) {
+      return null;
+    }
+
+    const stores = (
+      await Promise.all(
+        uniqueStoreIds.map((storeId) => this.storeRepository.findByPk(storeId)),
+      )
+    ).filter((store): store is Store => Boolean(store));
+
+    if (stores.length !== uniqueStoreIds.length) {
+      return null;
+    }
+
+    const resolvedSelections = stores.map((store) => ({
+      store,
+      selection: resolveStoreSubaccountSelection(store),
+    }));
+
+    if (
+      resolvedSelections.some(
+        ({ store, selection }) =>
+          !selection || store.subaccount_status !== "active",
+      )
+    ) {
+      return null;
+    }
+
+    const paystackAccounts = new Set(
+      resolvedSelections.map(({ selection }) => selection!.paystackAccount),
+    );
+
+    if (paystackAccounts.size !== 1) {
+      return null;
+    }
+
+    const paystackAccount = Array.from(paystackAccounts)[0];
+    const sourceCartItems =
+      guestData.order_payload?.cart_items || guestData.cart_items || [];
+    const splitConfig = this.buildMultiStoreGuestSplit(
+      sourceCartItems,
+      stores,
+      paystackAccount,
+      Number(guestData.order_payload?.order_summary?.discount || 0),
+    );
+
+    if (!splitConfig) {
+      return null;
+    }
+
+    return {
+      ...splitConfig,
+      paystackAccount,
+    };
   }
 
   private assertSingleStoreSplitOnly(storeIds?: number[]): void {

@@ -50,6 +50,7 @@ describe("PaystackService", () => {
         Authorization: `Bearer ${process.env.PAYSTACK_TEST_SECRET_KEY || process.env.PAYSTACK_SECRET_KEY || "sk_test_123456"}`,
         "Content-Type": "application/json",
       })),
+      getAdminSplitPercentage: jest.fn(() => 6.5),
       getDefaultAccountType: jest.fn(() => "default"),
       getPublicKey: jest.fn(
         () =>
@@ -370,36 +371,104 @@ describe("PaystackService", () => {
     );
   });
 
-  it("rejects guest multi-store checkout until split settlement supports it", async () => {
-    const { service } = createService();
+  it("auto-applies dynamic split for guest multi-store checkout when all stores are eligible", async () => {
+    const { service, storeRepository, guestCheckoutRepository } = createService();
+    const initializeDynamicSplitSpy = jest
+      .spyOn(service, "initializeDynamicSplitTransaction")
+      .mockResolvedValue({
+        authorization_url: "https://checkout.paystack.com/guest-multi-store",
+        access_code: "ACCESS_GUEST_MULTI",
+        reference: "guest_multi_split_ref_123",
+      } as any);
 
-    await expect(
-      service.initializeGuestPayment({
+    storeRepository.findByPk
+      .mockResolvedValueOnce({
+        id: 7,
+        subaccount_status: "active",
+        paystack_subaccount_code_new: "ACCT_NEW_007",
+      })
+      .mockResolvedValueOnce({
+        id: 9,
+        subaccount_status: "active",
+        paystack_subaccount_code_new: "ACCT_NEW_009",
+      });
+
+    const result = await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      amount: 150000,
+      delivery_charge: 5000,
+      callback_url: "https://example.com/guest/callback",
+      cart_items: [
+        {
+          store_id: 7,
+          product_id: 1,
+          quantity: 1,
+          unit_price: 1000,
+        },
+        {
+          store_id: 9,
+          product_id: 2,
+          quantity: 1,
+          unit_price: 500,
+        },
+      ],
+      order_payload: {
         guest_info: {
           email: "guest@example.com",
           first_name: "Guest",
           last_name: "Buyer",
           phone: "08000000000",
         },
-        amount: 150000,
-        delivery_charge: 5000,
-        callback_url: "https://example.com/guest/callback",
+        delivery_address: {
+          full_address: "12 Example Street",
+        },
+        delivery: {
+          delivery_token: "token_123",
+        },
         cart_items: [
           {
             store_id: 7,
             product_id: 1,
             quantity: 1,
+            unit_price: 1000,
+            total_price: 1000,
           },
           {
             store_id: 9,
             product_id: 2,
             quantity: 1,
+            unit_price: 500,
+            total_price: 500,
           },
         ],
-      } as any),
-    ).rejects.toThrow(
-      "Multi-store checkout is temporarily unavailable because automatic seller split settlement is only supported for single-store payments.",
+      },
+    } as any);
+
+    expect(initializeDynamicSplitSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 155000,
+        paystack_account: "new",
+        split: expect.objectContaining({
+          type: "flat",
+          bearer_type: "account",
+          subaccounts: [
+            expect.objectContaining({
+              subaccount: "ACCT_NEW_007",
+            }),
+            expect.objectContaining({
+              subaccount: "ACCT_NEW_009",
+            }),
+          ],
+        }),
+      }),
     );
+    expect(guestCheckoutRepository.create).toHaveBeenCalled();
+    expect(result.data.reference).toBe("guest_multi_split_ref_123");
   });
 
   it("returns the full verification envelope from Paystack", async () => {
