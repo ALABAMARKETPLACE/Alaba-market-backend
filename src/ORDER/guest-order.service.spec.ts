@@ -212,6 +212,57 @@ describe("GuestOrderService", () => {
     ]);
   });
 
+  it("falls back to a unique store and item metadata match when guest payload lost the product id", async () => {
+    jest.spyOn(Products, "findOne").mockResolvedValue(null);
+    jest.spyOn(Products, "findAll").mockResolvedValue([
+      {
+        _id: 13197,
+        pid: "ae732c6e-8843-40d1-9aa3-b3ce075bd04e",
+        store_id: 4548,
+        status: true,
+        name: "Iphone 17 Max",
+        image:
+          "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771582286947.jpg",
+      } as any,
+    ]);
+
+    const result = await (service as any).groupProducts(
+      [
+        {
+          quantity: 1,
+          store_id: 4548,
+          product_name: "Iphone 17 Max",
+          image:
+            "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771582286947.jpg",
+        },
+      ],
+      {} as any,
+    );
+
+    expect(Products.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          store_id: 4548,
+          name: "Iphone 17 Max",
+          image:
+            "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/alabamarketplace/1771582286947.jpg",
+        },
+      }),
+    );
+    expect(result).toEqual([
+      {
+        storeId: 4548,
+        products: [
+          expect.objectContaining({
+            productId: 13197,
+            quantity: 1,
+            productName: "Iphone 17 Max",
+          }),
+        ],
+      },
+    ]);
+  });
+
   it("verifies successful guest payments using the full Paystack response envelope", async () => {
     paystackService.verifyPayment.mockResolvedValue({
       status: true,
