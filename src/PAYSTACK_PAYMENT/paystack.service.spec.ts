@@ -684,6 +684,79 @@ describe("PaystackService", () => {
     );
   });
 
+  it("can scan the old Paystack account during bulk reconciliation", async () => {
+    const { service, httpService, paystackAccountConfigService } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_default";
+    process.env.PAYSTACK_TEST_SECRET_KEY_OLD = "sk_test_old";
+
+    paystackAccountConfigService.getHeaders.mockImplementation((account = "default") => ({
+      Authorization:
+        account === "old" ? "Bearer sk_test_old" : "Bearer sk_test_default",
+      "Content-Type": "application/json",
+    }));
+
+    httpService.get.mockImplementation((_url: string, config: any) => {
+      if (config?.headers?.Authorization === "Bearer sk_test_old") {
+        return of({
+          data: {
+            status: true,
+            data: [
+              {
+                reference: "ps_ref_old_account",
+                status: "success",
+                amount: 250000,
+                currency: "NGN",
+                customer: { email: "sync@example.com" },
+              },
+            ],
+            meta: {
+              page: 1,
+              pageCount: 1,
+            },
+          },
+        });
+      }
+
+      return of({
+        data: {
+          status: true,
+          data: [],
+          meta: {
+            page: 1,
+            pageCount: 0,
+          },
+        },
+      });
+    });
+
+    jest.spyOn(Order, "findAll").mockResolvedValue([] as any);
+    jest.spyOn(OrderPayments, "findAll").mockResolvedValue([] as any);
+
+    const result = await service.reconcileTransactions({
+      dryRun: true,
+      account: "old",
+      page: 1,
+      perPage: 10,
+      maxPages: 1,
+      status: "success",
+    } as any);
+
+    expect(paystackAccountConfigService.getHeaders).toHaveBeenCalledWith("old");
+    expect(result.data.summary).toEqual(
+      expect.objectContaining({
+        total: 1,
+        missingLocally: 1,
+      }),
+    );
+    expect(result.data.results[0]).toEqual(
+      expect.objectContaining({
+        reference: "ps_ref_old_account",
+        action: "missing",
+      }),
+    );
+  });
+
   it("rebuilds authenticated orders from payment logs during reconciliation", async () => {
     const {
       service,
