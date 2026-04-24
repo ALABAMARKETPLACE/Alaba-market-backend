@@ -56,6 +56,7 @@ import {
   resolveStoreSubaccountSelection,
 } from "../shared/helpers/paystack-subaccount.helper";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
+import computeSplit from "../shared/helpers/computeSplit";
 
 @Injectable()
 export class PaystackService {
@@ -102,6 +103,98 @@ export class PaystackService {
     return this.paystackAccountConfigService.getPublicKey();
   }
 
+  private buildSettlementAuditReason(
+    order: Order,
+    payment: OrderPayments | null | undefined,
+    store: Store | null | undefined,
+  ): string {
+    if (!order.storeId) {
+      return "Order is not tied to a seller/store, so the payment should be reviewed as a company-side collection.";
+    }
+
+    if (!store) {
+      return "Order references a seller/store that could not be loaded, so payout cannot be automated and requires admin review.";
+    }
+
+    const resolvedSubaccount = resolveStoreSubaccountSelection(store);
+    const hasActiveSubaccount = Boolean(
+      store.subaccount_status === "active" && resolvedSubaccount,
+    );
+
+    if (
+      payment?.collection_mode === "company_account_no_subaccount" ||
+      payment?.requires_manual_settlement
+    ) {
+      return (
+        payment?.manual_settlement_reason ||
+        "Funds were collected into the company account, so the seller payout must be handled manually."
+      );
+    }
+
+    if (!payment?.collection_mode) {
+      return hasActiveSubaccount
+        ? "Payment predates split metadata. Seller/store exists, so confirm whether payout was already settled manually."
+        : "Payment predates split metadata and the seller/store does not have an active Paystack subaccount, so manual payout review is required.";
+    }
+
+    return "Payment requires admin settlement review.";
+  }
+
+  private buildSettlementAuditEstimate(
+    order: Order,
+    payment: OrderPayments | null | undefined,
+    store: Store | null | undefined,
+  ) {
+    const hasStoreAssignment = Boolean(order.storeId);
+    const hasStoreRecord = Boolean(store);
+    const paystackAccountUsed = (payment?.paystack_account_used ||
+      this.paystackAccountConfigService.getDefaultAccountType()) as PaystackAccountType;
+    const adminPercentage =
+      this.paystackAccountConfigService.getAdminSplitPercentage(
+        paystackAccountUsed,
+      );
+    const split = computeSplit({
+      product_total_kobo: Math.round(Number(order.total || 0) * 100),
+      delivery_kobo: Math.round(Number(order.deliveryCharge || 0) * 100),
+      tax_kobo: Math.round(Number(order.tax || 0) * 100),
+      discount_kobo: Math.round(Number(order.discount || 0) * 100),
+      admin_percentage: adminPercentage,
+    });
+
+    const sellerAmount = Number((split.seller_amount_kobo / 100).toFixed(2));
+    const companyAmount = Number((split.admin_amount_kobo / 100).toFixed(2));
+    const category =
+      !hasStoreAssignment || !hasStoreRecord
+        ? "company_only_or_unassigned"
+        : payment?.collection_mode === "company_account_no_subaccount" ||
+            payment?.requires_manual_settlement
+          ? "manual_seller_payout"
+          : "legacy_review_required";
+
+    return {
+      category,
+      requires_manual_payout: category === "manual_seller_payout",
+      requires_review: category !== "manual_seller_payout",
+      seller_amount: hasStoreAssignment && hasStoreRecord ? sellerAmount : null,
+      company_amount: companyAmount,
+      order_amount: Number(
+        (
+          (split.admin_amount_kobo + split.seller_amount_kobo) /
+          100
+        ).toFixed(2),
+      ),
+      admin_percentage: split.admin_percentage,
+      seller_percentage: split.seller_percentage,
+      has_store_assignment: hasStoreAssignment,
+      has_store_record: hasStoreRecord,
+      has_active_subaccount: Boolean(
+        store &&
+          store.subaccount_status === "active" &&
+          resolveStoreSubaccountSelection(store),
+      ),
+    };
+  }
+
   async getManualSettlementAudit(
     query: ManualSettlementAuditDto,
   ): Promise<DataResponseDto> {
@@ -118,8 +211,24 @@ export class PaystackService {
       orderWhere.storeId = query.storeId;
     }
 
+    if (query.status) {
+      orderWhere.status = query.status.trim().toLowerCase();
+    }
+
     if (query.reference) {
       paymentWhere.ref = query.reference.trim();
+    }
+
+    if (query.collectionMode) {
+      if (query.collectionMode === "legacy") {
+        paymentWhere.collection_mode = { [Op.is]: null };
+      } else {
+        paymentWhere.collection_mode = query.collectionMode;
+      }
+    }
+
+    if (query.paystackAccountUsed) {
+      paymentWhere.paystack_account_used = query.paystackAccountUsed;
     }
 
     if (query.buyerEmail) {
@@ -128,6 +237,24 @@ export class PaystackService {
         { guest_email: normalizedEmail },
         { "$userDetails.email$": normalizedEmail },
       ];
+    }
+
+    if (query.from || query.to) {
+      const createdAt: any = {};
+
+      if (query.from) {
+        const fromDate = new Date(query.from);
+        fromDate.setHours(0, 0, 0, 0);
+        createdAt[Op.gte] = fromDate;
+      }
+
+      if (query.to) {
+        const toDate = new Date(query.to);
+        toDate.setHours(23, 59, 59, 999);
+        createdAt[Op.lte] = toDate;
+      }
+
+      orderWhere.createdAt = createdAt;
     }
 
     const { rows, count } = await Order.findAndCountAll({
@@ -193,62 +320,153 @@ export class PaystackService {
       subQuery: false,
     });
 
-    const data = rows.map((order: any) => ({
-      id: order.id,
-      order_id: order.order_id,
-      status: order.status,
-      is_guest_order: order.is_guest_order,
-      totalItems: order.totalItems,
-      total: order.total,
-      discount: order.discount,
-      deliveryCharge: order.deliveryCharge,
-      tax: order.tax,
-      grandTotal: order.grandTotal,
-      createdAt: order.createdAt,
-      buyer: order.is_guest_order
-        ? {
-            type: "guest",
-            name: `${order.guest_first_name || ""} ${
-              order.guest_last_name || ""
-            }`.trim(),
-            email: order.guest_email,
-            phone: order.guest_phone,
-            country_code: order.guest_country_code || null,
-          }
-        : {
-            type: "user",
-            id: order.userDetails?._id || order.userDetails?.id || null,
-            name: order.userDetails?.name || null,
-            first_name: order.userDetails?.first_name || null,
-            last_name: order.userDetails?.last_name || null,
-            email: order.userDetails?.email || null,
-            phone: order.userDetails?.phone || null,
-            image: order.userDetails?.image || null,
+    const records = rows.map((order: any) => {
+      const settlementEstimate = this.buildSettlementAuditEstimate(
+        order,
+        order.orderPayment,
+        order.storeDetails,
+      );
+
+      return {
+        id: order.id,
+        order_id: order.order_id,
+        status: order.status,
+        is_guest_order: order.is_guest_order,
+        totalItems: order.totalItems,
+        total: order.total,
+        discount: order.discount,
+        deliveryCharge: order.deliveryCharge,
+        tax: order.tax,
+        grandTotal: order.grandTotal,
+        createdAt: order.createdAt,
+        buyer: order.is_guest_order
+          ? {
+              type: "guest",
+              name: `${order.guest_first_name || ""} ${
+                order.guest_last_name || ""
+              }`.trim(),
+              email: order.guest_email,
+              phone: order.guest_phone,
+              country_code: order.guest_country_code || null,
+            }
+          : {
+              type: "user",
+              id: order.userDetails?._id || order.userDetails?.id || null,
+              name: order.userDetails?.name || null,
+              first_name: order.userDetails?.first_name || null,
+              last_name: order.userDetails?.last_name || null,
+              email: order.userDetails?.email || null,
+              phone: order.userDetails?.phone || null,
+              image: order.userDetails?.image || null,
+            },
+        store: order.storeDetails
+          ? {
+              ...order.storeDetails.toJSON(),
+              subaccount_status: order.storeDetails.subaccount_status || null,
+              paystack_subaccount_code:
+                resolveStoreSubaccountSelection(order.storeDetails)?.code ||
+                null,
+            }
+          : null,
+        items: order.orderItems || [],
+        audit: {
+          category: settlementEstimate.category,
+          reason: this.buildSettlementAuditReason(
+            order,
+            order.orderPayment,
+            order.storeDetails,
+          ),
+          requires_manual_payout:
+            settlementEstimate.requires_manual_payout,
+          requires_review: settlementEstimate.requires_review,
+          settlement_estimate: {
+            order_amount: settlementEstimate.order_amount,
+            seller_amount: settlementEstimate.seller_amount,
+            company_amount: settlementEstimate.company_amount,
+            admin_percentage: settlementEstimate.admin_percentage,
+            seller_percentage: settlementEstimate.seller_percentage,
+            currency: order.orderPayment?.currency || "NGN",
           },
-      store: order.storeDetails,
-      items: order.orderItems || [],
-      payment: {
-        id: order.orderPayment?.id,
-        paymentType: order.orderPayment?.paymentType,
-        status: order.orderPayment?.status,
-        ref: order.orderPayment?.ref,
-        amount: order.orderPayment?.amount,
-        currency: order.orderPayment?.currency,
-        split_payment_applied:
-          order.orderPayment?.collection_mode === "store_subaccount",
-        collection_mode: order.orderPayment?.collection_mode,
-        paystack_account_used: order.orderPayment?.paystack_account_used,
-        requires_manual_settlement:
-          order.orderPayment?.requires_manual_settlement,
-        manual_settlement_reason:
-          order.orderPayment?.manual_settlement_reason,
+          store_link: {
+            has_store_assignment:
+              settlementEstimate.has_store_assignment,
+            has_store_record: settlementEstimate.has_store_record,
+            has_active_subaccount:
+              settlementEstimate.has_active_subaccount,
+          },
+        },
+        payment: {
+          id: order.orderPayment?.id,
+          paymentType: order.orderPayment?.paymentType,
+          status: order.orderPayment?.status,
+          ref: order.orderPayment?.ref,
+          amount: order.orderPayment?.amount,
+          currency: order.orderPayment?.currency,
+          split_payment_applied:
+            order.orderPayment?.collection_mode === "store_subaccount",
+          collection_mode:
+            order.orderPayment?.collection_mode || "legacy",
+          paystack_account_used: order.orderPayment?.paystack_account_used,
+          requires_manual_settlement:
+            order.orderPayment?.requires_manual_settlement,
+          manual_settlement_reason:
+            order.orderPayment?.manual_settlement_reason,
+        },
+      };
+    });
+
+    const summary = records.reduce(
+      (acc, record) => {
+        acc.total_order_amount = Number(
+          (acc.total_order_amount + Number(record.payment.amount || 0)).toFixed(
+            2,
+          ),
+        );
+        acc.total_company_amount = Number(
+          (
+            acc.total_company_amount +
+            Number(record.audit.settlement_estimate.company_amount || 0)
+          ).toFixed(2),
+        );
+
+        if (record.audit.requires_manual_payout) {
+          acc.manual_payout_count += 1;
+          acc.total_manual_payout_amount = Number(
+            (
+              acc.total_manual_payout_amount +
+              Number(record.audit.settlement_estimate.seller_amount || 0)
+            ).toFixed(2),
+          );
+        }
+
+        if (record.audit.category === "company_only_or_unassigned") {
+          acc.unassigned_company_collection_count += 1;
+        }
+
+        if (record.audit.category === "legacy_review_required") {
+          acc.legacy_review_count += 1;
+        }
+
+        return acc;
       },
-    }));
+      {
+        total_records: records.length,
+        total_order_amount: 0,
+        total_company_amount: 0,
+        total_manual_payout_amount: 0,
+        manual_payout_count: 0,
+        unassigned_company_collection_count: 0,
+        legacy_review_count: 0,
+      },
+    );
 
     return new DataResponseDto(
-      data,
+      {
+        summary,
+        records,
+      },
       true,
-      "Non-split payment audit records retrieved successfully",
+      "Manual settlement audit records retrieved successfully",
       {
         page: query.page,
         take: query.take,
@@ -2220,12 +2438,64 @@ export class PaystackService {
     };
   }
 
+  private normalizeGuestCartItems(cartItems: any[] = []): any[] {
+    return cartItems.map((item: any) => {
+      const normalizedProductId = Number(
+        item?.product_id ?? item?.productId,
+      );
+      const normalizedVariantIdRaw = item?.variant_id ?? item?.variantId;
+      const normalizedStoreIdRaw = item?.store_id ?? item?.storeId;
+      const normalizedQuantity = Number(item?.quantity ?? 0);
+      const normalizedUnitPrice = Number(
+        item?.unit_price ?? item?.unitPrice ?? item?.price ?? 0,
+      );
+      const normalizedTotalPrice = Number(
+        item?.total_price ?? item?.totalPrice,
+      );
+      const normalizedWeight = Number(item?.weight);
+
+      return {
+        ...item,
+        product_id: Number.isFinite(normalizedProductId)
+          ? normalizedProductId
+          : item?.product_id,
+        variant_id:
+          normalizedVariantIdRaw != null &&
+          Number.isFinite(Number(normalizedVariantIdRaw))
+            ? Number(normalizedVariantIdRaw)
+            : null,
+        store_id:
+          normalizedStoreIdRaw != null &&
+          Number.isFinite(Number(normalizedStoreIdRaw))
+            ? Number(normalizedStoreIdRaw)
+            : undefined,
+        quantity: Number.isFinite(normalizedQuantity) ? normalizedQuantity : 0,
+        unit_price: Number.isFinite(normalizedUnitPrice)
+          ? normalizedUnitPrice
+          : 0,
+        total_price: Number.isFinite(normalizedTotalPrice)
+          ? normalizedTotalPrice
+          : Number.isFinite(normalizedUnitPrice) &&
+              Number.isFinite(normalizedQuantity)
+            ? normalizedUnitPrice * normalizedQuantity
+            : undefined,
+        product_name: item?.product_name ?? item?.name,
+        variant_name: item?.variant_name ?? item?.variantName,
+        image: item?.image ?? null,
+        weight: Number.isFinite(normalizedWeight)
+          ? normalizedWeight
+          : undefined,
+      };
+    });
+  }
+
   private buildGuestOrderPayload(
     payload: CreateGuestOrderDto,
     reference: string,
   ): CreateGuestOrderDto {
     return {
       ...payload,
+      cart_items: this.normalizeGuestCartItems(payload?.cart_items || []),
       payment: {
         ...payload.payment,
         payment_reference: reference,
