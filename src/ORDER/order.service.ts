@@ -551,6 +551,16 @@ export class OrderService {
             throw new NotFoundException("Order not found");
           }
 
+          const isGuestOrder =
+            order.is_guest_order === true ||
+            Boolean(order.guest_email) ||
+            order.userId === null ||
+            Number(order.userId) === 0;
+
+          if (isGuestOrder) {
+            throw new NotFoundException("Order not found");
+          }
+
           // Block terminal statuses
           const terminalStatuses = [
             "failed",
