@@ -169,6 +169,41 @@ export class OrderController {
     return this.guestOrderService.updateGuestOrder(id, create);
   }
 
+  @Roles(Role.Admin)
+  @UseGuards(AuthGuard)
+  @Post("guest/reconcile/:id")
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Reconcile a paid orphaned guest checkout (admin)",
+    description:
+      "Replays guest order creation from a stored paid checkout payload when payment succeeded but order creation did not complete.",
+  })
+  @ApiParam({
+    name: "id",
+    required: true,
+    description: "Database primary key of the guest checkout record",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  async reconcileGuestCheckout(
+    @Param("id", ParseIntPipe) id: number,
+  ): Promise<DataResponseDto> {
+    return this.guestOrderService.reconcileGuestCheckout(id);
+  }
+
+  @Roles(Role.Admin)
+  @UseGuards(AuthGuard)
+  @Post("guest/reconcile-bulk")
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Bulk reconcile paid orphaned guest checkouts (admin)",
+    description:
+      "Replays guest order creation for all stored paid guest checkouts that do not yet have completed order records.",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  async reconcileAllGuestCheckouts(): Promise<DataResponseDto> {
+    return this.guestOrderService.reconcileAllGuestCheckouts();
+  }
+
   //DEBUG: Get ALL orders without any filtering (for testing)
   @Get("all-orders-debug")
   @ApiExcludeEndpoint()

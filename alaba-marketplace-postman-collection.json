@@ -85,6 +85,13 @@
       "enabled": true
     },
     {
+      "id": "guestCheckoutId",
+      "key": "guestCheckoutId",
+      "type": "number",
+      "value": "1",
+      "enabled": true
+    },
+    {
       "id": "enquiryId",
       "key": "enquiryId",
       "type": "number",
@@ -5471,7 +5478,7 @@
                 }
               ]
             },
-            "description": "Fetch all guest purchases. Admin route. Supports pagination and optional status query filters."
+            "description": "Fetch all guest purchases. Admin route. Supports pagination and optional status query filters. Orphaned paid checkouts now appear with status `payment_received_processing`; use this to copy a checkout id for POST /order/guest/reconcile/:id or POST /order/guest/reconcile-bulk."
           },
           "response": [],
           "event": [
@@ -5525,6 +5532,57 @@
               }
             }
           ]
+        },
+        {
+          "name": "POST /order/guest/reconcile/:id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/order/guest/reconcile/{{guestCheckoutId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "order",
+                "guest",
+                "reconcile",
+                "{{guestCheckoutId}}"
+              ]
+            },
+            "description": "Admin-only replay for one paid orphaned guest checkout. Use an id from GET /order/guest/all where record_type is orphaned_guest_checkout and status is payment_received_processing."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /order/guest/reconcile-bulk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/order/guest/reconcile-bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "order",
+                "guest",
+                "reconcile-bulk"
+              ]
+            },
+            "description": "Admin-only bulk replay for paid orphaned guest checkouts. Returns a summary with reconciled, skipped, and failed counts."
+          },
+          "response": []
         },
         {
           "name": "GET /order/guest/store",
@@ -19146,7 +19204,7 @@
                 }
               ]
             },
-            "description": "Admin-only guest purchases endpoint. Returns all guest orders, including paid-but-unfulfilled guest checkout records. Use this for a dedicated guest purchases screen."
+            "description": "Admin-only guest purchases endpoint. Returns all guest orders, including paid-but-unfulfilled guest checkout records. Orphaned paid checkouts now appear with status `payment_received_processing`; use GET /order/guest/all to capture an id for single reconcile or POST /order/guest/reconcile-bulk for mass replay."
           },
           "response": [],
           "event": [
@@ -19200,6 +19258,57 @@
               }
             }
           ]
+        },
+        {
+          "name": "POST /order/guest/reconcile/:id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/order/guest/reconcile/{{guestCheckoutId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "order",
+                "guest",
+                "reconcile",
+                "{{guestCheckoutId}}"
+              ]
+            },
+            "description": "Admin-only replay for one paid orphaned guest checkout. Use an id from GET /order/guest/all where record_type is orphaned_guest_checkout and status is payment_received_processing."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /order/guest/reconcile-bulk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/order/guest/reconcile-bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "order",
+                "guest",
+                "reconcile-bulk"
+              ]
+            },
+            "description": "Admin-only bulk replay for paid orphaned guest checkouts. Returns a summary with reconciled, skipped, and failed counts."
+          },
+          "response": []
         },
         {
           "name": "GET /order/guest/store",
