@@ -11549,6 +11549,43 @@
           "response": []
         },
         {
+          "name": "POST /mail/test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/mail/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "mail",
+                "test"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"{{userEmail}}\",\n  \"subject\": \"Mailtrap connectivity test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Admin-only mail smoke test. Sends one simple email using the currently active provider, such as Mailtrap."
+          },
+          "response": []
+        },
+        {
           "name": "GET /order/guest/store",
           "request": {
             "method": "GET",

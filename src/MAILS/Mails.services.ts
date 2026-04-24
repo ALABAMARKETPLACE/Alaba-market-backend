@@ -11,6 +11,8 @@ import {
   EnquiryMailJobData,
 } from "./mail-queue.constants";
 import { PdfService } from "./pdf.services";
+import { DataResponseDto } from "../shared/dto/data-response-dto";
+import { SendTestMailDto } from "./dto/send-test-mail.dto";
 // import { DataResponseDto } from "../shared/dto/data-response-dto";
 
 type MailAttachment = {
@@ -50,6 +52,11 @@ export class MailService {
     }
 
     return "smtp";
+  }
+
+  private getProviderLabel(provider: MailProvider): string {
+    if (provider === "mailtrap_api") return "mailtrap_api";
+    return provider;
   }
 
   private parseProvider(value?: string): MailProvider | null {
@@ -458,5 +465,38 @@ export class MailService {
       html: data.template,
     });
     this.logger.log(`Enquiry notification sent to: ${data.to}`);
+  }
+
+  async sendTestMail(data: SendTestMailDto): Promise<DataResponseDto> {
+    const provider = this.getConfiguredProvider();
+    const subject =
+      data.subject?.trim() ||
+      `Mail provider test via ${this.getProviderLabel(provider)}`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Mail Test</h2>
+        <p>This is a test email from ${process.env.NAME || "Alaba Marketplace"}.</p>
+        <p><strong>Provider:</strong> ${this.getProviderLabel(provider)}</p>
+        <p><strong>Sent at:</strong> ${new Date().toISOString()}</p>
+      </div>
+    `;
+
+    await this.sendMail({
+      to: data.to,
+      subject,
+      text: `Mail provider test via ${this.getProviderLabel(provider)}`,
+      html,
+    });
+
+    return new DataResponseDto(
+      {
+        to: data.to,
+        subject,
+        provider: this.getProviderLabel(provider),
+      },
+      true,
+      "Test email sent successfully",
+    );
   }
 }
