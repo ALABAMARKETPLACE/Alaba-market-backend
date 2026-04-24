@@ -26,12 +26,12 @@ describe("PaystackService", () => {
 
   const createService = () => {
     const httpService = {
-      get: jest.fn(),
-      post: jest.fn(),
+      get: jest.fn<any, any[]>(),
+      post: jest.fn<any, any[]>(),
     };
 
     const storeRepository = {
-      findByPk: jest.fn(async () => null),
+      findByPk: jest.fn<any, any[]>(async () => null),
     };
 
     const paymentSplitService = {
@@ -73,13 +73,13 @@ describe("PaystackService", () => {
     };
 
     const guestCheckoutRepository = {
-      findOne: jest.fn(async () => null),
-      create: jest.fn(async () => null),
+      findOne: jest.fn<any, any[]>(async () => null),
+      create: jest.fn<any, any[]>(async () => null),
     };
 
     const userCheckoutRepository = {
-      findOne: jest.fn(async () => null),
-      create: jest.fn(async () => null),
+      findOne: jest.fn<any, any[]>(async () => null),
+      create: jest.fn<any, any[]>(async () => null),
     };
 
     const userRepository = {
@@ -90,7 +90,7 @@ describe("PaystackService", () => {
     };
 
     const paymentLogRepository = {
-      findOne: jest.fn(async () => null),
+      findOne: jest.fn<any, any[]>(async () => null),
     };
 
     const guestOrderService = {
