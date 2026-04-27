@@ -44,6 +44,71 @@ export class PaystackAccountConfigService {
     return Number((100 - this.getAdminSplitPercentage(account)).toFixed(2));
   }
 
+  getSellerFeeSurchargeThresholdKobo(): number {
+    const configured = this.pickFirstDefined([
+      "PAYSTACK_SELLER_FEE_SURCHARGE_THRESHOLD_KOBO",
+      "PAYSTACK_SELLER_FEE_SURCHARGE_THRESHOLD_NAIRA",
+    ]);
+
+    if (!configured) {
+      return 2500 * 100;
+    }
+
+    const parsed = Number(configured);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new InternalServerErrorException(
+        "Invalid Paystack seller fee surcharge threshold configuration.",
+      );
+    }
+
+    if (configured.includes(".")) {
+      return Math.round(parsed * 100);
+    }
+
+    if (parsed >= 1000) {
+      return Math.round(parsed);
+    }
+
+    return Math.round(parsed * 100);
+  }
+
+  getSellerFeeSurchargeKobo(totalAmountKobo: number): number {
+    if (!Number.isFinite(totalAmountKobo) || totalAmountKobo <= 0) {
+      return 0;
+    }
+
+    const thresholdKobo = this.getSellerFeeSurchargeThresholdKobo();
+    if (totalAmountKobo <= thresholdKobo) {
+      return 0;
+    }
+
+    const configured = this.pickFirstDefined([
+      "PAYSTACK_SELLER_FEE_SURCHARGE_KOBO",
+      "PAYSTACK_SELLER_FEE_SURCHARGE_NAIRA",
+    ]);
+
+    if (!configured) {
+      return 100 * 100;
+    }
+
+    const parsed = Number(configured);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new InternalServerErrorException(
+        "Invalid Paystack seller fee surcharge configuration.",
+      );
+    }
+
+    if (configured.includes(".")) {
+      return Math.round(parsed * 100);
+    }
+
+    if (parsed >= 1000) {
+      return Math.round(parsed);
+    }
+
+    return Math.round(parsed * 100);
+  }
+
   getHeaders(account: PaystackAccountType = "default") {
     return {
       Authorization: `Bearer ${this.getSecretKey(account)}`,

@@ -550,7 +550,231 @@ Live response:
 4. Allow confirm on `POST /resolve-unmatched` with `dryRun: false`
 5. Rerun `POST /update-percentage`
 
-## 10. Guest Purchases (Admin)
+## 10. Split-Enabled Purchase Flows
+
+These routes are not admin tools. They are the frontend purchase flows that actually trigger Paystack checkout and allow seller settlement through the configured subaccount path.
+
+Important:
+- Use these flows for real purchases if you expect seller split routing
+- Do not rely on the Paystack dashboard "Transaction Splits" page alone; this implementation uses seller subaccounts, not Paystack split groups
+- Successful split-style collection should show up in your DB as:
+  - `collection_mode = "store_subaccount"`
+  - `split_payment_applied = true`
+- If checkout falls back to company collection, it will show up as:
+  - `collection_mode = "company_account_no_subaccount"`
+  - `requires_manual_settlement = true`
+
+### 10.1 Logged-In User Purchase Flow
+
+```http
+POST /paystack/initialize-checkout
+```
+
+Auth:
+- required
+
+Use for:
+- authenticated cart checkout
+- backend validates the full order payload
+- backend initializes one Paystack transaction
+- Paystack webhook creates the final orders after payment success
+- this is the preferred logged-in flow for seller split routing
+
+Recommended frontend sequence:
+1. Build the full authenticated `order_payload`
+2. Call `POST /paystack/initialize-checkout`
+3. Redirect the user to the returned `authorization_url`
+4. Let Paystack redirect the browser to the provided `callback_url`
+5. Trust the Paystack webhook to finalize the order and payment records
+6. Use your order-fetching screens after redirect instead of trying to create the order manually again
+
+Body:
+
+```json
+{
+  "order_payload": {
+    "store_id": 22,
+    "payment": {
+      "type": "paystack"
+    }
+  },
+  "callback_url": "https://app.example.com/payment/callback",
+  "reference": "optional_custom_reference",
+  "metadata": {
+    "source": "web-checkout"
+  }
+}
+```
+
+Fields:
+- `order_payload`: full logged-in order payload
+- `callback_url?`: browser redirect target after Paystack payment
+- `reference?`: optional custom Paystack reference
+- `metadata?`: optional extra metadata
+
+Typical response:
+
+```json
+{
+  "status": true,
+  "message": "Payment initialized for checkout",
+  "data": {
+    "authorization_url": "https://checkout.paystack.com/...",
+    "access_code": "ACCESS_CODE",
+    "reference": "alaba_1777024528512_demo",
+    "amount": 7000
+  }
+}
+```
+
+Frontend note:
+- This is the route that should be used instead of calling generic `/paystack/initialize` for storefront checkout
+- Using `/paystack/initialize-checkout` gives the backend enough context to choose `store_subaccount` when a seller split is eligible
+
+### 10.2 Guest Purchase Flow
+
+```http
+POST /paystack/initialize-guest
+```
+
+Auth:
+- not required
+
+Use for:
+- guest checkout
+- backend initializes Paystack and stores guest checkout context
+- if `order_payload` is included, the webhook can create the guest order automatically after successful payment
+- this is the preferred guest flow for seller split routing
+
+Recommended frontend sequence:
+1. Collect guest info, cart items, delivery charge, and full guest order payload
+2. Call `POST /paystack/initialize-guest`
+3. Redirect the browser to the returned `authorization_url`
+4. Let the Paystack webhook finalize the guest order when payment succeeds
+5. After redirect, use `POST /order/guest/orders` or your guest lookup screen to fetch the created guest order
+
+Body:
+
+```json
+{
+  "guest_info": {
+    "email": "guest@example.com",
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "phone": "08012345678"
+  },
+  "cart_items": [
+    {
+      "product_id": 1001,
+      "store_id": 22,
+      "quantity": 1,
+      "unit_price": 700000
+    }
+  ],
+  "amount": 700000,
+  "delivery_charge": 0,
+  "currency": "NGN",
+  "callback_url": "https://app.example.com/paystack/success",
+  "metadata": {
+    "source": "guest-web-checkout"
+  },
+  "order_payload": {
+    "guest_info": {
+      "email": "guest@example.com",
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "phone": "08012345678"
+    },
+    "cart_items": [
+      {
+        "product_id": 1001,
+        "store_id": 22,
+        "quantity": 1,
+        "product_name": "Sample Product"
+      }
+    ],
+    "delivery_address": {
+      "full_name": "Jane Doe",
+      "phone_no": "08012345678",
+      "full_address": "12 Test Street",
+      "city": "Lagos",
+      "state": "Lagos",
+      "state_id": 1,
+      "country": "Nigeria",
+      "country_id": 1,
+      "address_type": "home"
+    },
+    "payment": {
+      "payment_reference": "filled_by_backend_reference"
+    }
+  }
+}
+```
+
+Fields:
+- `guest_info`: guest buyer details
+- `cart_items`: lightweight cart summary for Paystack initialization
+- `amount`: total amount in kobo
+- `delivery_charge`: delivery amount in kobo
+- `currency?`: usually `NGN`
+- `callback_url?`: browser redirect after payment
+- `metadata?`: optional extra metadata
+- `order_payload?`: full guest order payload
+
+Frontend note:
+- Include `order_payload` if you want the webhook to finalize the guest order automatically
+- If you omit `order_payload`, payment may succeed but the frontend will need extra recovery/verification steps
+
+### 10.3 Guest Verification Fallback
+
+```http
+POST /paystack/verify-guest
+```
+
+Auth:
+- not required
+
+Use for:
+- frontend-driven guest payment verification fallback
+- only needed if you are not relying purely on the webhook flow
+
+Body:
+
+```json
+{
+  "reference": "guest_1777051806026_demo",
+  "guest_email": "guest@example.com"
+}
+```
+
+Frontend note:
+- This verifies the payment reference and checks the email matches
+- It does not replace the preferred webhook-first flow
+
+### 10.4 Guest Order Lookup After Redirect
+
+```http
+POST /order/guest/orders
+```
+
+Auth:
+- not required
+
+Use for:
+- fetch guest orders by email after payment redirect
+- show the guest's completed or recovered order state
+
+### 10.5 Routes That Are Not The Preferred Split-Payment Purchase Path
+
+- `POST /paystack/initialize`
+  - generic Paystack initializer
+  - useful for generic payment flows, not the preferred storefront checkout path
+- `POST /order/guest`
+  - fallback guest order creation route
+  - useful for frontend-driven recovery flows
+  - not the preferred checkout flow when you want webhook-driven split-aware order finalization
+
+## 11. Guest Purchases (Admin)
 
 ```http
 GET /order/guest/all
@@ -615,7 +839,7 @@ Typical response shape:
 }
 ```
 
-## 11. Purchases That Do Not Go To Seller
+## 12. Purchases That Do Not Go To Seller
 
 ```http
 GET /paystack/manual-settlement/audit
