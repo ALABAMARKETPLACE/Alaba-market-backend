@@ -89,6 +89,11 @@ export class PaymentSplitService {
   }
 
   private buildSplitAmounts(order: Order) {
+    const totalAmountKobo =
+      this.toKobo(order.total) +
+      this.toKobo(order.deliveryCharge) +
+      this.toKobo(order.tax) -
+      this.toKobo(order.discount);
     const split = computeSplit({
       product_total_kobo: this.toKobo(order.total),
       delivery_kobo: this.toKobo(order.deliveryCharge),
@@ -96,6 +101,10 @@ export class PaymentSplitService {
       discount_kobo: this.toKobo(order.discount),
       admin_percentage:
         this.paystackAccountConfigService.getAdminSplitPercentage(),
+      seller_fee_surcharge_kobo:
+        this.paystackAccountConfigService.getSellerFeeSurchargeKobo(
+          totalAmountKobo,
+        ),
     });
 
     return {
