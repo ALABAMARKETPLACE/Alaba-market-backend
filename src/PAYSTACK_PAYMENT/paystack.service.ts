@@ -103,6 +103,70 @@ export class PaystackService {
     return this.paystackAccountConfigService.getPublicKey();
   }
 
+  private addSellerFeeSurchargeToAccountCharge(
+    baseAccountChargeKobo: number,
+    totalAmountKobo: number,
+  ): number {
+    const normalizedBaseCharge = Math.max(
+      0,
+      Math.round(Number(baseAccountChargeKobo || 0)),
+    );
+    const surchargeKobo =
+      this.paystackAccountConfigService.getSellerFeeSurchargeKobo(
+        totalAmountKobo,
+      );
+
+    return normalizedBaseCharge + surchargeKobo;
+  }
+
+  private applySellerFeeSurchargeToAllocations<
+    T extends { seller_amount_kobo: number }
+  >(allocations: T[], totalAmountKobo: number): T[] {
+    const surchargeKobo =
+      this.paystackAccountConfigService.getSellerFeeSurchargeKobo(
+        totalAmountKobo,
+      );
+
+    if (!surchargeKobo || allocations.length === 0) {
+      return allocations;
+    }
+
+    const totalSellerAmountKobo = allocations.reduce(
+      (sum, entry) => sum + Math.max(0, Number(entry.seller_amount_kobo || 0)),
+      0,
+    );
+
+    if (totalSellerAmountKobo <= surchargeKobo) {
+      return allocations;
+    }
+
+    let allocatedSurchargeKobo = 0;
+
+    return allocations.map((entry, index) => {
+      const sellerAmountKobo = Math.max(
+        0,
+        Math.round(Number(entry.seller_amount_kobo || 0)),
+      );
+      const remainingSurchargeKobo = surchargeKobo - allocatedSurchargeKobo;
+      const entrySurchargeKobo =
+        index === allocations.length - 1
+          ? remainingSurchargeKobo
+          : Math.min(
+              remainingSurchargeKobo,
+              Math.round(
+                (sellerAmountKobo / totalSellerAmountKobo) * surchargeKobo,
+              ),
+            );
+
+      allocatedSurchargeKobo += entrySurchargeKobo;
+
+      return {
+        ...entry,
+        seller_amount_kobo: Math.max(0, sellerAmountKobo - entrySurchargeKobo),
+      };
+    });
+  }
+
   private buildSettlementAuditReason(
     order: Order,
     payment: OrderPayments | null | undefined,
@@ -159,6 +223,16 @@ export class PaystackService {
       tax_kobo: Math.round(Number(order.tax || 0) * 100),
       discount_kobo: Math.round(Number(order.discount || 0) * 100),
       admin_percentage: adminPercentage,
+      seller_fee_surcharge_kobo:
+        this.paystackAccountConfigService.getSellerFeeSurchargeKobo(
+          Math.round(Number(payment?.amount || 0) * 100) ||
+            Math.round(
+              Number(order.total || 0) * 100 +
+                Number(order.deliveryCharge || 0) * 100 +
+                Number(order.tax || 0) * 100 -
+                Number(order.discount || 0) * 100,
+            ),
+        ),
     });
 
     const sellerAmount = Number((split.seller_amount_kobo / 100).toFixed(2));
@@ -704,10 +778,17 @@ export class PaystackService {
       );
     }
 
-    const adminAmount =
+    const baseAdminAmount =
       initData.admin_amount !== undefined
         ? Number(initData.admin_amount)
         : Math.round(amountInKobo * 0.065);
+    const adminAmount =
+      initData.admin_amount !== undefined
+        ? Math.max(0, Math.round(baseAdminAmount))
+        : this.addSellerFeeSurchargeToAccountCharge(
+            baseAdminAmount,
+            amountInKobo,
+          );
 
     const splitPayload = {
       email: initData.email,
@@ -2696,7 +2777,8 @@ export class PaystackService {
     const totalDiscountKobo = Math.max(0, Math.round(Number(totalDiscount) * 100));
     let allocatedDiscountKobo = 0;
 
-    const allocations = storeIds
+    const allocations = this.applySellerFeeSurchargeToAllocations(
+      storeIds
       .map((storeId, index) => {
         const store = storeMap.get(storeId);
         const resolvedSubaccount = resolveStoreSubaccountSelection(store);
@@ -2732,7 +2814,9 @@ export class PaystackService {
         };
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-      .filter((entry) => entry.seller_amount_kobo > 0);
+      .filter((entry) => entry.seller_amount_kobo > 0),
+      subtotalKobo - totalDiscountKobo,
+    ).filter((entry) => entry.seller_amount_kobo > 0);
 
     if (!allocations.length) {
       return null;
@@ -3144,6 +3228,7 @@ export class PaystackService {
 
   private async getEligibleMultiStoreAuthenticatedSplitConfig(preparedCheckout: {
     store_ids: number[];
+    amount_kobo: number;
     store_summaries?: Array<{
       store_id: number;
       product_total: number;
@@ -3218,7 +3303,8 @@ export class PaystackService {
       stores.map((store) => [Number(store.id), store]),
     );
 
-    const allocations = storeSummaries
+    const allocations = this.applySellerFeeSurchargeToAllocations(
+      storeSummaries
       .map((summary) => {
         const store = storeMap.get(Number(summary.store_id));
         const resolvedSubaccount = resolveStoreSubaccountSelection(store);
@@ -3245,7 +3331,9 @@ export class PaystackService {
         };
       })
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
-      .filter((entry) => entry.seller_amount_kobo > 0);
+      .filter((entry) => entry.seller_amount_kobo > 0),
+      preparedCheckout.amount_kobo,
+    ).filter((entry) => entry.seller_amount_kobo > 0);
 
     if (!allocations.length) {
       return null;
