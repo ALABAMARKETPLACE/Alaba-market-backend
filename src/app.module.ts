@@ -70,6 +70,7 @@ import { BoostRequestModule } from "./BOOST_REQUESTS/boost-request.module";
 import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.module";
 import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.module";
 import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
+import { MarketplaceFeedModule } from "./MARKETPLACE_FEED/marketplace-feed.module";
 
 
 @Module({
@@ -148,6 +149,7 @@ import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
     BoostRequestModule,
     FeaturedProductsModule,
     DeliveryCompanyModule,
+    MarketplaceFeedModule,
   ],
   controllers: [],
   providers: [],

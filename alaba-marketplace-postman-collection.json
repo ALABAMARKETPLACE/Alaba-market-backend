@@ -32253,6 +32253,512 @@
           ]
         }
       ]
+    },
+    {
+      "name": "🛒 Marketplace Feed",
+      "description": "Public marketplace discovery routes — no authentication required.\nGuest users can browse products across stores, search globally, and discover stores Jumia-style.",
+      "item": [
+        {
+          "name": "Home — All sections in one request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/home?includeSeo=true&includeMeta=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "home"
+              ],
+              "query": [
+                {
+                  "key": "includeSeo",
+                  "value": "true",
+                  "description": "Append SEO fields to each product/store item",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "true",
+                  "description": "Include page-level pageMeta in the response data",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Returns all homepage discovery sections in one call:\n- featuredProducts: balanced random products (max 2 per store)\n- latestProducts: newest 16 products\n- randomStores: 8 random approved stores\n- productsByStore: 4 stores each with 6 products\n\nNo authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Products — Balanced Feed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/products?page=1&take=40&perStoreLimit=3&sort=random&includeSeo=true&includeMeta=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number",
+                  "disabled": false
+                },
+                {
+                  "key": "take",
+                  "value": "40",
+                  "description": "Items per page (max 100)",
+                  "disabled": false
+                },
+                {
+                  "key": "perStoreLimit",
+                  "value": "3",
+                  "description": "Max products per store in this page",
+                  "disabled": false
+                },
+                {
+                  "key": "sort",
+                  "value": "random",
+                  "description": "random | newest | price_low | price_high",
+                  "disabled": false
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "description": "Filter by category ID",
+                  "disabled": true
+                },
+                {
+                  "key": "subCategory",
+                  "value": "",
+                  "description": "Filter by subCategory ID",
+                  "disabled": true
+                },
+                {
+                  "key": "minPrice",
+                  "value": "",
+                  "description": "Minimum price",
+                  "disabled": true
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "",
+                  "description": "Maximum price",
+                  "disabled": true
+                },
+                {
+                  "key": "includeSeo",
+                  "value": "true",
+                  "description": "Append SEO fields to each product item",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "true",
+                  "description": "Include page-level SEO metadata in response wrapper",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Fetches randomized products across all approved stores. perStoreLimit caps how many products any single store contributes — prevents one mega-store dominating the feed.\n\nNo authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Products — Global Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/products/search?q=iphone&page=1&take=40&sort=newest&includeSeo=true&includeMeta=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "products",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "iphone",
+                  "description": "Search query (required)",
+                  "disabled": false
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number",
+                  "disabled": false
+                },
+                {
+                  "key": "take",
+                  "value": "40",
+                  "description": "Items per page",
+                  "disabled": false
+                },
+                {
+                  "key": "sort",
+                  "value": "newest",
+                  "description": "random | newest | price_low | price_high",
+                  "disabled": false
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "description": "Filter by category ID",
+                  "disabled": true
+                },
+                {
+                  "key": "subCategory",
+                  "value": "",
+                  "description": "Filter by subCategory ID",
+                  "disabled": true
+                },
+                {
+                  "key": "minPrice",
+                  "value": "",
+                  "description": "Minimum price",
+                  "disabled": true
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "",
+                  "description": "Maximum price",
+                  "disabled": true
+                },
+                {
+                  "key": "includeSeo",
+                  "value": "true",
+                  "description": "Append SEO fields to each result item",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "false",
+                  "description": "Include page-level SEO metadata",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Searches products by name, description, and store name across all approved stores.\n\nNo authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Stores — Discover",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/stores?page=1&take=40&sort=random&includeSeo=true&includeMeta=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "stores"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number",
+                  "disabled": false
+                },
+                {
+                  "key": "take",
+                  "value": "40",
+                  "description": "Items per page",
+                  "disabled": false
+                },
+                {
+                  "key": "sort",
+                  "value": "random",
+                  "description": "random | newest | name_asc | name_desc",
+                  "disabled": false
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "description": "Optional search term",
+                  "disabled": true
+                },
+                {
+                  "key": "includeSeo",
+                  "value": "true",
+                  "description": "Append SEO fields to each store item",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "false",
+                  "description": "Include page-level SEO metadata",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Returns approved stores with optional search, sort, and product counts. Default sort is random for discovery.\n\nNo authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Stores — Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/stores/search?q=phone&page=1&take=40&sort=random&includeSeo=false&includeMeta=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "stores",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "phone",
+                  "description": "Search query",
+                  "disabled": false
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number",
+                  "disabled": false
+                },
+                {
+                  "key": "take",
+                  "value": "40",
+                  "description": "Items per page",
+                  "disabled": false
+                },
+                {
+                  "key": "sort",
+                  "value": "random",
+                  "description": "random | newest | name_asc | name_desc",
+                  "disabled": false
+                },
+                {
+                  "key": "includeSeo",
+                  "value": "false",
+                  "description": "Append SEO fields",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "false",
+                  "description": "Include page-level SEO metadata",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Searches approved stores by name, store_name, business_name, seller_name, slug, or business_address.\n\nNo authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Store — Profile (single store)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/stores/{{storeId}}?includeSeo=true&includeMeta=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "stores",
+                "{{storeId}}"
+              ],
+              "query": [
+                {
+                  "key": "includeSeo",
+                  "value": "true",
+                  "description": "Add an seo block to the store object",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "true",
+                  "description": "Add pageMeta to the response data",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Returns store details, total product count, and 8 latest products for a single approved store.\n\nNo authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Store Products — List",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/stores/{{storeId}}/products?page=1&take=40&sort=newest&includeSeo=false&includeMeta=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "stores",
+                "{{storeId}}",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number",
+                  "disabled": false
+                },
+                {
+                  "key": "take",
+                  "value": "40",
+                  "description": "Items per page",
+                  "disabled": false
+                },
+                {
+                  "key": "sort",
+                  "value": "newest",
+                  "description": "newest | random | price_low | price_high",
+                  "disabled": false
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "description": "Filter by category ID",
+                  "disabled": true
+                },
+                {
+                  "key": "subCategory",
+                  "value": "",
+                  "description": "Filter by subCategory ID",
+                  "disabled": true
+                },
+                {
+                  "key": "minPrice",
+                  "value": "",
+                  "description": "Minimum price",
+                  "disabled": true
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "",
+                  "description": "Maximum price",
+                  "disabled": true
+                },
+                {
+                  "key": "includeSeo",
+                  "value": "false",
+                  "description": "Append SEO fields to each product item",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "false",
+                  "description": "Include page-level SEO metadata",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Paginated, filterable, and sortable product list scoped to a single approved store.\n\nNo authentication required."
+          },
+          "response": []
+        },
+        {
+          "name": "Store Products — Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/marketplace-feed/stores/{{storeId}}/products/search?q=charger&page=1&take=40&sort=newest&includeSeo=false&includeMeta=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "marketplace-feed",
+                "stores",
+                "{{storeId}}",
+                "products",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "charger",
+                  "description": "Search query (required)",
+                  "disabled": false
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number",
+                  "disabled": false
+                },
+                {
+                  "key": "take",
+                  "value": "40",
+                  "description": "Items per page",
+                  "disabled": false
+                },
+                {
+                  "key": "sort",
+                  "value": "newest",
+                  "description": "newest | random | price_low | price_high",
+                  "disabled": false
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "description": "Filter by category ID",
+                  "disabled": true
+                },
+                {
+                  "key": "minPrice",
+                  "value": "",
+                  "description": "Minimum price",
+                  "disabled": true
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "",
+                  "description": "Maximum price",
+                  "disabled": true
+                },
+                {
+                  "key": "includeSeo",
+                  "value": "false",
+                  "description": "Append SEO fields",
+                  "disabled": false
+                },
+                {
+                  "key": "includeMeta",
+                  "value": "false",
+                  "description": "Include page-level SEO metadata",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Searches products by name and description within a single approved store.\n\nNo authentication required."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }
