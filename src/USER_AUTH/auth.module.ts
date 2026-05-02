@@ -1,5 +1,6 @@
 import { Global, Module } from "@nestjs/common";
 import { AuthController } from "./auth.controller";
+import { AdminAuthController } from "./admin-auth.controller";
 import { AuthService } from "./auth.service";
 
 import { UserModule } from "../USERS/user.module";
@@ -12,7 +13,7 @@ import { BcryptProvider } from "../shared/providers/bcrypt.provider";
 @Global()
 @Module({
   imports: [UserModule, EmailModule, RolesConfigModule, TokenManagementModule],
-  controllers: [AuthController],
+  controllers: [AuthController, AdminAuthController],
   providers: [AuthService, ...UserProviders, AuthRepository, ...BcryptProvider],
   exports: [AuthService],
 })
