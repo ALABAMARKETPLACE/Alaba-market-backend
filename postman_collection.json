@@ -26835,6 +26835,133 @@
       ]
     },
     {
+      "name": "ADMIN AUTH",
+      "item": [
+        {
+          "name": "POST /admin/auth/forgot-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Requests an admin password reset email. Always returns the same generic success message so callers cannot discover whether an admin email exists.",
+            "url": {
+              "raw": "{{baseUrl}}/admin/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "auth",
+                "forgot-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "pm.test('Response is successful', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "if (json) {",
+                  "  pm.test('Response has success status', function () {",
+                  "    pm.expect(json.status).to.eql(true);",
+                  "  });",
+                  "  pm.test('Returns generic reset message', function () {",
+                  "    pm.expect(json.message).to.eql('If this email exists, a password reset link has been sent.');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /admin/auth/reset-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Resets an active admin password with the one-time token from the reset email. Paste the token query parameter into adminResetToken before sending.",
+            "url": {
+              "raw": "{{baseUrl}}/admin/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "auth",
+                "reset-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{adminResetToken}}\",\n  \"newPassword\": \"{{adminNewPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "pm.test('Response is successful', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "if (json) {",
+                  "  pm.test('Response has success status', function () {",
+                  "    pm.expect(json.status).to.eql(true);",
+                  "  });",
+                  "  pm.test('Password reset completed', function () {",
+                  "    pm.expect(json.message).to.match(/password updated/i);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "USER BANK ACCOUNT",
       "item": [
         {
@@ -29847,6 +29974,27 @@
       "key": "buyerEmail",
       "type": "string",
       "value": "olagiddz@gmail.com",
+      "enabled": true
+    },
+    {
+      "id": "adminEmail",
+      "key": "adminEmail",
+      "type": "string",
+      "value": "admin@example.com",
+      "enabled": true
+    },
+    {
+      "id": "adminResetToken",
+      "key": "adminResetToken",
+      "type": "string",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "id": "adminNewPassword",
+      "key": "adminNewPassword",
+      "type": "string",
+      "value": "NewStrongPassword123!",
       "enabled": true
     }
   ]
