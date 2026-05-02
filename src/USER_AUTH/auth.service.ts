@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { compare } from "bcrypt";
+import * as crypto from "crypto";
 import verifyAppleToken from "verify-apple-id-token";
 import {
   login_Request,
@@ -23,10 +24,13 @@ import { VerifyUserTokenDto } from "./dto/verifyToken.dto";
 import { User } from "../USERS/user.entity";
 import { ChangePasswordDto } from "./dto/changePassword.dto";
 import { ForgotPasswordDto } from "./dto/forgotPassword.dto";
+import { AdminForgotPasswordDto } from "./dto/admin-forgot-password.dto";
+import { AdminResetPasswordDto } from "./dto/admin-reset-password.dto";
 import { DeactivateAccountDto } from "./dto/deactivateAccount.dto";
 const SignupHtml = require("../MAILS/templates/auth/SignupHtml");
 const VerifyMail = require("../MAILS/templates/auth/mailVerfication");
 const RequestPasswdChangeTemplate = require("../MAILS/templates/auth/forgotPassword");
+const AdminForgotPasswordMail = require("../MAILS/templates/auth/adminForgotPassword");
 const DeactivateAccountViaMail = require("../MAILS/templates/auth/deactivateByMail");
 const DeactivateMail = require("../MAILS/templates/auth/deactivate");
 import { TokenManagementService } from "../TOKEN_MANAGEMENT/services";
@@ -35,12 +39,17 @@ import { AuthRepository } from "./auth.repository";
 import { FirebaseService } from "../FIREBASE/firebase.service";
 import { JwtService } from "@nestjs/jwt";
 import { Op } from "sequelize";
+import { Role } from "../shared/enum/role.enum";
 
 type VerifyTokenPurpose =
   | "email_verification"
   | "password_reset"
   | "account_deactivation"
   | "admin_invitation";
+
+const ADMIN_PASSWORD_RESET_SUCCESS_MESSAGE =
+  "If this email exists, a password reset link has been sent.";
+const ADMIN_PASSWORD_RESET_EXPIRY_MINUTES = 20;
 
 @Injectable()
 export class AuthService {
@@ -91,6 +100,25 @@ export class AuthService {
 
   private normalizeEmail(email: string): string {
     return String(email || "").trim().toLowerCase();
+  }
+
+  private createPasswordResetToken() {
+    return crypto.randomBytes(32).toString("hex");
+  }
+
+  private hashPasswordResetToken(token: string) {
+    return crypto.createHash("sha256").update(token).digest("hex");
+  }
+
+  private userHasAdminRole(user: User | null): boolean {
+    if (!user) return false;
+
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    return (
+      user.role === Role.Admin ||
+      user.active_role === Role.Admin ||
+      roles.includes(Role.Admin)
+    );
   }
 
   private assertUserCanAuthenticate(
@@ -357,6 +385,56 @@ export class AuthService {
     }
   }
 
+  async adminForgotPassword({
+    email,
+  }: AdminForgotPasswordDto): Promise<DataResponseDto> {
+    try {
+      const normalizedEmail = this.normalizeEmail(email);
+      const userDetails = await User.findOne({
+        where: {
+          email: {
+            [Op.iLike]: normalizedEmail,
+          },
+        },
+      });
+
+      const canReset =
+        userDetails &&
+        this.userHasAdminRole(userDetails) &&
+        !userDetails.is_deleted &&
+        (userDetails.is_active ?? userDetails.status) === true &&
+        userDetails.status === true;
+
+      if (canReset) {
+        const token = this.createPasswordResetToken();
+        const expiresAt = new Date(
+          Date.now() + ADMIN_PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000,
+        );
+
+        userDetails.password_reset_token_hash =
+          this.hashPasswordResetToken(token);
+        userDetails.password_reset_expires_at = expiresAt;
+        await userDetails.save();
+
+        const mail = await AdminForgotPasswordMail(
+          userDetails,
+          token,
+          ADMIN_PASSWORD_RESET_EXPIRY_MINUTES,
+        );
+        await this.mailService.AuthMail(mail);
+      }
+
+      return new DataResponseDto(
+        {},
+        true,
+        ADMIN_PASSWORD_RESET_SUCCESS_MESSAGE,
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
   async resetPassword(password: ChangePasswordDto) {
     try {
       const verified = this.verifyScopedToken(
@@ -377,6 +455,56 @@ export class AuthService {
         return new DataResponseDto({}, true, message);
       }
       throw new UnauthorizedException();
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new UnauthorizedException(getErrorMessage(err));
+    }
+  }
+
+  async adminResetPassword({
+    token,
+    newPassword,
+  }: AdminResetPasswordDto): Promise<DataResponseDto> {
+    try {
+      const tokenHash = this.hashPasswordResetToken(token);
+      const user = await User.findOne({
+        where: {
+          password_reset_token_hash: tokenHash,
+        },
+      });
+
+      if (!user || !this.userHasAdminRole(user)) {
+        throw new UnauthorizedException("Invalid or expired password reset token");
+      }
+
+      if (
+        user.is_deleted ||
+        (user.is_active ?? user.status) !== true ||
+        user.status !== true
+      ) {
+        throw new UnauthorizedException("Invalid or expired password reset token");
+      }
+
+      if (
+        !user.password_reset_expires_at ||
+        user.password_reset_expires_at.getTime() <= Date.now()
+      ) {
+        throw new UnauthorizedException("Invalid or expired password reset token");
+      }
+
+      user.password = await this.hashPassword(newPassword);
+      user.password_reset_token_hash = null;
+      user.password_reset_expires_at = null;
+      user.password_changed_at = new Date();
+      await user.save();
+
+      await this.tokenService.signoutFromAll(user._id);
+
+      return new DataResponseDto(
+        {},
+        true,
+        "Password updated successfully",
+      );
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(getErrorMessage(err));
