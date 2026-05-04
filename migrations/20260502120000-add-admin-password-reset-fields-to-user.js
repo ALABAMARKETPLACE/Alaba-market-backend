@@ -5,7 +5,9 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
-      const tableInfo = await queryInterface.describeTable("USER");
+      const tableInfo = await queryInterface.describeTable("USER", {
+        transaction,
+      });
 
       if (!tableInfo.password_reset_token_hash) {
         await queryInterface.addColumn(
@@ -43,7 +45,9 @@ module.exports = {
         );
       }
 
-      const indexes = await queryInterface.showIndex("USER");
+      const indexes = await queryInterface.showIndex("USER", {
+        transaction,
+      });
       const hasResetTokenIndex = indexes.some(
         (index) => index.name === "user_password_reset_token_hash_idx",
       );
@@ -66,7 +70,12 @@ module.exports = {
     const transaction = await queryInterface.sequelize.transaction();
 
     try {
-      const indexes = await queryInterface.showIndex("USER");
+      const tableInfo = await queryInterface.describeTable("USER", {
+        transaction,
+      });
+      const indexes = await queryInterface.showIndex("USER", {
+        transaction,
+      });
       const hasResetTokenIndex = indexes.some(
         (index) => index.name === "user_password_reset_token_hash_idx",
       );
@@ -78,15 +87,23 @@ module.exports = {
           { transaction },
         );
       }
-      await queryInterface.removeColumn("USER", "password_changed_at", {
-        transaction,
-      });
-      await queryInterface.removeColumn("USER", "password_reset_expires_at", {
-        transaction,
-      });
-      await queryInterface.removeColumn("USER", "password_reset_token_hash", {
-        transaction,
-      });
+      if (tableInfo.password_changed_at) {
+        await queryInterface.removeColumn("USER", "password_changed_at", {
+          transaction,
+        });
+      }
+
+      if (tableInfo.password_reset_expires_at) {
+        await queryInterface.removeColumn("USER", "password_reset_expires_at", {
+          transaction,
+        });
+      }
+
+      if (tableInfo.password_reset_token_hash) {
+        await queryInterface.removeColumn("USER", "password_reset_token_hash", {
+          transaction,
+        });
+      }
 
       await transaction.commit();
     } catch (error) {
