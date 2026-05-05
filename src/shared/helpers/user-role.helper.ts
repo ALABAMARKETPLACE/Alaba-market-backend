@@ -15,12 +15,20 @@ export function normalizeRole(role?: unknown): Role | null {
     return Role.User;
   }
 
+  if (value === Role.Customer) {
+    return Role.Customer;
+  }
+
   if (value === Role.Seller) {
     return Role.Seller;
   }
 
   if (value === Role.Admin) {
     return Role.Admin;
+  }
+
+  if (value === Role.SuperAdmin) {
+    return Role.SuperAdmin;
   }
 
   return null;
@@ -50,6 +58,14 @@ export function normalizeRoles(
     normalized.push(Role.User);
   }
 
+  if (normalized.includes(Role.User) && !normalized.includes(Role.Customer)) {
+    normalized.push(Role.Customer);
+  }
+
+  if (normalized.includes(Role.Customer) && !normalized.includes(Role.User)) {
+    normalized.push(Role.User);
+  }
+
   return Array.from(new Set(normalized));
 }
 
@@ -73,6 +89,10 @@ export function resolveActiveRole(
     return requestedActiveRole;
   }
 
+  if (normalizedRoles.includes(Role.SuperAdmin)) {
+    return Role.SuperAdmin;
+  }
+
   if (normalizedRoles.includes(Role.Admin)) {
     return Role.Admin;
   }
@@ -81,11 +101,19 @@ export function resolveActiveRole(
     return Role.Seller;
   }
 
+  if (normalizedRoles.includes(Role.Customer)) {
+    return Role.Customer;
+  }
+
   return Role.User;
 }
 
 export function deriveUserType(roles: unknown, fallbackRole?: unknown): string {
   const normalizedRoles = normalizeRoles(roles, fallbackRole);
+
+  if (normalizedRoles.includes(Role.SuperAdmin)) {
+    return Role.SuperAdmin;
+  }
 
   if (normalizedRoles.includes(Role.Seller)) {
     return Role.Seller;
@@ -95,5 +123,5 @@ export function deriveUserType(roles: unknown, fallbackRole?: unknown): string {
     return Role.Admin;
   }
 
-  return Role.User;
+  return Role.Customer;
 }

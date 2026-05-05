@@ -28,6 +28,9 @@ export class ProductAttributes {
     "createdAt",
     "averageRating",
     "totalReviews",
+    "is_boosted",
+    "boost_score",
+    "boosted_until",
   ];
   pVariantAttributes = [
     "image",
@@ -191,14 +194,23 @@ export class ProductAttributes {
     price: string = null,
     tag: string = null
   ): any[] {
+    const activeBoostScore = Sequelize.literal(
+      `CASE
+        WHEN "is_boosted" = TRUE AND "boosted_until" > NOW()
+        THEN COALESCE("boost_score", 0)
+        ELSE 0
+      END`
+    );
+    const boostOrder = [[activeBoostScore as any, "DESC"]];
+
     if (tag == "top") {
-      return [["averageRating", "DESC"]];
+      return [...boostOrder, ["averageRating", "DESC"], ["createdAt", "DESC"]];
     } else if (tag == "recent" || order == "DESC") {
-      return [["createdAt", "DESC"]];
+      return [...boostOrder, ["createdAt", "DESC"]];
     } else if (price == "ASC" || price == "DESC") {
-      return [["retail_rate", price]];
+      return [...boostOrder, ["retail_rate", price], ["createdAt", "DESC"]];
     } else {
-      return [];
+      return [...boostOrder, ["createdAt", "DESC"]];
     }
   }
 

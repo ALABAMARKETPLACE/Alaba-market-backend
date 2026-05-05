@@ -27,7 +27,7 @@ export const UserProviders: any[] = [
           },
           {
             expiresIn:
-              activeRole == Role.Admin
+              activeRole == Role.Admin || activeRole == Role.SuperAdmin
                 ? process.env.SESSION_EXPIRY_ADMIN
                 : activeRole == Role.Seller
                 ? process.env.SESSION_EXPIRY_SELLER

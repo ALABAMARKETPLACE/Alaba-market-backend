@@ -35,6 +35,7 @@ import { UserNameUpdateDto } from "./dto/user_name.update.dto";
 import { FirebaseService } from "../FIREBASE/firebase.service";
 import { Role } from "../shared/enum/role.enum";
 import { Store } from "../STORE/store.entity";
+import { Order } from "../ORDER/order.entity";
 import {
   deriveUserType,
   normalizeRole,
@@ -541,6 +542,30 @@ export class UserService {
         true,
         "User deleted successfully",
       );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async deleteMyAccount(userId: number) {
+    try {
+      const activeOrderCount = await Order.count({
+        where: {
+          userId,
+          status: {
+            [Op.notIn]: ["delivered", "cancelled", "rejected", "failed"],
+          },
+        },
+      });
+
+      if (activeOrderCount > 0) {
+        throw new ConflictException(
+          "You cannot delete your account while you have active orders.",
+        );
+      }
+
+      return this.softDeleteUser(userId);
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));

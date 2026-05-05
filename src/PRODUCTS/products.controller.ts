@@ -28,6 +28,7 @@ import { ProductsService } from "./products.services";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { ProductsPayloadDto } from "./dto/productsPayload.dto";
 import { ProductsByStoreDto } from "./dto/productsByStore.dto";
+import { PublicProductsQueryDto } from "./dto/public-products-query.dto";
 import { ApiPaginatedResponse } from "../shared/decorator/dto-paginated.decorator";
 import { ApiDataObjectResponse } from "../shared/decorator/dto-dataObject.decorator";
 import { UpdateProductsDto } from "./dto/updateProduct.dto";
@@ -51,6 +52,16 @@ export class ProductsController {
     private readonly ProductsService: ProductsService,
     private readonly productUploadService: ProductUploadService
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: "Public paginated product listing" })
+  @ApiPaginatedResponse(ProductsDto)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  findPublicProducts(
+    @Query() pageOpt: PublicProductsQueryDto
+  ): Promise<DataResponseDto> {
+    return this.ProductsService.findPublicProducts(pageOpt);
+  }
 
   //all products in a store
   @Roles(Role.Seller, Role.Admin)
