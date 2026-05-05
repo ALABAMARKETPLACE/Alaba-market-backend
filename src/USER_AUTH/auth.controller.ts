@@ -5,6 +5,8 @@ import {
   Post,
   Get,
   Param,
+  Patch,
+  Req,
   ValidationPipe,
   UseGuards,
   UseInterceptors,
@@ -30,10 +32,9 @@ import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { AuthService } from "./auth.service";
 import { ApiDataObjectResponse } from "../shared/decorator/dto-dataObject.decorator";
 import { VerifyUserTokenDto } from "./dto/verifyToken.dto";
-import { ChangePasswordDto } from "./dto/changePassword.dto";
 import { ForgotPasswordDto } from "./dto/forgotPassword.dto";
 import { DeactivateAccountDto } from "./dto/deactivateAccount.dto";
-import { IsEmail, IsNotEmpty, IsString, Validate } from "class-validator";
+import { IsEmail, IsNotEmpty, Validate } from "class-validator";
 import { AuthGuard } from "../shared/guards/auth.guard";
 import { UserId } from "../shared/decorator/userId_decorator";
 import { VerifyMailDto } from "./dto/verifyMail.dto";
@@ -43,6 +44,10 @@ import { RefreshTokenDto } from "./dto/refresh_token.dto";
 import { Fid } from "../shared/decorator/fid.decorator";
 import { Public } from "../shared/decorator/optional.decorator";
 import { TokenManagementService } from "../TOKEN_MANAGEMENT/services";
+import {
+  UnifiedChangePasswordDto,
+  UnifiedResetPasswordDto,
+} from "./dto/password-management.dto";
 class CheckEmailParams {
   @IsNotEmpty({ message: "Please Provide an Email ID" })
   @IsEmail({}, { message: "Invalid email format" })
@@ -174,6 +179,21 @@ export class AuthController {
     return result;
   }
 
+  @UseGuards(AuthGuard)
+  @Patch("change-password")
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiOkResponse({ type: DataResponseDto })
+  changePassword(
+    @UserId() userId: number,
+    @Body() payload: UnifiedChangePasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
+    return this.AuthService.changePassword(userId, payload, request);
+  }
+
+  @Public()
   //login via phone using phone verification via otp firebase
   @Post("phone-login")
   @ApiCreatedResponse({ type: DataResponseDto })
@@ -202,20 +222,30 @@ export class AuthController {
   }
 
   //reuest for password change link.. takes email address in body
+  @Public()
   @Post("forgot-password")
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiCreatedResponse({ type: DataResponseDto })
-  @ApiBearerAuth()
-  forgot(@Body() forgot: ForgotPasswordDto): Promise<DataResponseDto> {
+  forgot(
+    @Body() forgot: ForgotPasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
     console.log({ forgot });
-    return this.AuthService.forgotPassword(forgot);
+    return this.AuthService.forgotPassword(forgot, request);
   }
 
   //to reset the password. requires token in body and new password
+  @Public()
   @Post("reset-password")
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiCreatedResponse({ type: DataResponseDto })
-  @ApiBearerAuth()
-  resetPassword(@Body() forgot: ChangePasswordDto): Promise<DataResponseDto> {
-    return this.AuthService.resetPassword(forgot);
+  resetPassword(
+    @Body() forgot: UnifiedResetPasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
+    return this.AuthService.resetPasswordUnified(forgot, request);
   }
 
   //request to deactivate an account via email.(link will be sent to emailid)
