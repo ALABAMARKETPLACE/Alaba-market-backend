@@ -5,7 +5,7 @@ import {
   Post,
   Get,
   Param,
-  Put,
+  Patch,
   Req,
   ValidationPipe,
   UseGuards,
@@ -32,10 +32,9 @@ import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { AuthService } from "./auth.service";
 import { ApiDataObjectResponse } from "../shared/decorator/dto-dataObject.decorator";
 import { VerifyUserTokenDto } from "./dto/verifyToken.dto";
-import { ChangePasswordDto } from "./dto/changePassword.dto";
 import { ForgotPasswordDto } from "./dto/forgotPassword.dto";
 import { DeactivateAccountDto } from "./dto/deactivateAccount.dto";
-import { IsEmail, IsNotEmpty, IsString, Validate } from "class-validator";
+import { IsEmail, IsNotEmpty, Validate } from "class-validator";
 import { AuthGuard } from "../shared/guards/auth.guard";
 import { UserId } from "../shared/decorator/userId_decorator";
 import { VerifyMailDto } from "./dto/verifyMail.dto";
@@ -47,7 +46,6 @@ import { Public } from "../shared/decorator/optional.decorator";
 import { TokenManagementService } from "../TOKEN_MANAGEMENT/services";
 import {
   UnifiedChangePasswordDto,
-  UnifiedForgotPasswordDto,
   UnifiedResetPasswordDto,
 } from "./dto/password-management.dto";
 class CheckEmailParams {
@@ -182,7 +180,7 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard)
-  @Put("password/change")
+  @Patch("change-password")
   @HttpCode(200)
   @ApiBearerAuth()
   @UsePipes(new ValidationPipe({ transform: true }))
@@ -196,29 +194,6 @@ export class AuthController {
   }
 
   @Public()
-  @Post("password/forgot")
-  @HttpCode(200)
-  @UsePipes(new ValidationPipe({ transform: true }))
-  @ApiOkResponse({ type: DataResponseDto })
-  forgotPasswordUnified(
-    @Body() payload: UnifiedForgotPasswordDto,
-    @Req() request: any,
-  ): Promise<DataResponseDto> {
-    return this.AuthService.forgotPasswordUnified(payload, request);
-  }
-
-  @Public()
-  @Post("password/reset")
-  @HttpCode(200)
-  @UsePipes(new ValidationPipe({ transform: true }))
-  @ApiOkResponse({ type: DataResponseDto })
-  resetPasswordUnified(
-    @Body() payload: UnifiedResetPasswordDto,
-    @Req() request: any,
-  ): Promise<DataResponseDto> {
-    return this.AuthService.resetPasswordUnified(payload, request);
-  }
-
   //login via phone using phone verification via otp firebase
   @Post("phone-login")
   @ApiCreatedResponse({ type: DataResponseDto })
@@ -267,10 +242,10 @@ export class AuthController {
   @UsePipes(new ValidationPipe({ transform: true }))
   @ApiCreatedResponse({ type: DataResponseDto })
   resetPassword(
-    @Body() forgot: ChangePasswordDto,
+    @Body() forgot: UnifiedResetPasswordDto,
     @Req() request: any,
   ): Promise<DataResponseDto> {
-    return this.AuthService.resetPassword(forgot, request);
+    return this.AuthService.resetPasswordUnified(forgot, request);
   }
 
   //request to deactivate an account via email.(link will be sent to emailid)

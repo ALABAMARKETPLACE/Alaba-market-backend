@@ -57,8 +57,8 @@ type VerifyTokenPurpose =
   | "admin_invitation";
 
 const PASSWORD_RESET_SUCCESS_MESSAGE =
-  "If this email exists, a password reset link has been sent.";
-const PASSWORD_RESET_EXPIRY_MINUTES = 20;
+  "If this email exists, a reset code has been sent";
+const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 const FORGOT_PASSWORD_LIMIT = 5;
 const FORGOT_PASSWORD_WINDOW_MS = 15 * 60 * 1000;
 const RESET_PASSWORD_LIMIT = 5;
@@ -522,7 +522,7 @@ export class AuthService {
         request,
       });
 
-      return new DataResponseDto({}, true, "Password updated successfully");
+      return new DataResponseDto({}, true, "Password changed successfully");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -569,7 +569,7 @@ export class AuthService {
         actorId: userDetails?._id || 0,
         actorRole: userDetails ? this.resolvePrimaryRole(userDetails) : "system",
         targetUserId: userDetails?._id || null,
-        action: "forgot_password_requested",
+        action: "password_reset_requested",
         metadata: { email_hash: emailKey, account_found: Boolean(userDetails) },
         request,
       });
@@ -635,10 +635,11 @@ export class AuthService {
   ): Promise<DataResponseDto> {
     return this.resetPasswordUnified(
       {
+        email: undefined,
         token: password.token,
         newPassword: password.password,
         confirmPassword: password.password,
-      },
+      } as any,
       request,
     );
   }
@@ -648,18 +649,23 @@ export class AuthService {
     newPassword,
   }: AdminResetPasswordDto): Promise<DataResponseDto> {
     return this.resetPasswordUnified({
+      email: undefined,
       token,
       newPassword,
       confirmPassword: newPassword,
-    });
+    } as any);
   }
 
   async resetPasswordUnified(
-    { token, newPassword, confirmPassword }: UnifiedResetPasswordDto,
+    { email, token, newPassword, confirmPassword }: UnifiedResetPasswordDto,
     request?: any,
   ): Promise<DataResponseDto> {
+    const normalizedEmail = this.normalizeEmail(email);
     const tokenHash = this.hashPasswordResetToken(token);
     const tokenKey = this.hashRateLimitValue(tokenHash);
+    const emailKey = normalizedEmail
+      ? this.hashRateLimitValue(normalizedEmail)
+      : null;
 
     try {
       await this.assertRateLimit(
@@ -671,6 +677,13 @@ export class AuthService {
       const user = await User.findOne({
         where: {
           password_reset_token_hash: tokenHash,
+          ...(normalizedEmail
+            ? {
+                email: {
+                  [Op.iLike]: normalizedEmail,
+                },
+              }
+            : {}),
         },
       });
 
@@ -680,7 +693,10 @@ export class AuthService {
           actorRole: "system",
           targetUserId: null,
           action: "password_reset_failed",
-          metadata: { reason: "token_not_found" },
+          metadata: {
+            reason: "token_not_found_or_email_mismatch",
+            ...(emailKey ? { email_hash: emailKey } : {}),
+          },
           request,
         });
         throw new UnauthorizedException("Invalid or expired password reset token");
@@ -771,7 +787,7 @@ export class AuthService {
       return new DataResponseDto(
         {},
         true,
-        "Password updated successfully",
+        "Password reset successful",
       );
     } catch (err) {
       if (err instanceof HttpException) throw err;

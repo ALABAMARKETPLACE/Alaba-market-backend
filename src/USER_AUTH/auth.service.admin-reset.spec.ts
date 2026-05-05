@@ -76,7 +76,7 @@ describe("AuthService admin password reset", () => {
 
     expect(result.status).toBe(true);
     expect(result.message).toBe(
-      "If this email exists, a password reset link has been sent.",
+      "If this email exists, a reset code has been sent",
     );
     expect(mailService.AuthMail).not.toHaveBeenCalled();
   });
@@ -248,7 +248,7 @@ describe("AuthService admin password reset", () => {
     });
 
     expect(result.message).toBe(
-      "If this email exists, a password reset link has been sent.",
+      "If this email exists, a reset code has been sent",
     );
     expect(user.password_reset_token_hash).toBeNull();
     expect(user.save).not.toHaveBeenCalled();

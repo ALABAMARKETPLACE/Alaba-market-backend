@@ -42,6 +42,13 @@ export class UnifiedForgotPasswordDto {
 }
 
 export class UnifiedResetPasswordDto {
+  @ApiProperty({ example: "user@example.com" })
+  @IsEmail({}, { message: "Please Provide a Valid email id" })
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim().toLowerCase() : value,
+  )
+  readonly email: string;
+
   @ApiProperty({ example: "reset-token" })
   @IsNotEmpty({ message: "Invalid or expired password reset token" })
   readonly token: string;

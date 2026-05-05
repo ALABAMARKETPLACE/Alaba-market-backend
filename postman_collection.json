@@ -27296,6 +27296,215 @@
           ]
         },
         {
+          "name": "PATCH /auth/change-password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "description": "Logged-in admin or marketplace user changes their password using oldPassword, newPassword, and confirmPassword.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"{{oldPassword}}\",\n  \"newPassword\": \"{{newPassword}}\",\n  \"confirmPassword\": \"{{newPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /auth/forgot-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Unified forgot-password endpoint for admin and marketplace users. Always returns: If this email exists, a reset code has been sent.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
+                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
+                  "  setIf('authToken', resolvedAuthToken);",
+                  "  setIf('refreshToken', resolvedRefreshToken);",
+                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
+                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
+                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/reset-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Unified reset-password endpoint for admin and marketplace users. Requires email, reset token, newPassword, and confirmPassword.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newPassword}}\",\n  \"confirmPassword\": \"{{newPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
+                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
+                  "  setIf('authToken', resolvedAuthToken);",
+                  "  setIf('refreshToken', resolvedRefreshToken);",
+                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
+                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
+                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "POST /auth/phone-login",
           "request": {
             "method": "POST",
@@ -27545,172 +27754,6 @@
           ]
         },
         {
-          "name": "POST /auth/forgot-password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/auth/forgot-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "auth",
-                "forgot-password"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const results = Array.isArray(data?.results) ? data.results : [];",
-                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
-                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
-                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
-                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
-                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
-                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
-                  "  const user = data?.user || first?.user || first;",
-                  "  const product = first?.product || data?.product || first;",
-                  "  const address = first?.address || data?.address || first;",
-                  "  const category = first?.category || data?.category || first;",
-                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
-                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
-                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
-                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
-                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
-                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
-                  "  setIf('authToken', resolvedAuthToken);",
-                  "  setIf('refreshToken', resolvedRefreshToken);",
-                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
-                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
-                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /auth/reset-password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/auth/reset-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "auth",
-                "reset-password"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const results = Array.isArray(data?.results) ? data.results : [];",
-                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
-                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
-                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
-                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
-                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
-                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
-                  "  const user = data?.user || first?.user || first;",
-                  "  const product = first?.product || data?.product || first;",
-                  "  const address = first?.address || data?.address || first;",
-                  "  const category = first?.category || data?.category || first;",
-                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
-                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
-                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
-                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
-                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
-                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
-                  "  setIf('authToken', resolvedAuthToken);",
-                  "  setIf('refreshToken', resolvedRefreshToken);",
-                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
-                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
-                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "POST /auth/request-deactivate",
           "request": {
             "method": "POST",
@@ -27870,185 +27913,6 @@
                   "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
                   "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
                   "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "ADMIN AUTH",
-      "item": [
-        {
-          "name": "POST /admin/auth/forgot-password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "description": "Public admin forgot-password endpoint. Sends a reset email when the address belongs to an active admin or super admin, and always returns a generic success message.",
-            "url": {
-              "raw": "{{baseUrl}}/admin/auth/forgot-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "auth",
-                "forgot-password"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{adminEmail}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "pm.test('Response is successful', function () {",
-                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-                  "});",
-                  "if (json) {",
-                  "  pm.test('Response has success status', function () {",
-                  "    pm.expect(json.status).to.eql(true);",
-                  "  });",
-                  "  pm.test('Returns generic reset message', function () {",
-                  "    pm.expect(json.message).to.eql('If this email exists, a password reset link has been sent.');",
-                  "  });",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /admin/auth/request-password-change",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "description": "Authenticated admin/super-admin endpoint. Sends the logged-in admin a reset link so password changes still go through the email reset flow.",
-            "url": {
-              "raw": "{{baseUrl}}/admin/auth/request-password-change",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "auth",
-                "request-password-change"
-              ]
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "pm.test('Response is successful', function () {",
-                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-                  "});",
-                  "if (json) {",
-                  "  pm.test('Response has success status', function () {",
-                  "    pm.expect(json.status).to.eql(true);",
-                  "  });",
-                  "  pm.test('Reset link email was requested', function () {",
-                  "    pm.expect(json.message).to.match(/reset link has been sent/i);",
-                  "  });",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /admin/auth/reset-password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "description": "Public admin reset endpoint. Use the one-time token from the email link with the new password.",
-            "url": {
-              "raw": "{{baseUrl}}/admin/auth/reset-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "auth",
-                "reset-password"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"token\": \"{{adminResetToken}}\",\n  \"newPassword\": \"{{adminNewPassword}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "pm.test('Response is successful', function () {",
-                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-                  "});",
-                  "if (json) {",
-                  "  pm.test('Response has success status', function () {",
-                  "    pm.expect(json.status).to.eql(true);",
-                  "  });",
-                  "  pm.test('Password reset completed', function () {",
-                  "    pm.expect(json.message).to.match(/password updated/i);",
-                  "  });",
                   "}"
                 ]
               }
@@ -31141,6 +31005,21 @@
       "type": "string",
       "value": "NewStrongPassword123!",
       "enabled": true
+    },
+    {
+      "key": "oldPassword",
+      "value": "OldPassword123!",
+      "type": "string"
+    },
+    {
+      "key": "newPassword",
+      "value": "NewPassword123!",
+      "type": "string"
+    },
+    {
+      "key": "resetToken",
+      "value": "",
+      "type": "string"
     }
   ]
 }

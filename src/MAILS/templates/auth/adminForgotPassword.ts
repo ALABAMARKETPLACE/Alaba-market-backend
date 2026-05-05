@@ -8,12 +8,13 @@ const AdminForgotPasswordMail = async (
   expiresInMinutes = 20,
 ) => {
   const frontendUrl =
+    process.env.WEBSITE ||
     process.env.PASSWORD_RESET_FRONTEND_URL ||
     process.env.ADMIN_FRONTEND_URL ||
     process.env.ADMIN_BASE_URL ||
     process.env.BASE_URL ||
     "";
-  const resetLink = `${frontendUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
+  const resetLink = `${frontendUrl.replace(/\/$/, "")}/auth/reset-password?token=${encodeURIComponent(token)}`;
   const recipientName =
     details?.first_name || details?.name || details?.email?.split("@")[0] || "there";
 
