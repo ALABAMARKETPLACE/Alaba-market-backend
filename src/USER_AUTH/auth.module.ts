@@ -1,6 +1,5 @@
 import { Global, Module } from "@nestjs/common";
 import { AuthController } from "./auth.controller";
-import { AdminAuthController } from "./admin-auth.controller";
 import { AuthService } from "./auth.service";
 
 import { UserModule } from "../USERS/user.module";
@@ -10,11 +9,18 @@ import { UserProviders } from "../USERS/user.provider";
 import { TokenManagementModule } from "../TOKEN_MANAGEMENT/module";
 import { AuthRepository } from "./auth.repository";
 import { BcryptProvider } from "../shared/providers/bcrypt.provider";
+import { AdminAuditLog } from "../SUPER_ADMIN/admin-audit-log.entity";
 @Global()
 @Module({
   imports: [UserModule, EmailModule, RolesConfigModule, TokenManagementModule],
-  controllers: [AuthController, AdminAuthController],
-  providers: [AuthService, ...UserProviders, AuthRepository, ...BcryptProvider],
+  controllers: [AuthController],
+  providers: [
+    AuthService,
+    ...UserProviders,
+    AuthRepository,
+    ...BcryptProvider,
+    { provide: "AdminAuditLogRepository", useValue: AdminAuditLog },
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

@@ -1,12 +1,15 @@
 import {
   ConflictException,
   HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
+import { CACHE_MANAGER } from "@nestjs/cache-manager";
+import { Cache } from "cache-manager";
 import { compare } from "bcrypt";
 import * as crypto from "crypto";
 import verifyAppleToken from "verify-apple-id-token";
@@ -26,11 +29,16 @@ import { ChangePasswordDto } from "./dto/changePassword.dto";
 import { ForgotPasswordDto } from "./dto/forgotPassword.dto";
 import { AdminForgotPasswordDto } from "./dto/admin-forgot-password.dto";
 import { AdminResetPasswordDto } from "./dto/admin-reset-password.dto";
+import {
+  UnifiedChangePasswordDto,
+  UnifiedForgotPasswordDto,
+  UnifiedResetPasswordDto,
+} from "./dto/password-management.dto";
 import { DeactivateAccountDto } from "./dto/deactivateAccount.dto";
 const SignupHtml = require("../MAILS/templates/auth/SignupHtml");
 const VerifyMail = require("../MAILS/templates/auth/mailVerfication");
-const RequestPasswdChangeTemplate = require("../MAILS/templates/auth/forgotPassword");
 const AdminForgotPasswordMail = require("../MAILS/templates/auth/adminForgotPassword");
+const PasswordChangedMail = require("../MAILS/templates/auth/passwordChanged");
 const DeactivateAccountViaMail = require("../MAILS/templates/auth/deactivateByMail");
 const DeactivateMail = require("../MAILS/templates/auth/deactivate");
 import { TokenManagementService } from "../TOKEN_MANAGEMENT/services";
@@ -40,6 +48,7 @@ import { FirebaseService } from "../FIREBASE/firebase.service";
 import { JwtService } from "@nestjs/jwt";
 import { Op } from "sequelize";
 import { Role } from "../shared/enum/role.enum";
+import { AdminAuditLog } from "../SUPER_ADMIN/admin-audit-log.entity";
 
 type VerifyTokenPurpose =
   | "email_verification"
@@ -47,9 +56,15 @@ type VerifyTokenPurpose =
   | "account_deactivation"
   | "admin_invitation";
 
-const ADMIN_PASSWORD_RESET_SUCCESS_MESSAGE =
+const PASSWORD_RESET_SUCCESS_MESSAGE =
   "If this email exists, a password reset link has been sent.";
-const ADMIN_PASSWORD_RESET_EXPIRY_MINUTES = 20;
+const PASSWORD_RESET_EXPIRY_MINUTES = 20;
+const FORGOT_PASSWORD_LIMIT = 5;
+const FORGOT_PASSWORD_WINDOW_MS = 15 * 60 * 1000;
+const RESET_PASSWORD_LIMIT = 5;
+const RESET_PASSWORD_WINDOW_MS = 15 * 60 * 1000;
+const CHANGE_PASSWORD_LIMIT = 6;
+const CHANGE_PASSWORD_WINDOW_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -68,6 +83,9 @@ export class AuthService {
     private readonly authRepo: AuthRepository,
     private readonly firebaseService: FirebaseService,
     private readonly jwtService: JwtService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager?: Cache,
+    @Inject("AdminAuditLogRepository")
+    private readonly adminAuditLogRepository?: typeof AdminAuditLog,
   ) {}
 
   private async createScopedVerifyToken(
@@ -108,6 +126,94 @@ export class AuthService {
 
   private hashPasswordResetToken(token: string) {
     return crypto.createHash("sha256").update(token).digest("hex");
+  }
+
+  private hashRateLimitValue(value: string) {
+    return crypto.createHash("sha256").update(value).digest("hex").slice(0, 24);
+  }
+
+  private requestMeta(request?: any) {
+    const forwardedFor = request?.headers?.["x-forwarded-for"];
+    const ipAddress = Array.isArray(forwardedFor)
+      ? forwardedFor[0]
+      : String(forwardedFor || request?.ip || request?.socket?.remoteAddress || "")
+          .split(",")[0]
+          .trim();
+
+    return {
+      ipAddress: ipAddress || null,
+      userAgent: request?.headers?.["user-agent"] || null,
+    };
+  }
+
+  private async assertRateLimit(
+    key: string,
+    limit: number,
+    ttlMs: number,
+    message = "Too many attempts. Please try again later.",
+  ) {
+    if (!this.cacheManager) return;
+
+    const current = Number((await this.cacheManager.get<number>(key)) || 0);
+    if (current >= limit) {
+      throw new HttpException(message, HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    await this.cacheManager.set(key, current + 1, ttlMs);
+  }
+
+  private assertPasswordConfirmed(newPassword: string, confirmPassword: string) {
+    if (newPassword !== confirmPassword) {
+      throw new ConflictException("Password confirmation does not match");
+    }
+  }
+
+  private async assertPasswordNotReused(user: User, newPassword: string) {
+    if (!user.password) return;
+
+    const isReused = await compare(newPassword, user.password);
+    if (isReused) {
+      throw new ConflictException("Please choose a password you have not used before");
+    }
+  }
+
+  private async writePasswordActivityLog({
+    actorId,
+    actorRole,
+    targetUserId,
+    action,
+    metadata,
+    request,
+  }: {
+    actorId?: number | null;
+    actorRole?: string | null;
+    targetUserId?: number | null;
+    action: string;
+    metadata?: Record<string, any> | null;
+    request?: any;
+  }) {
+    if (!this.adminAuditLogRepository) return;
+
+    const meta = this.requestMeta(request);
+    try {
+      await this.adminAuditLogRepository.create({
+        actor_id: actorId || 0,
+        actor_role: actorRole || "system",
+        target_user_id: targetUserId || null,
+        action,
+        module: "password",
+        before_data: null,
+        after_data: metadata || null,
+        ip_address: meta.ipAddress,
+      } as any);
+    } catch (err) {
+      console.log("Failed to write password activity log", err?.message || err);
+    }
+  }
+
+  private resolvePrimaryRole(user: User | null): string {
+    if (!user) return "unknown";
+    return user.active_role || user.role || "user";
   }
 
   private userHasAdminRole(user: User | null): boolean {
@@ -363,36 +469,94 @@ export class AuthService {
     }
   }
 
-  async forgotPassword({ email }: ForgotPasswordDto) {
+  async changePassword(
+    userId: number,
+    payload: UnifiedChangePasswordDto,
+    request?: any,
+  ): Promise<DataResponseDto> {
     try {
-      const normalizedEmail = this.normalizeEmail(email);
-      const userDetails: any = await User.findOne({
-        where: {
-          email: {
-            [Op.iLike]: normalizedEmail,
-          },
-        },
-      });
-      this.assertUserCanAuthenticate(userDetails);
-      const token = await this.createScopedVerifyToken(
-        userDetails?._id,
-        "password_reset",
+      await this.assertRateLimit(
+        `password-change:${userId}`,
+        CHANGE_PASSWORD_LIMIT,
+        CHANGE_PASSWORD_WINDOW_MS,
       );
-      let Mail = await RequestPasswdChangeTemplate(userDetails, token);
-      this.mailService.AuthMail(Mail);
-      const message = "Password reset email has been sent";
-      return new DataResponseDto({}, true, message);
+
+      const user = await User.findByPk(userId);
+      this.assertUserCanAuthenticate(user);
+
+      await this.writePasswordActivityLog({
+        actorId: user._id,
+        actorRole: this.resolvePrimaryRole(user),
+        targetUserId: user._id,
+        action: "password_change_requested",
+        request,
+      });
+
+      if (!user.password) {
+        throw new UnauthorizedException(
+          "No existing password found. Please use add password or forgot password.",
+        );
+      }
+
+      this.assertPasswordConfirmed(payload.newPassword, payload.confirmPassword);
+
+      const isMatch = await compare(payload.oldPassword, user.password);
+      if (!isMatch) throw new UnauthorizedException("Invalid Password..");
+
+      await this.assertPasswordNotReused(user, payload.newPassword);
+
+      user.password = await this.hashPassword(payload.newPassword);
+      user.password_changed_at = new Date();
+      user.password_reset_token_hash = null;
+      user.password_reset_expires_at = null;
+      await user.save();
+
+      await this.tokenService.signoutFromAll(user._id);
+      await this.sendPasswordChangedMail(user);
+
+      await this.writePasswordActivityLog({
+        actorId: user._id,
+        actorRole: this.resolvePrimaryRole(user),
+        targetUserId: user._id,
+        action: "password_changed",
+        request,
+      });
+
+      return new DataResponseDto({}, true, "Password updated successfully");
     } catch (err) {
       if (err instanceof HttpException) throw err;
-      throw new UnauthorizedException(getErrorMessage(err));
+      throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
 
-  async adminForgotPassword({
-    email,
-  }: AdminForgotPasswordDto): Promise<DataResponseDto> {
+  async forgotPassword(
+    payload: ForgotPasswordDto,
+    request?: any,
+  ): Promise<DataResponseDto> {
+    return this.forgotPasswordUnified(payload, request);
+  }
+
+  async forgotPasswordUnified(
+    { email }: UnifiedForgotPasswordDto,
+    request?: any,
+  ): Promise<DataResponseDto> {
+    const normalizedEmail = this.normalizeEmail(email);
+    const meta = this.requestMeta(request);
+    const emailKey = this.hashRateLimitValue(normalizedEmail);
+    const ipKey = this.hashRateLimitValue(meta.ipAddress || "unknown");
+
     try {
-      const normalizedEmail = this.normalizeEmail(email);
+      await this.assertRateLimit(
+        `forgot-password:email:${emailKey}`,
+        FORGOT_PASSWORD_LIMIT,
+        FORGOT_PASSWORD_WINDOW_MS,
+      );
+      await this.assertRateLimit(
+        `forgot-password:ip:${ipKey}`,
+        FORGOT_PASSWORD_LIMIT * 3,
+        FORGOT_PASSWORD_WINDOW_MS,
+      );
+
       const userDetails = await User.findOne({
         where: {
           email: {
@@ -401,26 +565,46 @@ export class AuthService {
         },
       });
 
+      await this.writePasswordActivityLog({
+        actorId: userDetails?._id || 0,
+        actorRole: userDetails ? this.resolvePrimaryRole(userDetails) : "system",
+        targetUserId: userDetails?._id || null,
+        action: "forgot_password_requested",
+        metadata: { email_hash: emailKey, account_found: Boolean(userDetails) },
+        request,
+      });
+
       const canReset =
         userDetails &&
-        this.userHasAdminRole(userDetails) &&
         !userDetails.is_deleted &&
         (userDetails.is_active ?? userDetails.status) === true &&
         userDetails.status === true;
 
       if (canReset) {
-        await this.sendAdminPasswordResetLink(userDetails);
+        await this.sendPasswordResetLink(userDetails);
       }
 
-      return new DataResponseDto(
-        {},
-        true,
-        ADMIN_PASSWORD_RESET_SUCCESS_MESSAGE,
-      );
+      return new DataResponseDto({}, true, PASSWORD_RESET_SUCCESS_MESSAGE);
     } catch (err) {
-      if (err instanceof HttpException) throw err;
+      if (
+        err instanceof HttpException &&
+        err.getStatus() === HttpStatus.TOO_MANY_REQUESTS
+      ) {
+        throw err;
+      }
+
+      if (err instanceof HttpException) {
+        return new DataResponseDto({}, true, PASSWORD_RESET_SUCCESS_MESSAGE);
+      }
+
       throw new InternalServerErrorException(getErrorMessage(err));
     }
+  }
+
+  async adminForgotPassword({
+    email,
+  }: AdminForgotPasswordDto): Promise<DataResponseDto> {
+    return this.forgotPasswordUnified({ email });
   }
 
   async requestAdminPasswordChange(userId: number): Promise<DataResponseDto> {
@@ -432,7 +616,7 @@ export class AuthService {
         throw new UnauthorizedException("Only admins can request this reset link");
       }
 
-      await this.sendAdminPasswordResetLink(userDetails);
+      await this.sendPasswordResetLink(userDetails);
 
       return new DataResponseDto(
         {},
@@ -445,45 +629,60 @@ export class AuthService {
     }
   }
 
-  async resetPassword(password: ChangePasswordDto) {
-    try {
-      const verified = this.verifyScopedToken(
-        password?.token,
-        "password_reset",
-      );
-      if (verified) {
-        const user = await User.findByPk(verified.data?.userId);
-        this.assertUserCanAuthenticate(user);
-
-        let newPassword = await this.hashPassword(password?.password);
-        const [status] = await User.update(
-          { password: newPassword },
-          { where: { _id: verified.data?.userId }, returning: true },
-        );
-        if (status == 0) throw new NotFoundException();
-        const message = "Password Updated successfully";
-        return new DataResponseDto({}, true, message);
-      }
-      throw new UnauthorizedException();
-    } catch (err) {
-      if (err instanceof HttpException) throw err;
-      throw new UnauthorizedException(getErrorMessage(err));
-    }
+  async resetPassword(
+    password: ChangePasswordDto,
+    request?: any,
+  ): Promise<DataResponseDto> {
+    return this.resetPasswordUnified(
+      {
+        token: password.token,
+        newPassword: password.password,
+        confirmPassword: password.password,
+      },
+      request,
+    );
   }
 
   async adminResetPassword({
     token,
     newPassword,
   }: AdminResetPasswordDto): Promise<DataResponseDto> {
+    return this.resetPasswordUnified({
+      token,
+      newPassword,
+      confirmPassword: newPassword,
+    });
+  }
+
+  async resetPasswordUnified(
+    { token, newPassword, confirmPassword }: UnifiedResetPasswordDto,
+    request?: any,
+  ): Promise<DataResponseDto> {
+    const tokenHash = this.hashPasswordResetToken(token);
+    const tokenKey = this.hashRateLimitValue(tokenHash);
+
     try {
-      const tokenHash = this.hashPasswordResetToken(token);
+      await this.assertRateLimit(
+        `reset-password:token:${tokenKey}`,
+        RESET_PASSWORD_LIMIT,
+        RESET_PASSWORD_WINDOW_MS,
+      );
+
       const user = await User.findOne({
         where: {
           password_reset_token_hash: tokenHash,
         },
       });
 
-      if (!user || !this.userHasAdminRole(user)) {
+      if (!user) {
+        await this.writePasswordActivityLog({
+          actorId: 0,
+          actorRole: "system",
+          targetUserId: null,
+          action: "password_reset_failed",
+          metadata: { reason: "token_not_found" },
+          request,
+        });
         throw new UnauthorizedException("Invalid or expired password reset token");
       }
 
@@ -492,6 +691,14 @@ export class AuthService {
         (user.is_active ?? user.status) !== true ||
         user.status !== true
       ) {
+        await this.writePasswordActivityLog({
+          actorId: user._id,
+          actorRole: this.resolvePrimaryRole(user),
+          targetUserId: user._id,
+          action: "password_reset_failed",
+          metadata: { reason: "account_inactive" },
+          request,
+        });
         throw new UnauthorizedException("Invalid or expired password reset token");
       }
 
@@ -499,7 +706,42 @@ export class AuthService {
         !user.password_reset_expires_at ||
         user.password_reset_expires_at.getTime() <= Date.now()
       ) {
+        await this.writePasswordActivityLog({
+          actorId: user._id,
+          actorRole: this.resolvePrimaryRole(user),
+          targetUserId: user._id,
+          action: "password_reset_failed",
+          metadata: { reason: "token_expired" },
+          request,
+        });
         throw new UnauthorizedException("Invalid or expired password reset token");
+      }
+
+      if (newPassword !== confirmPassword) {
+        await this.writePasswordActivityLog({
+          actorId: user._id,
+          actorRole: this.resolvePrimaryRole(user),
+          targetUserId: user._id,
+          action: "password_reset_failed",
+          metadata: { reason: "password_confirmation_mismatch" },
+          request,
+        });
+        throw new ConflictException("Password confirmation does not match");
+      }
+
+      const isReused = user.password
+        ? await compare(newPassword, user.password)
+        : false;
+      if (isReused) {
+        await this.writePasswordActivityLog({
+          actorId: user._id,
+          actorRole: this.resolvePrimaryRole(user),
+          targetUserId: user._id,
+          action: "password_reset_failed",
+          metadata: { reason: "password_reuse" },
+          request,
+        });
+        throw new ConflictException("Please choose a password you have not used before");
       }
 
       user.password = await this.hashPassword(newPassword);
@@ -509,6 +751,22 @@ export class AuthService {
       await user.save();
 
       await this.tokenService.signoutFromAll(user._id);
+      await this.sendPasswordChangedMail(user);
+
+      await this.writePasswordActivityLog({
+        actorId: user._id,
+        actorRole: this.resolvePrimaryRole(user),
+        targetUserId: user._id,
+        action: "password_reset_success",
+        request,
+      });
+      await this.writePasswordActivityLog({
+        actorId: user._id,
+        actorRole: this.resolvePrimaryRole(user),
+        targetUserId: user._id,
+        action: "password_changed",
+        request,
+      });
 
       return new DataResponseDto(
         {},
@@ -521,10 +779,10 @@ export class AuthService {
     }
   }
 
-  private async sendAdminPasswordResetLink(userDetails: User): Promise<void> {
+  private async sendPasswordResetLink(userDetails: User): Promise<void> {
     const token = this.createPasswordResetToken();
     const expiresAt = new Date(
-      Date.now() + ADMIN_PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000,
+      Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000,
     );
 
     userDetails.password_reset_token_hash = this.hashPasswordResetToken(token);
@@ -534,8 +792,13 @@ export class AuthService {
     const mail = await AdminForgotPasswordMail(
       userDetails,
       token,
-      ADMIN_PASSWORD_RESET_EXPIRY_MINUTES,
+      PASSWORD_RESET_EXPIRY_MINUTES,
     );
+    await this.mailService.AuthMail(mail);
+  }
+
+  private async sendPasswordChangedMail(userDetails: User): Promise<void> {
+    const mail = await PasswordChangedMail(userDetails);
     await this.mailService.AuthMail(mail);
   }
 

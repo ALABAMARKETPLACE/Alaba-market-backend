@@ -8,6 +8,7 @@ const AdminForgotPasswordMail = async (
   expiresInMinutes = 20,
 ) => {
   const frontendUrl =
+    process.env.PASSWORD_RESET_FRONTEND_URL ||
     process.env.ADMIN_FRONTEND_URL ||
     process.env.ADMIN_BASE_URL ||
     process.env.BASE_URL ||
@@ -18,12 +19,12 @@ const AdminForgotPasswordMail = async (
 
   return {
     to: details.email,
-    subject: `${process.env.NAME || "Alaba Marketplace"} admin password reset`,
+    subject: `${process.env.NAME || "Alaba Marketplace"} password reset`,
     template: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; max-width: 640px; margin: 0 auto; padding: 24px;">
-        <h2 style="margin-bottom: 12px;">Reset your admin password</h2>
+        <h2 style="margin-bottom: 12px;">Reset your password</h2>
         <p>Hello ${recipientName},</p>
-        <p>We received a request to reset your admin password.</p>
+        <p>We received a request to reset your account password.</p>
         <p style="margin: 24px 0;">
           <a href="${resetLink}" style="background: #111827; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 6px; display: inline-block;">
             Reset Password

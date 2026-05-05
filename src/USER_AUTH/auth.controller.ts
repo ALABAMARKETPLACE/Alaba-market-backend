@@ -5,6 +5,8 @@ import {
   Post,
   Get,
   Param,
+  Put,
+  Req,
   ValidationPipe,
   UseGuards,
   UseInterceptors,
@@ -43,6 +45,11 @@ import { RefreshTokenDto } from "./dto/refresh_token.dto";
 import { Fid } from "../shared/decorator/fid.decorator";
 import { Public } from "../shared/decorator/optional.decorator";
 import { TokenManagementService } from "../TOKEN_MANAGEMENT/services";
+import {
+  UnifiedChangePasswordDto,
+  UnifiedForgotPasswordDto,
+  UnifiedResetPasswordDto,
+} from "./dto/password-management.dto";
 class CheckEmailParams {
   @IsNotEmpty({ message: "Please Provide an Email ID" })
   @IsEmail({}, { message: "Invalid email format" })
@@ -174,6 +181,44 @@ export class AuthController {
     return result;
   }
 
+  @UseGuards(AuthGuard)
+  @Put("password/change")
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiOkResponse({ type: DataResponseDto })
+  changePassword(
+    @UserId() userId: number,
+    @Body() payload: UnifiedChangePasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
+    return this.AuthService.changePassword(userId, payload, request);
+  }
+
+  @Public()
+  @Post("password/forgot")
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiOkResponse({ type: DataResponseDto })
+  forgotPasswordUnified(
+    @Body() payload: UnifiedForgotPasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
+    return this.AuthService.forgotPasswordUnified(payload, request);
+  }
+
+  @Public()
+  @Post("password/reset")
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiOkResponse({ type: DataResponseDto })
+  resetPasswordUnified(
+    @Body() payload: UnifiedResetPasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
+    return this.AuthService.resetPasswordUnified(payload, request);
+  }
+
   //login via phone using phone verification via otp firebase
   @Post("phone-login")
   @ApiCreatedResponse({ type: DataResponseDto })
@@ -202,20 +247,30 @@ export class AuthController {
   }
 
   //reuest for password change link.. takes email address in body
+  @Public()
   @Post("forgot-password")
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiCreatedResponse({ type: DataResponseDto })
-  @ApiBearerAuth()
-  forgot(@Body() forgot: ForgotPasswordDto): Promise<DataResponseDto> {
+  forgot(
+    @Body() forgot: ForgotPasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
     console.log({ forgot });
-    return this.AuthService.forgotPassword(forgot);
+    return this.AuthService.forgotPassword(forgot, request);
   }
 
   //to reset the password. requires token in body and new password
+  @Public()
   @Post("reset-password")
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiCreatedResponse({ type: DataResponseDto })
-  @ApiBearerAuth()
-  resetPassword(@Body() forgot: ChangePasswordDto): Promise<DataResponseDto> {
-    return this.AuthService.resetPassword(forgot);
+  resetPassword(
+    @Body() forgot: ChangePasswordDto,
+    @Req() request: any,
+  ): Promise<DataResponseDto> {
+    return this.AuthService.resetPassword(forgot, request);
   }
 
   //request to deactivate an account via email.(link will be sent to emailid)
