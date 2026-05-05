@@ -129,6 +129,10 @@ export class AuthGuard implements CanActivate {
         }
 
         const userRoles = normalizeRoles(request.user.roles, request.user.role);
+        if (userRoles.includes(Role.SuperAdmin)) {
+          return true;
+        }
+
         const hasRole = requiredRoles.some(
           (role) =>
             role.toLowerCase() === request.user.role.toLowerCase() ||

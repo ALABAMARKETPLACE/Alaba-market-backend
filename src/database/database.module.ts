@@ -64,6 +64,10 @@ import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 import { UserCheckout } from "../PAYSTACK_PAYMENT/user-checkout.entity";
 import { PaymentSplit } from "../PAYMENT_SPLITS/payment-split.entity";
 import { MailLog } from "../MAILS/mail-log.entity";
+import { SellerBoosterPlan } from "../SELLER_BOOSTER/seller-booster-plan.entity";
+import { BoostedProduct } from "../SELLER_BOOSTER/boosted-product.entity";
+import { BoosterPlanConfig } from "../SELLER_BOOSTER/booster-plan-config.entity";
+import { AdminAuditLog } from "../SUPER_ADMIN/admin-audit-log.entity";
 
 @Global()
 @Module({
@@ -136,6 +140,10 @@ import { MailLog } from "../MAILS/mail-log.entity";
           PaystackSubaccount,
           GuestCheckout,
           UserCheckout,
+          BoosterPlanConfig,
+          SellerBoosterPlan,
+          BoostedProduct,
+          AdminAuditLog,
         ],
 
         // ✅ REMOVED - these were causing the sync errors:

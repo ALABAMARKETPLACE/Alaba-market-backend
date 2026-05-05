@@ -100,6 +100,60 @@ describe("AuthService admin password reset", () => {
     expect(mailService.AuthMail).toHaveBeenCalledTimes(1);
   });
 
+  it("sends a reset link for a logged-in admin password change request", async () => {
+    const { service, mailService } = createService();
+    const user = createUser();
+    jest.spyOn(User, "findByPk").mockResolvedValue(user);
+
+    const result = await service.requestAdminPasswordChange(42);
+
+    const mailPayload = (mailService.AuthMail as any).mock.calls[0][0];
+    const tokenMatch = String(mailPayload.template).match(/token=([^"&<]+)/);
+    const rawToken = decodeURIComponent(tokenMatch?.[1] || "");
+
+    expect(result.status).toBe(true);
+    expect(result.message).toBe(
+      "Password reset link has been sent to your email.",
+    );
+    expect(user.password_reset_token_hash).toBe(hashToken(rawToken));
+    expect(user.password_reset_expires_at).toBeInstanceOf(Date);
+    expect(user.save).toHaveBeenCalledTimes(1);
+    expect(mailService.AuthMail).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not send logged-in password change links for non-admin users", async () => {
+    const { service, mailService } = createService();
+    const user = createUser({
+      role: Role.User,
+      roles: [Role.User],
+      active_role: Role.User,
+    });
+    jest.spyOn(User, "findByPk").mockResolvedValue(user);
+
+    await expect(service.requestAdminPasswordChange(42)).rejects.toThrow(
+      "Only admins can request this reset link",
+    );
+
+    expect(user.password_reset_token_hash).toBeNull();
+    expect(user.save).not.toHaveBeenCalled();
+    expect(mailService.AuthMail).not.toHaveBeenCalled();
+  });
+
+  it("supports super admin password reset requests", async () => {
+    const { service, mailService } = createService();
+    const user = createUser({
+      role: Role.SuperAdmin,
+      roles: [Role.SuperAdmin],
+      active_role: Role.SuperAdmin,
+    });
+    jest.spyOn(User, "findOne").mockResolvedValue(user);
+
+    await service.adminForgotPassword({ email: "admin@example.com" });
+
+    expect(user.password_reset_token_hash).not.toBeNull();
+    expect(mailService.AuthMail).toHaveBeenCalledTimes(1);
+  });
+
   it("resets password with a valid token and stores a bcrypt hash", async () => {
     const { service, tokenService } = createService();
     const token = "valid-reset-token";

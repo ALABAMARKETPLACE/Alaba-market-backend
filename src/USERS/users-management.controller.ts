@@ -84,6 +84,16 @@ export class UsersManagementController {
     return this.userService.switchActiveRole(userId, payload.role, fid);
   }
 
+  @UseGuards(AuthGuard)
+  @Delete("me")
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @UseInterceptors(RemovePasswordInterceptor)
+  @ApiOkResponse({ type: DataResponseDto })
+  deleteMyAccount(@UserId() userId: number): Promise<DataResponseDto> {
+    return this.userService.deleteMyAccount(userId);
+  }
+
   @Roles(Role.Admin)
   @UseGuards(AuthGuard)
   @Patch(":id/disable")

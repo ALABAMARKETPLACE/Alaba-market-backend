@@ -116,8 +116,11 @@ export class AuthService {
     const roles = Array.isArray(user.roles) ? user.roles : [];
     return (
       user.role === Role.Admin ||
+      user.role === Role.SuperAdmin ||
       user.active_role === Role.Admin ||
-      roles.includes(Role.Admin)
+      user.active_role === Role.SuperAdmin ||
+      roles.includes(Role.Admin) ||
+      roles.includes(Role.SuperAdmin)
     );
   }
 
@@ -406,28 +409,35 @@ export class AuthService {
         userDetails.status === true;
 
       if (canReset) {
-        const token = this.createPasswordResetToken();
-        const expiresAt = new Date(
-          Date.now() + ADMIN_PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000,
-        );
-
-        userDetails.password_reset_token_hash =
-          this.hashPasswordResetToken(token);
-        userDetails.password_reset_expires_at = expiresAt;
-        await userDetails.save();
-
-        const mail = await AdminForgotPasswordMail(
-          userDetails,
-          token,
-          ADMIN_PASSWORD_RESET_EXPIRY_MINUTES,
-        );
-        await this.mailService.AuthMail(mail);
+        await this.sendAdminPasswordResetLink(userDetails);
       }
 
       return new DataResponseDto(
         {},
         true,
         ADMIN_PASSWORD_RESET_SUCCESS_MESSAGE,
+      );
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async requestAdminPasswordChange(userId: number): Promise<DataResponseDto> {
+    try {
+      const userDetails = await User.findByPk(userId);
+      this.assertUserCanAuthenticate(userDetails);
+
+      if (!this.userHasAdminRole(userDetails)) {
+        throw new UnauthorizedException("Only admins can request this reset link");
+      }
+
+      await this.sendAdminPasswordResetLink(userDetails);
+
+      return new DataResponseDto(
+        {},
+        true,
+        "Password reset link has been sent to your email.",
       );
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -509,6 +519,24 @@ export class AuthService {
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(getErrorMessage(err));
     }
+  }
+
+  private async sendAdminPasswordResetLink(userDetails: User): Promise<void> {
+    const token = this.createPasswordResetToken();
+    const expiresAt = new Date(
+      Date.now() + ADMIN_PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    userDetails.password_reset_token_hash = this.hashPasswordResetToken(token);
+    userDetails.password_reset_expires_at = expiresAt;
+    await userDetails.save();
+
+    const mail = await AdminForgotPasswordMail(
+      userDetails,
+      token,
+      ADMIN_PASSWORD_RESET_EXPIRY_MINUTES,
+    );
+    await this.mailService.AuthMail(mail);
   }
 
   async sendDeactivateLink(userId: number) {
