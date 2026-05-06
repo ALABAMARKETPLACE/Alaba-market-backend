@@ -64,7 +64,7 @@ export class MarketplaceFeedController {
     return this.feedService.searchProducts(dto);
   }
 
-  // ─── STORES ───────────────────────────────────────────────────────────────
+  // ─── STORES ──────────────────────────────────────────────────────────────
   // Literal routes (stores/search) must be declared before the /:storeId param route.
 
   @Public()
