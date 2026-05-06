@@ -35,7 +35,6 @@ import { UserNameUpdateDto } from "./dto/user_name.update.dto";
 import { FirebaseService } from "../FIREBASE/firebase.service";
 import { Role } from "../shared/enum/role.enum";
 import { Store } from "../STORE/store.entity";
-import { Order } from "../ORDER/order.entity";
 import {
   deriveUserType,
   normalizeRole,
@@ -106,21 +105,6 @@ export class UserService {
 
   private ensureAdminInviteUserName(email: string) {
     return generateFromEmail(email, 4);
-  }
-
-  private verifyAdminInviteToken(token: string) {
-    const verified: any = this.jwtService.verify(token);
-
-    if (verified?.data?.purpose !== "admin_invitation") {
-      throw new UnauthorizedException("Invalid invite token");
-    }
-
-    const userId = verified?.data?.userId;
-    if (!userId) {
-      throw new UnauthorizedException("Invalid invite token payload");
-    }
-
-    return userId;
   }
 
   async findAll(pageOptions: PageOptionsForUsersAll) {
@@ -548,30 +532,6 @@ export class UserService {
     }
   }
 
-  async deleteMyAccount(userId: number) {
-    try {
-      const activeOrderCount = await Order.count({
-        where: {
-          userId,
-          status: {
-            [Op.notIn]: ["delivered", "cancelled", "rejected", "failed"],
-          },
-        },
-      });
-
-      if (activeOrderCount > 0) {
-        throw new ConflictException(
-          "You cannot delete your account while you have active orders.",
-        );
-      }
-
-      return this.softDeleteUser(userId);
-    } catch (err) {
-      if (err instanceof HttpException) throw err;
-      throw new InternalServerErrorException(getErrorMessage(err));
-    }
-  }
-
   async assignAdminRole(userId: number, makeActive = false) {
     try {
       const user = await this.UserRepository.findByPk(userId);
@@ -694,55 +654,17 @@ export class UserService {
     }
   }
 
-  async validateAdminInvite(token: string): Promise<DataResponseDto> {
-    try {
-      const userId = this.verifyAdminInviteToken(token);
-      const user = await this.UserRepository.findByPk(userId, {
-        attributes: [
-          "_id",
-          "email",
-          "first_name",
-          "last_name",
-          "name",
-          "is_deleted",
-          "admin_invited_at",
-          "admin_invite_accepted_at",
-        ],
-      });
-
-      if (!user || user.is_deleted) {
-        throw new NotFoundException("Invited user not found");
-      }
-
-      if (!user.admin_invited_at) {
-        throw new UnauthorizedException("No pending admin invite found");
-      }
-
-      if (user.admin_invite_accepted_at) {
-        throw new ConflictException("This admin invite has already been accepted");
-      }
-
-      return new DataResponseDto(
-        {
-          userId: user._id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          name: user.name,
-          invited_at: user.admin_invited_at,
-        },
-        true,
-        "Admin invite is valid",
-      );
-    } catch (err) {
-      if (err instanceof HttpException) throw err;
-      throw new UnauthorizedException(getErrorMessage(err));
-    }
-  }
-
   async acceptAdminInvite(payload: AcceptAdminInviteDto): Promise<DataResponseDto> {
     try {
-      const userId = this.verifyAdminInviteToken(payload.token);
+      const verified: any = this.jwtService.verify(payload.token);
+      if (verified?.data?.purpose !== "admin_invitation") {
+        throw new UnauthorizedException("Invalid invite token");
+      }
+
+      const userId = verified?.data?.userId;
+      if (!userId) {
+        throw new UnauthorizedException("Invalid invite token payload");
+      }
 
       const user = await this.UserRepository.findByPk(userId);
       if (!user || user.is_deleted) {
@@ -783,7 +705,7 @@ export class UserService {
       user.username =
         user.username || this.ensureAdminInviteUserName(user.email || "admin");
 
-      if (payload.password) {
+      if (!user.password && payload.password) {
         user.password = await this.hashPassword(payload.password);
       }
 
@@ -807,33 +729,6 @@ export class UserService {
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(getErrorMessage(err));
-    }
-  }
-
-  async resetUserPasswordByAdmin(
-    userId: number,
-    password: string,
-  ): Promise<DataResponseDto> {
-    try {
-      const user = await this.UserRepository.findByPk(userId);
-      if (!user || user.is_deleted) {
-        throw new NotFoundException("User not found");
-      }
-
-      user.password = await this.hashPassword(password);
-      user.status = true;
-      user.is_active = true;
-      user.disabled_at = null;
-      const updatedUser = await user.save();
-
-      return new DataResponseDto(
-        updatedUser,
-        true,
-        "Password reset successfully",
-      );
-    } catch (err) {
-      if (err instanceof HttpException) throw err;
-      throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
 }

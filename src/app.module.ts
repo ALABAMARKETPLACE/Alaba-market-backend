@@ -71,8 +71,6 @@ import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.mo
 import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.module";
 import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
 import { MarketplaceFeedModule } from "./MARKETPLACE_FEED/marketplace-feed.module";
-import { SellerBoosterModule } from "./SELLER_BOOSTER/seller-booster.module";
-import { SuperAdminModule } from "./SUPER_ADMIN/super-admin.module";
 
 
 @Module({
@@ -152,8 +150,6 @@ import { SuperAdminModule } from "./SUPER_ADMIN/super-admin.module";
     FeaturedProductsModule,
     DeliveryCompanyModule,
     MarketplaceFeedModule,
-    SellerBoosterModule,
-    SuperAdminModule,
   ],
   controllers: [],
   providers: [],

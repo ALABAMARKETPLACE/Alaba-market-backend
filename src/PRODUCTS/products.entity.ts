@@ -253,29 +253,6 @@ export class Products extends Model<Products> {
   })
   averageRating: number;
 
-  @Index
-  @Column({
-    type: DataType.BOOLEAN,
-    allowNull: false,
-    defaultValue: false,
-  })
-  is_boosted: boolean;
-
-  @Index
-  @Column({
-    type: DataType.INTEGER,
-    allowNull: false,
-    defaultValue: 0,
-  })
-  boost_score: number;
-
-  @Index
-  @Column({
-    type: DataType.DATE,
-    allowNull: true,
-  })
-  boosted_until: Date | null;
-
   @BelongsTo(() => Category)
   categoryName: Category;
 

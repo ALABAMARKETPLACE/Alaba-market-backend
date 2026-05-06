@@ -6,12 +6,7 @@ const AdminInviteMail = async (
   },
   token: string,
 ) => {
-  const baseUrl =
-    process.env.ADMIN_INVITE_BASE_URL ||
-    process.env.ADMIN_BASE_URL ||
-    process.env.BASE_URL ||
-    "";
-  const inviteLink = `${baseUrl.replace(/\/?$/, "/")}accept-admin-invite/${token}`;
+  const inviteLink = `${process.env.BASE_URL}accept-admin-invite/${token}`;
   const recipientName =
     details?.first_name || details?.email?.split("@")[0] || "there";
   const inviter =
