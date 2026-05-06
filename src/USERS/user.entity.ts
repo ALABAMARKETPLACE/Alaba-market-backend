@@ -105,15 +105,6 @@ export class User extends Model<User> {
   admin_invite_accepted_at: Date | null;
 
   @Column(DataType.STRING)
-  password_reset_token_hash: string | null;
-
-  @Column(DataType.DATE)
-  password_reset_expires_at: Date | null;
-
-  @Column(DataType.DATE)
-  password_changed_at: Date | null;
-
-  @Column(DataType.STRING)
   role: string;
 
   @Column({

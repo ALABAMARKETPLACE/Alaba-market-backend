@@ -1471,1050 +1471,6 @@
       ]
     },
     {
-      "name": "SELLER BOOSTER",
-      "item": [
-        {
-          "name": "GET /seller/booster/plans",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/seller/booster/plans",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "seller",
-                "booster",
-                "plans"
-              ]
-            },
-            "description": "Fetch available seller booster plans. Returns basic, gold, and premium tiers with product limits, duration, amount, and boost score."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const boosterPlan = data?.booster_plan || data?.active_plan || data;",
-                  "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-                  "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-                  "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-                  "  setIf('boosterReference', boosterReference);",
-                  "  setIf('paymentReference', boosterReference);",
-                  "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-                  "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-                  "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /seller/booster/initialize",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/seller/booster/initialize",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "seller",
-                "booster",
-                "initialize"
-              ]
-            },
-            "description": "Seller-only Paystack initialization for product booster checkout. Basic and gold require product_ids owned by the seller store; premium ignores product_ids and boosts all active products after payment.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"tier\": \"{{boosterTier}}\",\n  \"product_ids\": [\n    1,\n    2,\n    3\n  ],\n  \"duration_days\": {{boosterDurationDays}},\n  \"callback_url\": \"http://localhost:3000/seller/booster/callback\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const boosterPlan = data?.booster_plan || data?.active_plan || data;",
-                  "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-                  "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-                  "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-                  "  setIf('boosterReference', boosterReference);",
-                  "  setIf('paymentReference', boosterReference);",
-                  "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-                  "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-                  "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /seller/booster/verify",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/seller/booster/verify",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "seller",
-                "booster",
-                "verify"
-              ]
-            },
-            "description": "Seller-only payment verification. Use the boosterReference captured from initialize or Paystack callback to activate the booster plan.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reference\": \"{{boosterReference}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const boosterPlan = data?.booster_plan || data?.active_plan || data;",
-                  "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-                  "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-                  "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-                  "  setIf('boosterReference', boosterReference);",
-                  "  setIf('paymentReference', boosterReference);",
-                  "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-                  "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-                  "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /seller/booster/status",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/seller/booster/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "seller",
-                "booster",
-                "status"
-              ]
-            },
-            "description": "Seller-only current booster status, including active plan details, expiry, boosted product count, and boosted products."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const boosterPlan = data?.booster_plan || data?.active_plan || data;",
-                  "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-                  "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-                  "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-                  "  setIf('boosterReference', boosterReference);",
-                  "  setIf('paymentReference', boosterReference);",
-                  "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-                  "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-                  "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PUT /seller/booster/products",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/seller/booster/products",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "seller",
-                "booster",
-                "products"
-              ]
-            },
-            "description": "Seller-only replacement of selected boosted products for active basic or gold plans. Premium boosters cannot be manually edited.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"product_ids\": [\n    4,\n    5,\n    6\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const boosterPlan = data?.booster_plan || data?.active_plan || data;",
-                  "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-                  "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-                  "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-                  "  setIf('boosterReference', boosterReference);",
-                  "  setIf('paymentReference', boosterReference);",
-                  "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-                  "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-                  "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /seller/booster/cancel",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/seller/booster/cancel",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "seller",
-                "booster",
-                "cancel"
-              ]
-            },
-            "description": "Seller-only booster cancellation. Marks the active plan and boosted product rows cancelled and clears product boost flags.",
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const boosterPlan = data?.booster_plan || data?.active_plan || data;",
-                  "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-                  "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-                  "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-                  "  setIf('boosterReference', boosterReference);",
-                  "  setIf('paymentReference', boosterReference);",
-                  "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-                  "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-                  "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "SUPER ADMIN",
-      "item": [
-        {
-          "name": "GET /super-admin/booster-plan-configs",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/booster-plan-configs",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "booster-plan-configs"
-              ]
-            },
-            "description": "Super Admin-only list of booster plan configs. Sellers use active configs for purchases."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /super-admin/booster-plan-configs",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/booster-plan-configs",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "booster-plan-configs"
-              ]
-            },
-            "description": "Super Admin-only creation of a booster tier config. Names are basic, gold, or premium.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"basic\",\n  \"display_name\": \"Basic\",\n  \"description\": \"Boost up to 5 selected active products.\",\n  \"product_limit\": 5,\n  \"boost_score\": 30,\n  \"duration_days\": 30,\n  \"price\": 500000,\n  \"currency\": \"NGN\",\n  \"is_active\": true,\n  \"is_unlimited\": false\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PATCH /super-admin/booster-plan-configs/:id",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/booster-plan-configs/{{boosterConfigId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "booster-plan-configs",
-                "{{boosterConfigId}}"
-              ]
-            },
-            "description": "Super Admin-only update for editable booster config fields such as product_limit, boost_score, duration_days, price, is_active, and is_unlimited.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"product_limit\": 8,\n  \"boost_score\": 35,\n  \"duration_days\": 30,\n  \"price\": 600000,\n  \"is_active\": true,\n  \"is_unlimited\": false\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PATCH /super-admin/booster-plan-configs/:id/disable",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/booster-plan-configs/{{boosterConfigId}}/disable",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "booster-plan-configs",
-                "{{boosterConfigId}}",
-                "disable"
-              ]
-            },
-            "description": "Super Admin-only disable action for a booster plan config."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PATCH /super-admin/booster-plan-configs/:id/enable",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/booster-plan-configs/{{boosterConfigId}}/enable",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "booster-plan-configs",
-                "{{boosterConfigId}}",
-                "enable"
-              ]
-            },
-            "description": "Super Admin-only enable action for a booster plan config."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /super-admin/users",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/users",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "users"
-              ]
-            },
-            "description": "Super Admin-only user list."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "GET /super-admin/admins",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/admins",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "admins"
-              ]
-            },
-            "description": "Super Admin-only admin and super-admin list."
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PATCH /super-admin/users/:id/role",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/users/{{managedUserId}}/role",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "users",
-                "{{managedUserId}}",
-                "role"
-              ]
-            },
-            "description": "Super Admin-only user role update. Only Super Admin can assign super_admin.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"role\": \"{{managedRole}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "PATCH /super-admin/users/:id/status",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/super-admin/users/{{managedUserId}}/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "super-admin",
-                "users",
-                "{{managedUserId}}",
-                "status"
-              ]
-            },
-            "description": "Super Admin-only user enable/disable endpoint. The service prevents disabling the last active Super Admin.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"is_active\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const list = Array.isArray(data) ? data : rows;",
-                  "  const first = list[0] || data || {};",
-                  "  const config = data?.booster_plan_config || data?.config || first || data;",
-                  "  const userTarget = data?.user || first || data;",
-                  "  setIf('boosterConfigId', config?.id);",
-                  "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-                  "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-                  "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "BUSINESSTYPE",
       "item": [
         {
@@ -27296,215 +26252,6 @@
           ]
         },
         {
-          "name": "PATCH /auth/change-password",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "description": "Logged-in admin or marketplace user changes their password using oldPassword, newPassword, and confirmPassword.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"oldPassword\": \"{{oldPassword}}\",\n  \"newPassword\": \"{{newPassword}}\",\n  \"confirmPassword\": \"{{newPassword}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/auth/change-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "auth",
-                "change-password"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "POST /auth/forgot-password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "description": "Unified forgot-password endpoint for admin and marketplace users. Always returns: If this email exists, a reset code has been sent.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{userEmail}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/auth/forgot-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "auth",
-                "forgot-password"
-              ]
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const results = Array.isArray(data?.results) ? data.results : [];",
-                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
-                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
-                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
-                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
-                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
-                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
-                  "  const user = data?.user || first?.user || first;",
-                  "  const product = first?.product || data?.product || first;",
-                  "  const address = first?.address || data?.address || first;",
-                  "  const category = first?.category || data?.category || first;",
-                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
-                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
-                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
-                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
-                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
-                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
-                  "  setIf('authToken', resolvedAuthToken);",
-                  "  setIf('refreshToken', resolvedRefreshToken);",
-                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
-                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
-                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "POST /auth/reset-password",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "description": "Unified reset-password endpoint for admin and marketplace users. Requires email, reset token, newPassword, and confirmPassword.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"token\": \"{{resetToken}}\",\n  \"newPassword\": \"{{newPassword}}\",\n  \"confirmPassword\": \"{{newPassword}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/auth/reset-password",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "auth",
-                "reset-password"
-              ]
-            }
-          },
-          "response": [],
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const results = Array.isArray(data?.results) ? data.results : [];",
-                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
-                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
-                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
-                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
-                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
-                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
-                  "  const user = data?.user || first?.user || first;",
-                  "  const product = first?.product || data?.product || first;",
-                  "  const address = first?.address || data?.address || first;",
-                  "  const category = first?.category || data?.category || first;",
-                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
-                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
-                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
-                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
-                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
-                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
-                  "  setIf('authToken', resolvedAuthToken);",
-                  "  setIf('refreshToken', resolvedRefreshToken);",
-                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
-                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
-                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
-                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "POST /auth/phone-login",
           "request": {
             "method": "POST",
@@ -27692,6 +26439,172 @@
               "path": [
                 "auth",
                 "apple-login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
+                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
+                  "  setIf('authToken', resolvedAuthToken);",
+                  "  setIf('refreshToken', resolvedRefreshToken);",
+                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
+                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
+                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/forgot-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const resolvedAuthToken = json?.token || data?.token || json?.accessToken || data?.accessToken || json?.access_token || data?.access_token || json?.jwt || data?.jwt || data?.access?.token || json?.access?.token;",
+                  "  const resolvedRefreshToken = json?.refreshToken || data?.refreshToken || json?.refresh_token || data?.refresh_token || data?.refresh?.token || json?.refresh?.token;",
+                  "  setIf('authToken', resolvedAuthToken);",
+                  "  setIf('refreshToken', resolvedRefreshToken);",
+                  "  setIf('userId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('managedUserId', user?._id || user?.id || data?._id || data?.id);",
+                  "  setIf('userEmail', user?.email || data?.email || data?.profile?.email || json?.profile?.email);",
+                  "  setIf('storeId', user?.store_id || user?.storeId || data?.store_id || data?.storeId);",
+                  "  setIf('activeRole', user?.active_role || user?.role || data?.active_role || data?.role || data?.activeRole || user?.activeRole);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/reset-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
               ]
             },
             "body": {
@@ -30678,55 +29591,6 @@
       "enabled": true
     },
     {
-      "id": "boosterDurationDays",
-      "key": "boosterDurationDays",
-      "type": "number",
-      "value": "30",
-      "enabled": true
-    },
-    {
-      "id": "boosterTier",
-      "key": "boosterTier",
-      "type": "string",
-      "value": "gold",
-      "enabled": true
-    },
-    {
-      "id": "boosterReference",
-      "key": "boosterReference",
-      "type": "string",
-      "value": "",
-      "enabled": true
-    },
-    {
-      "id": "boosterPlanId",
-      "key": "boosterPlanId",
-      "type": "number",
-      "value": "1",
-      "enabled": true
-    },
-    {
-      "id": "managedStatus",
-      "key": "managedStatus",
-      "type": "boolean",
-      "value": "true",
-      "enabled": true
-    },
-    {
-      "id": "managedRole",
-      "key": "managedRole",
-      "type": "string",
-      "value": "admin",
-      "enabled": true
-    },
-    {
-      "id": "boosterConfigId",
-      "key": "boosterConfigId",
-      "type": "number",
-      "value": "1",
-      "enabled": true
-    },
-    {
       "id": "reconcileReference",
       "key": "reconcileReference",
       "type": "string",
@@ -30984,42 +29848,6 @@
       "type": "string",
       "value": "olagiddz@gmail.com",
       "enabled": true
-    },
-    {
-      "id": "adminEmail",
-      "key": "adminEmail",
-      "type": "string",
-      "value": "admin@example.com",
-      "enabled": true
-    },
-    {
-      "id": "adminResetToken",
-      "key": "adminResetToken",
-      "type": "string",
-      "value": "",
-      "enabled": true
-    },
-    {
-      "id": "adminNewPassword",
-      "key": "adminNewPassword",
-      "type": "string",
-      "value": "NewStrongPassword123!",
-      "enabled": true
-    },
-    {
-      "key": "oldPassword",
-      "value": "OldPassword123!",
-      "type": "string"
-    },
-    {
-      "key": "newPassword",
-      "value": "NewPassword123!",
-      "type": "string"
-    },
-    {
-      "key": "resetToken",
-      "value": "",
-      "type": "string"
     }
   ]
 }
