@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   Param,
   ParseIntPipe,
@@ -33,6 +34,8 @@ import { UpgradeToSellerDto } from "../STORE/dto/upgradeToSeller.dto";
 import { SendAdminInviteDto } from "./dto/send-admin-invite.dto";
 import { AcceptAdminInviteDto } from "./dto/accept-admin-invite.dto";
 import { Public } from "../shared/decorator/optional.decorator";
+import { AdminResetPasswordDto } from "./dto/admin-reset-password.dto";
+import { ValidateAdminInviteDto } from "./dto/validate-admin-invite.dto";
 
 @Controller("users")
 @ApiTags("users")
@@ -79,6 +82,16 @@ export class UsersManagementController {
     @Body() payload: SwitchActiveRoleDto,
   ): Promise<DataResponseDto> {
     return this.userService.switchActiveRole(userId, payload.role, fid);
+  }
+
+  @UseGuards(AuthGuard)
+  @Delete("me")
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @UseInterceptors(RemovePasswordInterceptor)
+  @ApiOkResponse({ type: DataResponseDto })
+  deleteMyAccount(@UserId() userId: number): Promise<DataResponseDto> {
+    return this.userService.deleteMyAccount(userId);
   }
 
   @Roles(Role.Admin)
@@ -138,6 +151,28 @@ export class UsersManagementController {
   }
 
   @Public()
+  @Post("admin-invite/validate")
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiOkResponse({ type: DataResponseDto })
+  validateAdminInvite(
+    @Body() payload: ValidateAdminInviteDto,
+  ): Promise<DataResponseDto> {
+    return this.userService.validateAdminInvite(payload.token);
+  }
+
+  @Public()
+  @Get("admin-invite/accept/:token")
+  @HttpCode(200)
+  @ApiOkResponse({ type: DataResponseDto })
+  @ApiParam({ name: "token", required: true })
+  validateAdminInviteParam(
+    @Param("token") token: string,
+  ): Promise<DataResponseDto> {
+    return this.userService.validateAdminInvite(token);
+  }
+
+  @Public()
   @Post("admin-invite/accept")
   @HttpCode(200)
   @UsePipes(new ValidationPipe({ transform: true }))
@@ -147,6 +182,22 @@ export class UsersManagementController {
     @Body() payload: AcceptAdminInviteDto,
   ): Promise<DataResponseDto> {
     return this.userService.acceptAdminInvite(payload);
+  }
+
+  @Roles(Role.Admin)
+  @UseGuards(AuthGuard)
+  @Patch(":id/reset-password")
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @UseInterceptors(RemovePasswordInterceptor)
+  @ApiOkResponse({ type: DataResponseDto })
+  @ApiParam({ name: "id", required: true })
+  resetUserPasswordByAdmin(
+    @Param("id", ParseIntPipe) userId: number,
+    @Body() payload: AdminResetPasswordDto,
+  ): Promise<DataResponseDto> {
+    return this.userService.resetUserPasswordByAdmin(userId, payload.password);
   }
 
   @Roles(Role.Admin)

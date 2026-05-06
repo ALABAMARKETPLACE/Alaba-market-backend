@@ -51,6 +51,7 @@ describe("PaystackService", () => {
         "Content-Type": "application/json",
       })),
       getAdminSplitPercentage: jest.fn(() => 6.5),
+      getSellerFeeSurchargeKobo: jest.fn(() => 0),
       getDefaultAccountType: jest.fn(() => "default"),
       getPublicKey: jest.fn(
         () =>
@@ -111,6 +112,11 @@ describe("PaystackService", () => {
       })),
     };
 
+    const sellerBoosterService = {
+      activateFromWebhook: jest.fn(async () => true),
+      markPaymentFailed: jest.fn(async () => undefined),
+    };
+
     const service = new PaystackService(
       httpService as any,
       paystackAccountConfigService as any,
@@ -125,6 +131,7 @@ describe("PaystackService", () => {
       } as any,
       guestOrderService as any,
       orderPlaceService as any,
+      sellerBoosterService as any,
     );
 
     return {
@@ -139,6 +146,7 @@ describe("PaystackService", () => {
       paymentLogRepository,
       guestOrderService,
       orderPlaceService,
+      sellerBoosterService,
     };
   };
 
@@ -938,6 +946,40 @@ describe("PaystackService", () => {
 
     expect(service.getPublicKey()).toBe("pk_test_123456");
     expect(paystackAccountConfigService.getPublicKey).toHaveBeenCalled();
+  });
+
+  it("routes seller booster webhooks to booster activation without order sync", async () => {
+    const { service, sellerBoosterService, paymentSplitService } = createService();
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    const webhook = {
+      event: "charge.success",
+      data: {
+        reference: "seller_booster_ref",
+        status: "success",
+        amount: 500000,
+        metadata: {
+          checkout_type: "seller_booster",
+          booster_plan_id: 99,
+          store_id: 7,
+          seller_id: 42,
+          tier: "basic",
+          product_ids: [1, 2],
+        },
+      },
+    };
+    const rawPayload = JSON.stringify(webhook);
+    const signature = crypto
+      .createHmac("sha512", process.env.PAYSTACK_TEST_SECRET_KEY)
+      .update(rawPayload)
+      .digest("hex");
+
+    await service.processWebhook(webhook as any, signature, rawPayload);
+
+    expect(sellerBoosterService.activateFromWebhook).toHaveBeenCalledWith(
+      webhook.data,
+    );
+    expect(paymentSplitService.syncPaymentStatusFromWebhook).not.toHaveBeenCalled();
   });
 
   it("previews missing Paystack transactions without mutating local records", async () => {

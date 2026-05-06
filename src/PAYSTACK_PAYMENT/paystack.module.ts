@@ -15,6 +15,7 @@ import { OrderModule } from "../ORDER/order.module";
 import { User } from "../USERS/user.entity";
 import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
 import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
+import { SellerBoosterModule } from "../SELLER_BOOSTER/seller-booster.module";
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
     // Circular dependency handled correctly
     forwardRef(() => PaymentSplitModule),
     forwardRef(() => OrderModule),
+    forwardRef(() => SellerBoosterModule),
     PaystackReconciliationModule,
   ],
   controllers: [PaystackController],

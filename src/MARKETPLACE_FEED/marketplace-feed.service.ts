@@ -68,7 +68,10 @@ export class MarketplaceFeedService {
     p."slug",
     p."createdAt",
     p."averageRating",
-    p."totalReviews"
+    p."totalReviews",
+    p."is_boosted",
+    p."boost_score",
+    p."boosted_until"
   `;
 
   // Prefixed aliases keep store columns from colliding with product columns.
@@ -119,13 +122,18 @@ export class MarketplaceFeedService {
   }
 
   private productSortClause(sort: string, alias: string): string {
+    const activeBoostScore = `CASE
+      WHEN ${alias}."is_boosted" = true AND ${alias}."boosted_until" > NOW()
+      THEN COALESCE(${alias}."boost_score", 0)
+      ELSE 0
+    END`;
     const map: Record<string, string> = {
       random: 'RANDOM()',
       newest: `${alias}."createdAt" DESC`,
       price_low: `${alias}."retail_rate" ASC`,
       price_high: `${alias}."retail_rate" DESC`,
     };
-    return map[sort] ?? 'RANDOM()';
+    return `${activeBoostScore} DESC, ${map[sort] ?? 'RANDOM()'}, ${alias}."createdAt" DESC`;
   }
 
   private storeSortClause(sort: StoreSortOption): string {
@@ -276,6 +284,7 @@ export class MarketplaceFeedService {
         ranked."description", ranked."retail_rate", ranked."price", ranked."status",
         ranked."subCategory", ranked."title", ranked."unit", ranked."store_id",
         ranked."pid", ranked."slug", ranked."createdAt", ranked."averageRating", ranked."totalReviews",
+        ranked."is_boosted", ranked."boost_score", ranked."boosted_until",
         ranked."s_id", ranked."s_store_name", ranked."s_logo_upload", ranked."s_slug",
         ranked."s_cover_image", ranked."s_averageRating", ranked."s_ratings",
         ranked."s_order_count", ranked."s_delivery_period_minutes", ranked."s_business_types"
@@ -512,10 +521,16 @@ export class MarketplaceFeedService {
            "_id", "name", "image", "category", "description",
            "retail_rate", "price", "status", "subCategory", "title",
            "unit", "store_id", "pid", "slug", "createdAt",
-           "averageRating", "totalReviews"
+           "averageRating", "totalReviews", "is_boosted", "boost_score", "boosted_until"
          FROM "PRODUCTS"
          WHERE "store_id" = :storeId AND "status" = true AND "unit" > 0
-         ORDER BY "createdAt" DESC
+         ORDER BY
+           CASE
+             WHEN "is_boosted" = true AND "boosted_until" > NOW()
+             THEN COALESCE("boost_score", 0)
+             ELSE 0
+           END DESC,
+           "createdAt" DESC
          LIMIT 8`,
         { replacements: { storeId }, type: QueryTypes.SELECT },
       ),
@@ -687,7 +702,8 @@ export class MarketplaceFeedService {
            ranked."_id", ranked."name", ranked."image", ranked."category",
            ranked."description", ranked."retail_rate", ranked."price", ranked."status",
            ranked."subCategory", ranked."title", ranked."unit", ranked."store_id",
-           ranked."pid", ranked."slug", ranked."createdAt", ranked."averageRating", ranked."totalReviews",
+        ranked."pid", ranked."slug", ranked."createdAt", ranked."averageRating", ranked."totalReviews",
+        ranked."is_boosted", ranked."boost_score", ranked."boosted_until",
            ranked."s_id", ranked."s_store_name", ranked."s_logo_upload", ranked."s_slug",
            ranked."s_cover_image", ranked."s_averageRating", ranked."s_ratings",
            ranked."s_order_count", ranked."s_delivery_period_minutes", ranked."s_business_types"
@@ -695,14 +711,17 @@ export class MarketplaceFeedService {
            SELECT
              ${this.PRODUCT_COLS},
              ${this.STORE_JOIN_COLS},
-             ROW_NUMBER() OVER (PARTITION BY p."store_id" ORDER BY RANDOM()) AS "store_rank"
+             ROW_NUMBER() OVER (
+               PARTITION BY p."store_id"
+               ORDER BY ${this.productSortClause('random', 'p')}
+             ) AS "store_rank"
            FROM "PRODUCTS" p
            INNER JOIN "STORE" s ON s."id" = p."store_id"
            WHERE p."status" = true AND p."unit" > 0
              AND p."store_id" IS NOT NULL AND s."status" = 'approved'
          ) ranked
          WHERE ranked."store_rank" <= 2
-         ORDER BY RANDOM()
+         ORDER BY ${this.productSortClause('random', 'ranked')}
          LIMIT 16`,
         { type: QueryTypes.SELECT },
       ),
@@ -715,7 +734,7 @@ export class MarketplaceFeedService {
          FROM "PRODUCTS" p
          INNER JOIN "STORE" s ON s."id" = p."store_id" AND s."status" = 'approved'
          WHERE p."status" = true AND p."unit" > 0 AND p."store_id" IS NOT NULL
-         ORDER BY p."createdAt" DESC
+         ORDER BY ${this.productSortClause('newest', 'p')}
          LIMIT 16`,
         { type: QueryTypes.SELECT },
       ),
@@ -760,10 +779,17 @@ export class MarketplaceFeedService {
              "_id", "name", "image", "category", "description",
              "retail_rate", "price", "status", "subCategory", "title",
              "unit", "store_id", "pid", "slug", "createdAt",
-             "averageRating", "totalReviews"
+             "averageRating", "totalReviews", "is_boosted", "boost_score", "boosted_until"
            FROM "PRODUCTS"
            WHERE "store_id" = :storeId AND "status" = true AND "unit" > 0
-           ORDER BY RANDOM()
+           ORDER BY
+             CASE
+               WHEN "is_boosted" = true AND "boosted_until" > NOW()
+               THEN COALESCE("boost_score", 0)
+               ELSE 0
+             END DESC,
+             RANDOM(),
+             "createdAt" DESC
            LIMIT 6`,
           { replacements: { storeId: store.s_id }, type: QueryTypes.SELECT },
         );
@@ -820,6 +846,9 @@ export class MarketplaceFeedService {
         createdAt: p.createdAt,
         averageRating: p.averageRating,
         totalReviews: p.totalReviews,
+        is_boosted: Boolean(p.is_boosted && p.boosted_until && new Date(p.boosted_until) > new Date()),
+        boost_score: p.boost_score ?? 0,
+        boosted_until: p.boosted_until ?? null,
         // Nested store mirrors what Sequelize returns for the storeDetails BelongsTo include
         storeDetails: p.s_id
           ? {
