@@ -5,6 +5,7 @@ import {
   Post,
   Get,
   Param,
+  Patch,
   ValidationPipe,
   UseGuards,
   UseInterceptors,
@@ -43,6 +44,7 @@ import { RefreshTokenDto } from "./dto/refresh_token.dto";
 import { Fid } from "../shared/decorator/fid.decorator";
 import { Public } from "../shared/decorator/optional.decorator";
 import { TokenManagementService } from "../TOKEN_MANAGEMENT/services";
+import { AuthChangePasswordDto } from "./dto/auth-change-password.dto";
 class CheckEmailParams {
   @IsNotEmpty({ message: "Please Provide an Email ID" })
   @IsEmail({}, { message: "Invalid email format" })
@@ -172,6 +174,19 @@ export class AuthController {
       });
 
     return result;
+  }
+
+  @UseGuards(AuthGuard)
+  @Patch("change-password")
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @UsePipes(new ValidationPipe({ transform: true }))
+  @ApiOkResponse({ type: DataResponseDto })
+  changePassword(
+    @UserId() userId: number,
+    @Body() payload: AuthChangePasswordDto,
+  ): Promise<DataResponseDto> {
+    return this.AuthService.changePassword(userId, payload);
   }
 
   //login via phone using phone verification via otp firebase

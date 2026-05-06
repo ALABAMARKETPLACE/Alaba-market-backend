@@ -23,6 +23,7 @@ import { VerifyUserTokenDto } from "./dto/verifyToken.dto";
 import { User } from "../USERS/user.entity";
 import { ChangePasswordDto } from "./dto/changePassword.dto";
 import { ForgotPasswordDto } from "./dto/forgotPassword.dto";
+import { AuthChangePasswordDto } from "./dto/auth-change-password.dto";
 import { DeactivateAccountDto } from "./dto/deactivateAccount.dto";
 const SignupHtml = require("../MAILS/templates/auth/SignupHtml");
 const VerifyMail = require("../MAILS/templates/auth/mailVerfication");
@@ -330,6 +331,67 @@ export class AuthService {
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(getErrorMessage(err));
     }
+  }
+
+  async changePassword(
+    userId: number,
+    payload: AuthChangePasswordDto,
+  ): Promise<DataResponseDto> {
+    try {
+      const user = await User.findByPk(userId);
+      this.assertUserCanAuthenticate(user);
+
+      if (!user.password) {
+        throw new UnauthorizedException(
+          "No existing password found. Please use forgot password.",
+        );
+      }
+
+      if (payload.newPassword !== payload.confirmPassword) {
+        throw new ConflictException("Password confirmation does not match");
+      }
+
+      const isOldPasswordValid = await compare(
+        payload.oldPassword,
+        user.password,
+      );
+      if (!isOldPasswordValid) {
+        throw new UnauthorizedException("Invalid Password..");
+      }
+
+      const isReused = await compare(payload.newPassword, user.password);
+      if (isReused) {
+        throw new ConflictException(
+          "Please choose a password you have not used before",
+        );
+      }
+
+      user.password = await this.hashPassword(payload.newPassword);
+      await user.save();
+
+      await this.tokenService.signoutFromAll(user._id);
+      await this.sendPasswordChangedMail(user);
+
+      return new DataResponseDto({}, true, "Password changed successfully");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  private async sendPasswordChangedMail(userDetails: User): Promise<void> {
+    await this.mailService.AuthMail({
+      to: userDetails.email,
+      subject: `${process.env.NAME || "Alaba Marketplace"} password changed`,
+      template: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; max-width: 640px; margin: 0 auto; padding: 24px;">
+          <h2 style="margin-bottom: 12px;">Your password was changed</h2>
+          <p>Hello ${userDetails.first_name || userDetails.name || "there"},</p>
+          <p>This is a confirmation that the password for your account was changed successfully.</p>
+          <p>If you did not make this change, reset your password immediately and contact support.</p>
+        </div>
+      `,
+    });
   }
 
   async forgotPassword({ email }: ForgotPasswordDto) {
