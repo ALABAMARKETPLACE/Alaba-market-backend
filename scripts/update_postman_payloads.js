@@ -12,6 +12,7 @@ const collectionVariables = [
   { key: "baseUrl", value: "http://localhost:8000", type: "string" },
   { key: "authToken", value: "", type: "string" },
   { key: "refreshToken", value: "", type: "string" },
+  { key: "password", value: "Options123#", type: "string" },
   { key: "userId", value: "1", type: "number" },
   { key: "managedUserId", value: "1", type: "number" },
   { key: "userEmail", value: DEFAULT_EMAIL, type: "string" },
@@ -20,9 +21,19 @@ const collectionVariables = [
   { key: "orderId", value: "1", type: "number" },
   { key: "productId", value: "1", type: "number" },
   { key: "variantId", value: "1", type: "number" },
+  { key: "cartItemId", value: "1", type: "number" },
   { key: "addressId", value: "1", type: "number" },
   { key: "deliveryToken", value: "", type: "string" },
+  { key: "deliveryTokenAddressId", value: "", type: "number" },
+  { key: "deliveryCharge", value: "0", type: "number" },
+  { key: "deliveryDiscount", value: "0", type: "number" },
+  {
+    key: "callbackUrl",
+    value: "http://localhost:3000/payment/callback",
+    type: "string",
+  },
   { key: "paymentReference", value: "", type: "string" },
+  { key: "paystackAccessCode", value: "", type: "string" },
   { key: "boosterPlanId", value: "1", type: "number" },
   { key: "boosterConfigId", value: "1", type: "number" },
   { key: "boosterReference", value: "", type: "string" },
@@ -47,6 +58,15 @@ const collectionVariables = [
   { key: "subCategoryId", value: "1", type: "number" },
   { key: "storeSlug", value: "", type: "string" },
   { key: "productPid", value: "", type: "string" },
+  { key: "productName", value: "Sample product", type: "string" },
+  {
+    key: "productImage",
+    value: "https://example.com/product.jpg",
+    type: "string",
+  },
+  { key: "productPrice", value: "5000", type: "number" },
+  { key: "productWeight", value: "1", type: "number" },
+  { key: "orderQuantity", value: "1", type: "number" },
   { key: "phone", value: "2348012345678", type: "string" },
   { key: "slug", value: "", type: "string" },
   { key: "token", value: "", type: "string" },
@@ -335,13 +355,13 @@ function sampleForResource(resource) {
     return { storeId: 123, productId: 456, days: 7, amount: 5000 };
   }
   if (resource.includes("auth") || resource.includes("login")) {
-    return { email: DEFAULT_EMAIL, password: "P@ssw0rd" };
+    return { email: DEFAULT_EMAIL, password: "Options123#" };
   }
   if (resource.includes("user") || resource.includes("users")) {
     return {
       name: "Jane Customer",
       email: DEFAULT_EMAIL,
-      password: "P@ssw0rd",
+      password: "Options123#",
       phone: "+2348012345678",
     };
   }
@@ -355,23 +375,184 @@ function sampleForResource(resource) {
     };
   }
   if (resource.includes("order")) {
-    return {
-      userId: 1,
-      items: [{ productId: 1, quantity: 2 }],
-      shippingAddressId: 1,
-      paymentMethod: "card",
-    };
+    return sampleForRequest("POST", ["order"]);
   }
   if (resource.includes("wishlist")) return { userId: 1, productId: 123 };
   if (resource.includes("cart")) {
     return { userId: 1, items: [{ productId: 1, quantity: 1 }] };
   }
-  return { example: "replace_with_actual_payload" };
+  return {};
 }
 
 function sampleForRequest(method, pathSegments = []) {
   const normalizedMethod = String(method || "").toUpperCase();
   const normalizedPath = (pathSegments || []).join("/");
+
+  if (normalizedMethod === "POST" && normalizedPath === "auth/login") {
+    return {
+      email: "{{userEmail}}",
+      password: "{{password}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "new-address") {
+    return {
+      address_type: "home",
+      full_address: "12 Test Street, Ikeja, Lagos",
+      pincode: "100001",
+      phone_no: "08000000000",
+      country_id: "{{countryId}}",
+      state_id: "{{stateId}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "cart") {
+    return {
+      productId: "{{productId}}",
+      variantId: "{{variantId}}",
+      quantity: "{{orderQuantity}}",
+    };
+  }
+
+  if (normalizedMethod === "PUT" && normalizedPath === "cart/{{id}}") {
+    return {};
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery"
+  ) {
+    return {
+      cart: [
+        {
+          id: "{{cartItemId}}",
+          userId: "{{userId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          quantity: "{{orderQuantity}}",
+          image: "{{productImage}}",
+          totalPrice: "{{productPrice}}",
+          buyPrice: "{{productPrice}}",
+          name: "{{productName}}",
+          productDetails: {
+            image: "{{productImage}}",
+            name: "{{productName}}",
+            price: "{{productPrice}}",
+          },
+          storeDetails: {},
+        },
+      ],
+      address: {
+        id: "{{addressId}}",
+        userId: "{{userId}}",
+        flat: "12",
+        fullAddress: "12 Test Street, Ikeja, Lagos",
+        pin_code: "100001",
+        state: "Lagos",
+        city: "Ikeja",
+        street: "Test Street",
+        alt_phone: "08000000000",
+        code: "NG",
+        geo_location: "",
+        type: "home",
+        lat: null,
+        long: null,
+      },
+      total: "{{productPrice}}",
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/new"
+  ) {
+    return {
+      cart: [
+        {
+          weight: "{{productWeight}}",
+          quantity: "{{orderQuantity}}",
+        },
+      ],
+      address: {
+        id: "{{addressId}}",
+        country_id: "{{countryId}}",
+        state_id: "{{stateId}}",
+      },
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/public"
+  ) {
+    return {
+      cart: [
+        {
+          id: "{{productId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          name: "{{productName}}",
+          quantity: "{{orderQuantity}}",
+          weight: "{{productWeight}}",
+          totalPrice: "{{productPrice}}",
+        },
+      ],
+      address: {
+        id: "guest_{{userId}}",
+        full_name: "Guest Buyer",
+        phone_no: "08000000000",
+        full_address: "12 Test Street, Ikeja, Lagos",
+        country_id: "{{countryId}}",
+        state_id: "{{stateId}}",
+        country: "Nigeria",
+        state: "Lagos",
+        is_guest: true,
+      },
+      total: "{{productPrice}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "order") {
+    return {
+      cart: [
+        {
+          id: "{{cartItemId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          quantity: "{{orderQuantity}}",
+        },
+      ],
+      payment: {
+        type: "paystack",
+        callback_url: "{{callbackUrl}}",
+      },
+      address: {
+        id: "{{addressId}}",
+      },
+      charges: {
+        token: "{{deliveryToken}}",
+      },
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "paystack/initialize-checkout"
+  ) {
+    return {
+      order_payload: sampleForRequest("POST", ["order"]),
+      callback_url: "{{callbackUrl}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "paystack/verify") {
+    return {
+      reference: "{{paymentReference}}",
+    };
+  }
 
   if (
     normalizedMethod === "POST" &&
@@ -504,6 +685,81 @@ function sampleForRequest(method, pathSegments = []) {
   return sampleForResource(pathSegments[0]);
 }
 
+function rawBodyForRequest(method, pathSegments = []) {
+  const normalizedMethod = String(method || "").toUpperCase();
+  const normalizedPath = pathSegments.join("/");
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery"
+  ) {
+    return [
+      "{",
+      '  "cart": [',
+      "    {",
+      '      "id": {{cartItemId}},',
+      '      "userId": {{userId}},',
+      '      "productId": {{productId}},',
+      '      "variantId": {{variantId}},',
+      '      "storeId": {{storeId}},',
+      '      "quantity": {{orderQuantity}},',
+      '      "image": "{{productImage}}",',
+      '      "totalPrice": {{productPrice}},',
+      '      "buyPrice": {{productPrice}},',
+      '      "name": "{{productName}}",',
+      '      "productDetails": {',
+      '        "image": "{{productImage}}",',
+      '        "name": "{{productName}}",',
+      '        "price": {{productPrice}}',
+      "      },",
+      '      "storeDetails": {}',
+      "    }",
+      "  ],",
+      '  "address": {',
+      '    "id": {{addressId}},',
+      '    "userId": {{userId}},',
+      '    "flat": "12",',
+      '    "fullAddress": "12 Test Street, Ikeja, Lagos",',
+      '    "pin_code": "100001",',
+      '    "state": "Lagos",',
+      '    "city": "Ikeja",',
+      '    "street": "Test Street",',
+      '    "alt_phone": "08000000000",',
+      '    "code": "NG",',
+      '    "geo_location": "",',
+      '    "type": "home",',
+      '    "lat": null,',
+      '    "long": null',
+      "  },",
+      '  "total": {{productPrice}}',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/new"
+  ) {
+    return [
+      "{",
+      '  "cart": [',
+      "    {",
+      '      "weight": {{productWeight}},',
+      '      "quantity": {{orderQuantity}}',
+      "    }",
+      "  ],",
+      '  "address": {',
+      '    "id": {{addressId}},',
+      '    "country_id": {{countryId}},',
+      '    "state_id": {{stateId}}',
+      "  }",
+      "}",
+    ].join("\n");
+  }
+
+  return JSON.stringify(sampleForRequest(method, pathSegments), null, 2);
+}
+
 function ensureJsonHeader(headers) {
   const list = Array.isArray(headers) ? headers : [];
   const has = list.find(
@@ -537,7 +793,10 @@ function processItem(item, summary) {
 
   const pathSegments =
     Array.isArray(req.url?.path) && req.url.path.length > 0 ? req.url.path : [];
-  const sample = sampleForRequest(method, pathSegments.length ? pathSegments : [resource]);
+  const sample = sampleForRequest(
+    method,
+    pathSegments.length ? pathSegments : [resource],
+  );
   const hasBody =
     req.body &&
     ((req.body.raw && req.body.raw.trim() !== "") ||
@@ -545,10 +804,29 @@ function processItem(item, summary) {
 
   const shouldReplaceGenericBody =
     typeof req.body?.raw === "string" &&
-    ["{}", "{\n}"].includes(req.body.raw.trim());
+    (["{}", "{\n}"].includes(req.body.raw.trim()) ||
+      req.body.raw.includes("replace_with_actual_payload") ||
+      req.body.raw.includes('"shippingAddressId"') ||
+      req.body.raw.includes('"paymentMethod"'));
+  const shouldReplaceDeliveryBody =
+    method === "POST" &&
+    pathSegments.join("/") === "calculate_delivery/new" &&
+    typeof req.body?.raw === "string" &&
+    (req.body.raw.includes('"productDetails"') ||
+      req.body.raw.includes('"weight": "{{productWeight}}"'));
+  const shouldReplaceLegacyDeliveryBody =
+    method === "POST" &&
+    pathSegments.join("/") === "calculate_delivery" &&
+    typeof req.body?.raw === "string" &&
+    req.body.raw.includes('"id": "{{cartItemId}}"');
 
-  if (!hasBody || shouldReplaceGenericBody) {
-    req.body = { mode: "raw", raw: JSON.stringify(sample, null, 2) };
+  if (
+    !hasBody ||
+    shouldReplaceGenericBody ||
+    shouldReplaceDeliveryBody ||
+    shouldReplaceLegacyDeliveryBody
+  ) {
+    req.body = { mode: "raw", raw: rawBodyForRequest(method, pathSegments) };
     req.header = ensureJsonHeader(req.header);
     summary.updatedBodies += 1;
   }
@@ -719,11 +997,7 @@ function buildGeneratedRequest(route) {
   if (["POST", "PUT", "PATCH"].includes(route.method)) {
     request.body = {
       mode: "raw",
-      raw: JSON.stringify(
-        sampleForRequest(route.method, route.pathSegments),
-        null,
-        2,
-      ),
+      raw: rawBodyForRequest(route.method, route.pathSegments),
       options: { raw: { language: "json" } },
     };
   }
@@ -773,7 +1047,9 @@ function syncControllerRoutes(collection) {
   const existingRequests = new Set(
     flattenRequests(collection.item).map((item) =>
       normalizeCollectionKey(
-        `${String(item.request.method || "GET").toUpperCase()} ${item.request.url.raw}`,
+        `${String(item.request.method || "GET").toUpperCase()} ${
+          item.request.url.raw
+        }`,
       ),
     ),
   );
@@ -813,7 +1089,9 @@ function pruneUnknownRequests(items, knownRoutes) {
     const raw = String(item?.request?.url?.raw || "");
     const regex = toRouteRegex(raw);
     const isKnown = knownRoutes.some(
-      (route) => route.method === method && route.regex.test(raw.replace("{{baseUrl}}", "").split("?")[0]),
+      (route) =>
+        route.method === method &&
+        route.regex.test(raw.replace("{{baseUrl}}", "").split("?")[0]),
     );
 
     if (isKnown) {
@@ -829,6 +1107,24 @@ function upsertTestScript(item, scriptLines) {
   const existing = item.event.find((entry) => entry.listen === "test");
   const script = {
     listen: "test",
+    script: {
+      type: "text/javascript",
+      exec: scriptLines,
+    },
+  };
+
+  if (existing) {
+    existing.script = script.script;
+  } else {
+    item.event.push(script);
+  }
+}
+
+function upsertPreRequestScript(item, scriptLines) {
+  item.event = Array.isArray(item.event) ? item.event : [];
+  const existing = item.event.find((entry) => entry.listen === "prerequest");
+  const script = {
+    listen: "prerequest",
     script: {
       type: "text/javascript",
       exec: scriptLines,
@@ -865,8 +1161,10 @@ function buildContextualScript(pathSegments = [], requestName = "") {
   const isUserLike = resource === "user" || resource === "users";
   const isStoreLike = resource === "coorporate_store";
   const isProductLike = resource === "products";
+  const isCartLike = resource === "cart";
+  const isCalculateDeliveryLike = resource === "calculate_delivery";
   const isOrderLike = resource === "order";
-  const isAddressLike = resource === "address";
+  const isAddressLike = resource === "address" || resource === "new-address";
   const isPaystackLike = resource === "paystack";
   const isCategoryLike = resource === "category";
   const isSubCategoryLike = resource === "sub_category";
@@ -889,6 +1187,23 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     "      if (pm.environment) {",
     "        pm.environment.set(key, normalized);",
     "      }",
+    "    }",
+    "  };",
+    "  const unsetVar = (key) => {",
+    "    pm.collectionVariables.unset(key);",
+    "    if (pm.environment) {",
+    "      pm.environment.unset(key);",
+    "    }",
+    "  };",
+    "  const decodeJwtPayload = (token) => {",
+    "    try {",
+    "      if (!token || String(token).split('.').length < 2) return null;",
+    "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+    "      while (payload.length % 4) payload += '=';",
+    "      return JSON.parse(atob(payload));",
+    "    } catch (error) {",
+    "      console.log('Unable to decode JWT payload', error);",
+    "      return null;",
     "    }",
     "  };",
     "  const data = json?.data ?? json;",
@@ -936,6 +1251,9 @@ function buildContextualScript(pathSegments = [], requestName = "") {
       "  setIf('productId', product?._id || product?.id || product?.productId || data?._id || data?.id);",
       "  setIf('productPid', product?.pid || product?._id || product?.id);",
       "  setIf('storeId', product?.store_id || product?.storeId || store?.id || data?.store_id || data?.storeId);",
+      "  setIf('productName', product?.name || product?.title || data?.name || data?.title);",
+      "  setIf('productPrice', product?.price || product?.retail_rate || product?.retailRate || data?.price || data?.retail_rate);",
+      "  setIf('productWeight', product?.product_weight || product?.productWeight || product?.weight || data?.product_weight || data?.productWeight || data?.weight);",
       "  setIf('storeSlug', store?.slug || first?.slug || data?.slug);",
       "  setIf('categoryId', product?.category || product?.categoryId || category?.id || category?._id || data?.category || data?.categoryId);",
       "  setIf('subCategoryId', product?.subCategory || product?.subCategoryId || subCategory?.id || subCategory?._id || data?.subCategory || data?.subCategoryId);",
@@ -943,9 +1261,64 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     );
   }
 
+  if (isCartLike) {
+    script.push(
+      "  const cartRoot = data?.cart || data?.item || data;",
+      "  const cartRows = Array.isArray(cartRoot?.rows) ? cartRoot.rows : [];",
+      "  const cartResults = Array.isArray(cartRoot?.results) ? cartRoot.results : [];",
+      "  const cartNested = Array.isArray(cartRoot?.data) ? cartRoot.data : [];",
+      "  const cartList = Array.isArray(cartRoot) ? cartRoot : (cartRows.length ? cartRows : (cartResults.length ? cartResults : cartNested));",
+      "  const cartItem = cartList[0] || cartRoot || first || {};",
+      "  const cartProduct = cartItem?.product || cartItem?.productDetails || product || {};",
+      "  const cartStore = cartItem?.store || cartItem?.storeDetails || store || {};",
+      "  const cartVariant = cartItem?.variant || cartItem?.variantDetails || firstVariant || {};",
+      "  const cartQuantity = cartItem?.quantity || cartItem?.qty || pm.collectionVariables.get('orderQuantity') || 1;",
+      "  const cartPrice = cartItem?.price || cartItem?.buyPrice || cartItem?.unit_price || cartItem?.unitPrice || cartProduct?.price || cartProduct?.retail_rate || (cartItem?.totalPrice && cartQuantity ? Number(cartItem.totalPrice) / Number(cartQuantity) : undefined);",
+      "  const cartWeight = cartItem?.productWeight || cartItem?.product_weight || cartItem?.weight || cartProduct?.product_weight || cartProduct?.productWeight || cartProduct?.weight || pm.collectionVariables.get('productWeight') || 1;",
+      "  setIf('cartItemId', cartItem?.id || cartItem?._id || cartItem?.cartId || cartItem?.cart_id);",
+      "  setIf('productId', cartItem?.productId || cartItem?.product_id || cartProduct?._id || cartProduct?.id || cartProduct?.productId);",
+      "  setIf('productPid', cartItem?.pid || cartProduct?.pid);",
+      "  setIf('variantId', cartItem?.variantId ?? cartItem?.variant_id ?? cartVariant?.id ?? cartVariant?._id ?? 'null');",
+      "  setIf('storeId', cartItem?.storeId || cartItem?.store_id || cartProduct?.store_id || cartProduct?.storeId || cartStore?.id || cartStore?._id);",
+      "  setIf('orderQuantity', cartQuantity);",
+      "  setIf('productPrice', cartPrice);",
+      "  setIf('productName', cartItem?.name || cartProduct?.name || cartProduct?.title);",
+      "  setIf('productImage', cartItem?.image || cartProduct?.image || cartVariant?.image);",
+      "  setIf('productWeight', cartWeight);",
+    );
+  }
+
   if (isAddressLike) {
     script.push(
-      "  setIf('addressId', address?.id || address?._id || data?.id || data?.addressId);",
+      "  const addressRoot = data?.address || data;",
+      "  const addressRows = Array.isArray(addressRoot?.rows) ? addressRoot.rows : [];",
+      "  const addressResults = Array.isArray(addressRoot?.results) ? addressRoot.results : [];",
+      "  const addressNested = Array.isArray(addressRoot?.data) ? addressRoot.data : [];",
+      "  const addressList = Array.isArray(addressRoot) ? addressRoot : (addressRows.length ? addressRows : (addressResults.length ? addressResults : addressNested));",
+      "  const selectedAddress = addressList[0] || addressRoot || address || {};",
+      "  const previousAddressId = pm.collectionVariables.get('addressId') || (pm.environment && pm.environment.get('addressId'));",
+      "  const nextAddressId = selectedAddress?.id || selectedAddress?._id || selectedAddress?.addressId || data?.id || data?.addressId;",
+      "  if (nextAddressId && previousAddressId && String(nextAddressId) !== String(previousAddressId)) {",
+      "    unsetVar('deliveryToken');",
+      "    unsetVar('deliveryTokenAddressId');",
+      "    unsetVar('deliveryCharge');",
+      "    unsetVar('deliveryDiscount');",
+      "  }",
+      "  setIf('addressId', selectedAddress?.id || selectedAddress?._id || selectedAddress?.addressId || data?.id || data?.addressId);",
+      "  setIf('countryId', selectedAddress?.country_id || selectedAddress?.countryId || data?.country_id || data?.countryId);",
+      "  setIf('stateId', selectedAddress?.state_id || selectedAddress?.stateId || data?.state_id || data?.stateId);",
+    );
+  }
+
+  if (isCalculateDeliveryLike) {
+    script.push(
+      "  const deliveryToken = json?.token || data?.token;",
+      "  const deliveryTokenPayload = decodeJwtPayload(deliveryToken);",
+      "  setIf('deliveryToken', deliveryToken);",
+      "  setIf('deliveryTokenAddressId', deliveryTokenPayload?.data?.addressId || pm.collectionVariables.get('addressId'));",
+      "  setIf('deliveryCharge', data?.amount || data?.delivery_charge || data?.deliveryCharge);",
+      "  setIf('deliveryDiscount', data?.discount);",
+      "  setIf('productWeight', data?.totalWeight || data?.total_weight || pm.collectionVariables.get('productWeight'));",
     );
   }
 
@@ -954,8 +1327,10 @@ function buildContextualScript(pathSegments = [], requestName = "") {
       "  const orderCandidate = order || first;",
       "  setIf('orderId', orderCandidate?.id || data?.id);",
       "  setIf('orderPublicId', orderCandidate?.order_id || data?.order_id);",
-      "  setIf('paymentReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
-      "  setIf('reconcileReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('paymentReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('reconcileReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('paystackAuthUrl', data?.authorization_url || data?.authorizationUrl || payment?.authorization_url);",
+      "  setIf('paystackAccessCode', data?.access_code || data?.accessCode || payment?.access_code);",
       "  setIf('guestEmail', orderCandidate?.guest_email || data?.email);",
       "  setIf('storeId', orderCandidate?.storeId || store?.id || data?.storeId);",
     );
@@ -1076,6 +1451,43 @@ function buildContextualScript(pathSegments = [], requestName = "") {
   return script;
 }
 
+function buildOrderPreRequestScript() {
+  return [
+    "const addressId = pm.variables.get('addressId');",
+    "const deliveryToken = pm.variables.get('deliveryToken');",
+    "let tokenAddressId = pm.variables.get('deliveryTokenAddressId');",
+    "",
+    "const decodeJwtPayload = (token) => {",
+    "  try {",
+    "    if (!token || String(token).split('.').length < 2) return null;",
+    "    let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+    "    while (payload.length % 4) payload += '=';",
+    "    return JSON.parse(atob(payload));",
+    "  } catch (error) {",
+    "    console.log('Unable to decode delivery token', error);",
+    "    return null;",
+    "  }",
+    "};",
+    "",
+    "if (!deliveryToken) {",
+    "  throw new Error('Missing deliveryToken. Run POST /calculate_delivery/new after selecting address and cart, then retry /order.');",
+    "}",
+    "",
+    "if (!tokenAddressId) {",
+    "  const decoded = decodeJwtPayload(deliveryToken);",
+    "  tokenAddressId = decoded?.data?.addressId;",
+    "  if (tokenAddressId !== undefined && tokenAddressId !== null) {",
+    "    pm.collectionVariables.set('deliveryTokenAddressId', String(tokenAddressId));",
+    "    if (pm.environment) pm.environment.set('deliveryTokenAddressId', String(tokenAddressId));",
+    "  }",
+    "}",
+    "",
+    "if (addressId && tokenAddressId && String(addressId) !== String(tokenAddressId)) {",
+    "  throw new Error(`Stale deliveryToken: token addressId=${tokenAddressId}, order addressId=${addressId}. Run POST /calculate_delivery/new again, then retry /order.`);",
+    "}",
+  ];
+}
+
 function walkRequests(items, callback, trail = []) {
   for (const item of items || []) {
     if (Array.isArray(item.item)) {
@@ -1159,7 +1571,9 @@ function ensurePaystackManualSettlementAuditRequest(collection) {
     : [];
 
   const legacyPaystackGroup =
-    paymentsGroup.name === "PAYSTACK" ? null : findGroup(collection, "PAYSTACK");
+    paymentsGroup.name === "PAYSTACK"
+      ? null
+      : findGroup(collection, "PAYSTACK");
   if (legacyPaystackGroup && Array.isArray(legacyPaystackGroup.item)) {
     legacyPaystackGroup.item = legacyPaystackGroup.item.filter(
       (entry) => entry?.name !== "GET /paystack/manual-settlement/audit",
@@ -1917,7 +2331,9 @@ function ensureSuperAdminRequests(collection) {
     { key: "Content-Type", value: "application/json" },
     { key: "Authorization", value: "Bearer {{authToken}}" },
   ];
-  const authOnlyHeaders = [{ key: "Authorization", value: "Bearer {{authToken}}" }];
+  const authOnlyHeaders = [
+    { key: "Authorization", value: "Bearer {{authToken}}" },
+  ];
 
   upsertRequest(group, {
     name: "GET /super-admin/booster-plan-configs",
@@ -2109,6 +2525,36 @@ function applyScripts(collection) {
       : [];
 
     upsertTestScript(item, buildContextualScript(pathSegments, item.name));
+
+    const method = String(item?.request?.method || "").toUpperCase();
+    if (method === "POST" && pathSegments.join("/") === "order") {
+      upsertPreRequestScript(item, buildOrderPreRequestScript());
+    }
+  });
+}
+
+function removePlaceholderBodies(collection) {
+  walkRequests(collection.item, (item) => {
+    const request = item?.request;
+    const raw = request?.body?.raw;
+    if (
+      typeof raw !== "string" ||
+      !raw.includes("Update this body with the endpoint-specific DTO fields")
+    ) {
+      return;
+    }
+
+    const method = String(request.method || "").toUpperCase();
+    const pathSegments = Array.isArray(request.url?.path)
+      ? request.url.path
+      : [];
+
+    request.body = {
+      mode: "raw",
+      raw: rawBodyForRequest(method, pathSegments),
+      options: { raw: { language: "json" } },
+    };
+    request.header = ensureJsonHeader(request.header);
   });
 }
 
@@ -2140,11 +2586,18 @@ function updateCollectionFile(filePath) {
   ensureGuestOrderRequests(collection);
   ensureSellerBoosterRequests(collection);
   ensureSuperAdminRequests(collection);
-  collection.item = pruneUnknownRequests(collection.item, extractControllerRoutes());
+  collection.item = pruneUnknownRequests(
+    collection.item,
+    extractControllerRoutes(),
+  );
+  if (Array.isArray(collection.item)) {
+    collection.item.forEach((item) => processItem(item, summary));
+  }
   walkRequests(collection.item, (item) => {
     normalizeEmailsInRequest(item.request);
   });
   applyScripts(collection);
+  removePlaceholderBodies(collection);
 
   fs.writeFileSync(filePath, JSON.stringify(collection, null, 2), "utf8");
   console.log("Updated Postman collection:", filePath);

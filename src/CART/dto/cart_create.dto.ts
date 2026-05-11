@@ -1,12 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsInt, IsNotEmpty, IsOptional, IsUUID } from "class-validator";
-import { UUID } from "crypto";
+import { IsInt, IsNotEmpty, IsOptional } from "class-validator";
 export class CreateCartDto {
   @ApiProperty()
   @IsNotEmpty()
-  @IsUUID()
-  readonly productId: UUID;
+  readonly productId: string | number;
 
   @ApiPropertyOptional()
   @IsOptional()

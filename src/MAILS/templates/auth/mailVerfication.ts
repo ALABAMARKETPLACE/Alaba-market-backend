@@ -1,5 +1,9 @@
 const VerifyMail = async (Details: any, token: any) => {
-  const email = `${process.env.BASE_URL}verify/email/${token}`;
+  const frontendUrl = process.env.WEBSITE || process.env.BASE_URL || "";
+  const normalizedFrontendUrl = /^https?:\/\//i.test(frontendUrl)
+    ? frontendUrl
+    : `https://${frontendUrl}`;
+  const email = `${normalizedFrontendUrl.replace(/\/$/, "")}/verify/email/${encodeURIComponent(token)}`;
   try {
     let obj = {
       to: Details?.email,

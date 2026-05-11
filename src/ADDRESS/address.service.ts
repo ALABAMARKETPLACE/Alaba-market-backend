@@ -9,7 +9,6 @@ import { Address } from "./address.entity";
 import { CreateAddressDto } from "./dto/create.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { Transaction } from "sequelize";
-import { User } from "../USERS/user.entity";
 import { getErrorMessage } from "../shared/helpers/errormessage";
 import { UpdateAddressDto } from "./dto/updateAddress.dto";
 @Injectable()
@@ -27,13 +26,6 @@ export class AddressService {
         },
         attributes: { exclude: ["createdAt", "updatedAt"] },
         order: [["updatedAt", "DESC"]],
-        include: [
-          {
-            model: User,
-            required: true,
-            attributes: ["name"],
-          },
-        ],
       });
       return new DataResponseDto(allList, true, "success");
     } catch (err) {

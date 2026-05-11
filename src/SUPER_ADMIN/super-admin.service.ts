@@ -360,7 +360,7 @@ export class SuperAdminService {
       role: Role.User,
       roles: [Role.User, Role.Customer],
       active_role: Role.User,
-      type: Role.Customer,
+      type: Role.User,
     };
   }
 

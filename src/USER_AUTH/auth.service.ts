@@ -12,6 +12,7 @@ import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Cache } from "cache-manager";
 import { compare } from "bcrypt";
 import * as crypto from "crypto";
+import axios from "axios";
 import verifyAppleToken from "verify-apple-id-token";
 import {
   login_Request,
@@ -49,6 +50,10 @@ import { JwtService } from "@nestjs/jwt";
 import { Op } from "sequelize";
 import { Role } from "../shared/enum/role.enum";
 import { AdminAuditLog } from "../SUPER_ADMIN/admin-audit-log.entity";
+import {
+  normalizeRoles,
+  resolveActiveRole,
+} from "../shared/helpers/user-role.helper";
 
 type VerifyTokenPurpose =
   | "email_verification"
@@ -65,6 +70,13 @@ const RESET_PASSWORD_LIMIT = 5;
 const RESET_PASSWORD_WINDOW_MS = 15 * 60 * 1000;
 const CHANGE_PASSWORD_LIMIT = 6;
 const CHANGE_PASSWORD_WINDOW_MS = 15 * 60 * 1000;
+
+type SocialLoginUser = {
+  email: string;
+  email_verified?: boolean;
+  name?: string;
+  picture?: string;
+};
 
 @Injectable()
 export class AuthService {
@@ -216,6 +228,38 @@ export class AuthService {
     return user.active_role || user.role || "user";
   }
 
+  private async alignUserRoleAndType(user: User): Promise<User> {
+    const roles = normalizeRoles(user.roles, user.role);
+    const activeRole = resolveActiveRole(roles, user.active_role, user.role);
+    let changed = false;
+
+    if (JSON.stringify(user.roles || []) !== JSON.stringify(roles)) {
+      user.roles = roles;
+      changed = true;
+    }
+
+    if (user.active_role !== activeRole) {
+      user.active_role = activeRole;
+      changed = true;
+    }
+
+    if (user.role !== activeRole) {
+      user.role = activeRole;
+      changed = true;
+    }
+
+    if (user.type !== activeRole) {
+      user.type = activeRole;
+      changed = true;
+    }
+
+    if (changed) {
+      await user.save();
+    }
+
+    return user;
+  }
+
   private userHasAdminRole(user: User | null): boolean {
     if (!user) return false;
 
@@ -317,6 +361,7 @@ export class AuthService {
 
       if (!isMatch) throw new UnauthorizedException("Incorrect Password..");
 
+      await this.alignUserRoleAndType(user);
       console.log("Password verified, creating tokens...");
       await this.authRepo.saveFcm(fcmtoken, user?._id);
       if (seller_fcmtoken)
@@ -357,6 +402,7 @@ export class AuthService {
         return new DataResponseDto(newuser, true, message, token, refresh);
       } else {
         this.assertUserCanAuthenticate(user, "Account not found");
+        await this.alignUserRoleAndType(user);
         if (body?.fcmtoken) {
           await this.authRepo.saveFcm(body.fcmtoken, user._id);
         }
@@ -371,19 +417,63 @@ export class AuthService {
     }
   }
 
+  private getGoogleLoginAudiences(): string[] {
+    return [
+      process.env.GOOGLE_WEB_CLIENT_ID,
+      process.env.GOOGLE_IOS_CLIENT_ID,
+      process.env.GOOGLE_ANDROID_CLIENT_ID,
+      process.env.GGL_CLIENT_ID,
+      process.env.FIREBASE_CLIENT_ID,
+      "584211747724-eu491egu108e3vobujmif8lkgapi3ah2.apps.googleusercontent.com",
+    ].filter(Boolean);
+  }
+
+  private async verifyGoogleLoginToken(idToken: string): Promise<SocialLoginUser> {
+    const { data } = await axios.get("https://oauth2.googleapis.com/tokeninfo", {
+      params: { id_token: idToken },
+      timeout: 10000,
+    });
+
+    const audiences = this.getGoogleLoginAudiences();
+    if (audiences.length && !audiences.includes(data?.aud)) {
+      throw new UnauthorizedException("Invalid Google login token");
+    }
+
+    if (!data?.email) {
+      throw new UnauthorizedException("Invalid Google login token");
+    }
+
+    return {
+      email: data.email,
+      email_verified: data.email_verified === true || data.email_verified === "true",
+      name: data.name,
+      picture: data.picture,
+    };
+  }
+
+  private getAppleLoginClientIds(): string[] {
+    return [
+      process.env.APPLE_CLIENT_ID,
+      process.env.APPLE_IOS_CLIENT_ID,
+      process.env.IOS_BUNDLE_ID,
+      "org.reactjs.native.alabauserapp",
+    ].filter(Boolean);
+  }
+
   async googleLogin(body: login_google) {
     try {
-      const guser = await this.firebaseService.verifyIdToken(body.idToken);
+      const guser = await this.verifyGoogleLoginToken(body.idToken);
       if (!guser?.email) throw new UnauthorizedException();
       const user = await this.authRepo.findUserbyEmail(guser?.email);
       if (user) {
         this.assertUserCanAuthenticate(user);
+        await this.alignUserRoleAndType(user);
         const [refresh, fid] = await this.tokenService.createToken(user._id);
         const token = await this.createToken(user, fid);
         const message = "Login Successful";
         return new DataResponseDto(user, true, message, token, refresh);
       }
-      const newuser = await this.authRepo.createUserwithGmail(guser);
+      const newuser = await this.authRepo.createUserwithGmail(guser as any);
       if (!newuser)
         throw new InternalServerErrorException("Failed to Create Account.");
       let Mail = await SignupHtml(newuser, null);
@@ -402,12 +492,13 @@ export class AuthService {
     try {
       const userDetails = await verifyAppleToken({
         idToken: body.idToken,
-        clientId: process.env.APPLE_CLIENT_ID,
+        clientId: this.getAppleLoginClientIds(),
       });
       if (!userDetails.email) throw new UnauthorizedException();
       const user = await this.authRepo.findUserbyEmail(userDetails?.email);
       if (user) {
         this.assertUserCanAuthenticate(user);
+        await this.alignUserRoleAndType(user);
         const [refresh, fid] = await this.tokenService.createToken(user._id);
         const token = await this.createToken(user, fid);
         const message = "Login Successful";
@@ -911,6 +1002,7 @@ export class AuthService {
         attributes: { exclude: ["password", "createdAt", "updatedAt"] },
       });
       this.assertUserCanAuthenticate(user, "User not Found.");
+      await this.alignUserRoleAndType(user);
       const token = await this.createToken(user, verified?.fid);
       const message = "Refresh token generated successfully.";
       return new DataResponseDto(user, true, message, token, refresh);
