@@ -10,6 +10,7 @@ import {
   Put,
   HttpCode,
   Query,
+  Header,
   UsePipes,
   ValidationPipe,
 } from "@nestjs/common";
@@ -39,6 +40,9 @@ export class CartController {
   @Get("all")
   @ApiOkResponse({ type: [CartDto] })
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @HttpCode(200)
   findCartByUserID(@UserId() userId: number): Promise<DataResponseDto> {
     return this.cartService.findByUserId(userId);

@@ -25,7 +25,7 @@ import {
 import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced";
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { Order } from "./order.entity";
-import { Transaction } from "sequelize";
+import { Op, Transaction, literal } from "sequelize";
 import { InjectModel } from "@nestjs/sequelize";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import { PaymentGateWayService } from "../PAYMENT_GATEWAY/payment_gateway.service";
@@ -167,6 +167,53 @@ export class OrderPlaceService {
         throw new InternalServerErrorException();
       }
     }
+  }
+
+  private normalizeOrderQuantity(
+    item: { quantity?: unknown },
+    productId: number
+  ): number {
+    const quantity = Number(item?.quantity);
+
+    if (
+      Number.isNaN(quantity) ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      throw new BadRequestException(
+        `Invalid quantity for product ${productId} in order request`
+      );
+    }
+
+    return quantity;
+  }
+
+  private async loadStockProduct(productId: number, transaction: Transaction) {
+    const product = await Products.findOne({
+      where: { _id: productId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!product) {
+      throw new NotFoundException("Product not found.");
+    }
+
+    return product;
+  }
+
+  private async loadStockVariant(variantId: number, transaction: Transaction) {
+    const variant = await ProductVariant.findOne({
+      where: { id: variantId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!variant) {
+      throw new NotFoundException("Variant is Not Available");
+    }
+
+    return variant;
   }
 
   async groupProducts(
@@ -397,10 +444,8 @@ export class OrderPlaceService {
     let total = 0;
 
     for (const item of items.products) {
-      const product = await Products.findOne({
-        where: { _id: item?.productId },
-        transaction,
-      });
+      const quantity = this.normalizeOrderQuantity(item, item?.productId);
+      const product = await this.loadStockProduct(item?.productId, transaction);
 
       if (!product) throw new NotFoundException("Product not found.");
       if (product.status == false)
@@ -409,27 +454,24 @@ export class OrderPlaceService {
         throw new ServiceUnavailableException(
           "Product is Not Available on this store."
         );
-      if (product.unit == 0 || product.unit < item?.quantity)
+      if (product.unit < quantity)
         throw new ServiceUnavailableException("Product out of stock");
 
       let unitPrice = Number(product.retail_rate || 0);
 
       if (item?.variantId) {
-        const variant = await ProductVariant.findOne({
-          where: { id: item?.variantId },
-          transaction,
-        });
+        const variant = await this.loadStockVariant(item?.variantId, transaction);
 
         if (!variant) throw new NotFoundException("Variant is Not Available");
         if (variant.productId != item?.productId)
           throw new ServiceUnavailableException("Variant is Not Available");
-        if (variant.units == 0 || variant.units < item?.quantity)
+        if (variant.units < quantity)
           throw new ServiceUnavailableException("Variant is out of stock");
 
         unitPrice = Number(variant.price || 0);
       }
 
-      total += unitPrice * Number(item.quantity || 0);
+      total += unitPrice * quantity;
     }
 
     return total;
@@ -506,10 +548,8 @@ export class OrderPlaceService {
     let quantity = 0;
     try {
       for (const item of items?.products) {
-        const product = await Products.findOne({
-          where: { _id: item?.productId },
-          transaction: t,
-        });
+        const orderedQuantity = this.normalizeOrderQuantity(item, item?.productId);
+        const product = await this.loadStockProduct(item?.productId, t);
         if (!product) throw new NotFoundException("Product not found.");
         if (product.status == false)
           throw new ServiceUnavailableException("Product is Not Available");
@@ -517,12 +557,26 @@ export class OrderPlaceService {
           throw new ServiceUnavailableException(
             "Product is Not Available on this store."
           );
-        if (product.unit == 0 || product.unit < item?.quantity)
+        if (product.unit < orderedQuantity)
           throw new ServiceUnavailableException("Product out of stock");
-        await product.decrement("unit", {
-          by: Number(item?.quantity),
-          transaction: t,
-        });
+
+        const [updatedProductRows] = await Products.update(
+          { unit: literal(`unit - ${orderedQuantity}`) },
+          {
+            where: {
+              _id: product._id,
+              unit: {
+                [Op.gte]: orderedQuantity,
+              },
+            },
+            transaction: t,
+          }
+        );
+
+        if (updatedProductRows === 0) {
+          throw new ServiceUnavailableException("Product out of stock");
+        }
+
         await product.increment("orderCount", { by: 1, transaction: t });
         //============================================================================================
         const newItem = await OrderItems.create(
@@ -530,10 +584,9 @@ export class OrderPlaceService {
             orderId,
             productId: item?.productId,
             variantId: item?.variantId || undefined,
-            quantity: item?.quantity,
+            quantity: orderedQuantity,
             price: product.retail_rate,
-            totalPrice:
-              Number(product.retail_rate || 0) * Number(item?.quantity || 0),
+            totalPrice: Number(product.retail_rate || 0) * orderedQuantity,
             image: product.image,
             name: product.name,
             sku: product.sku,
@@ -543,27 +596,35 @@ export class OrderPlaceService {
         );
         //===========================================================================
         if (item?.variantId) {
-          const variant = await ProductVariant.findOne({
-            where: { id: item?.variantId },
-            transaction: t,
-          });
-          if (!variant) throw new NotFoundException("Variant is Not Available");
+          const variant = await this.loadStockVariant(item?.variantId, t);
           if (variant.productId != item?.productId)
             throw new ServiceUnavailableException("Variant is Not Available");
-          if (variant.units == 0 || variant.units < item?.quantity)
+          if (variant.units < orderedQuantity)
             throw new ServiceUnavailableException("Variant is out of stock");
           newItem.price = variant.price;
-          newItem.totalPrice =
-            Number(variant.price || 0) * Number(item?.quantity || 0);
+          newItem.totalPrice = Number(variant.price || 0) * orderedQuantity;
           newItem.image = variant.image;
           newItem.sku = variant.sku;
           newItem.barcode = variant.barcode;
           newItem.combination = variant.combination;
           await newItem.save({ transaction: t });
-          await variant.decrement("units", {
-            by: Number(item?.quantity),
-            transaction: t,
-          });
+
+          const [updatedVariantRows] = await ProductVariant.update(
+            { units: literal(`units - ${orderedQuantity}`) },
+            {
+              where: {
+                id: variant.id,
+                units: {
+                  [Op.gte]: orderedQuantity,
+                },
+              },
+              transaction: t,
+            }
+          );
+
+          if (updatedVariantRows === 0) {
+            throw new ServiceUnavailableException("Variant is out of stock");
+          }
         }
         total += newItem.totalPrice;
         quantity += newItem.quantity;

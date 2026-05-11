@@ -32,8 +32,25 @@ export class CartRepository {
 
   async deleteCartByAnyId(userId: number, id: string | number) {
     try {
+      const idValue = String(id || "").trim();
+      const normalizedNumericId =
+        Number.isFinite(Number(idValue)) && Number.isSafeInteger(Number(idValue))
+          ? Number(idValue)
+          : null;
+
+      const candidateIds: Array<string | number> = [idValue];
+
+      if (normalizedNumericId !== null) {
+        candidateIds.push(normalizedNumericId);
+      }
+
       const deleted = await this.cartRepository.destroy({
-        where: { id, userId },
+        where: {
+          userId,
+          id: {
+            [Op.in]: candidateIds,
+          },
+        },
       });
       if (deleted == 0) throw new NotFoundException();
       return deleted;
@@ -175,10 +192,6 @@ export class CartRepository {
 
       let availableUnits = Number(product.unit || 0);
 
-      if (availableUnits <= 0) {
-        throw new ServiceUnavailableException("Product is out of stock");
-      }
-
       const normalizedVariantId =
         data?.variantId && Number(data.variantId) > 0
           ? Number(data.variantId)
@@ -204,6 +217,8 @@ export class CartRepository {
         if (availableUnits <= 0) {
           throw new ServiceUnavailableException("Variant is out of stock");
         }
+      } else if (availableUnits <= 0) {
+        throw new ServiceUnavailableException("Product is out of stock");
       }
 
       const maxAllowedQuantity = Math.min(25, availableUnits);
