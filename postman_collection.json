@@ -14349,6 +14349,32 @@
           ]
         },
         {
+          "name": "GET /new-address/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/new-address/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "new-address",
+                "me"
+              ]
+            }
+          }
+        },
+        {
           "name": "GET /new-address/:id",
           "request": {
             "method": "GET",

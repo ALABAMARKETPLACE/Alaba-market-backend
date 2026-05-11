@@ -73,6 +73,32 @@ export class NewAddressService {
     }
   }
 
+  async findCurrent(userId: number) {
+    try {
+      const data = await this.NewAddressRepository.findAll<NewAddress>({
+        where: { user_id: userId },
+        attributes: { exclude: ["deletedAt"] },
+        include: [
+          {
+            model: Countries,
+            as: "countryDetails",
+            attributes: ["id", "country_name", "description"],
+          },
+          {
+            model: States,
+            as: "stateDetails",
+            attributes: ["id", "name", "description"],
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+      });
+
+      return new DataResponseDto(data, true, "Success");
+    } catch (err) {
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
   async findOne(userId: number, id: number) {
     try {
       const address = await this.NewAddressRepository.findOne<NewAddress>({

@@ -50,6 +50,18 @@ export class NewAddressController {
     return this.newAddressService.findAll(userId, params);
   }
 
+  @Get("me")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Get current user saved addresses",
+  })
+  @ApiOkResponse({ type: NewAddressDto })
+  findCurrent(@UserId() userId: number): Promise<DataResponseDto> {
+    return this.newAddressService.findCurrent(userId);
+  }
+
   // Get one address by ID
   @Get(":id")
   @UseGuards(AuthGuard)
