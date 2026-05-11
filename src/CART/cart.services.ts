@@ -235,7 +235,19 @@ export class CartServices {
                 "Successfully Removed item from cart",
               );
             }
+            return new DataResponseDto(
+              {},
+              true,
+              "Item not found in cart. Nothing to remove.",
+            );
           } catch (fallbackErr) {
+            if (fallbackErr instanceof NotFoundException) {
+              return new DataResponseDto(
+                {},
+                true,
+                "Item not found in cart. Nothing to remove.",
+              );
+            }
             if (fallbackErr instanceof HttpException) throw fallbackErr;
           }
         }
@@ -255,6 +267,13 @@ export class CartServices {
         "Successfully Removed item from cart"
       );
     } catch (err) {
+      if (err instanceof NotFoundException) {
+        return new DataResponseDto(
+          {},
+          true,
+          "Item not found in cart. Nothing to remove.",
+        );
+      }
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
