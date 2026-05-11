@@ -25,7 +25,7 @@ import {
 import { ToUserOrderPlaced } from "../MAILS/templates/orders/toUser_OrderPlaced";
 import { ToSellerOrderPlaced } from "../MAILS/templates/orders/toSeller_OrderPlaced";
 import { Order } from "./order.entity";
-import { Transaction } from "sequelize";
+import { Op, Transaction, literal } from "sequelize";
 import { InjectModel } from "@nestjs/sequelize";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import { PaymentGateWayService } from "../PAYMENT_GATEWAY/payment_gateway.service";
@@ -60,13 +60,13 @@ export class OrderPlaceService {
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
     private readonly orderLogService: OrderLogService,
-    private readonly jwtService: JwtService,
+    private readonly jwtService: JwtService
   ) {}
 
   async create(
     userId: number,
     data: CreateOrderDto,
-    options: CreateOrderOptions = {},
+    options: CreateOrderOptions = {}
   ) {
     try {
       if (this.shouldInitializeHostedCheckout(data, options)) {
@@ -88,12 +88,12 @@ export class OrderPlaceService {
               item,
               verified,
               isMultiSeller,
-              t,
+              t
             );
             const [qnty, total, itms] = await this.createItems(
               order.id,
               item,
-              t,
+              t
             );
             const store = await Store.findOne({
               where: { id: item.storeId },
@@ -105,27 +105,34 @@ export class OrderPlaceService {
             //================
             const deliveryDate = new Date();
             deliveryDate.setDate(
-              deliveryDate.getDate() + (store?.delivery_period ?? 2),
+              deliveryDate.getDate() + (store?.delivery_period ?? 2)
             );
             deliveryDate.setMinutes(
-              deliveryDate.getMinutes() + (store?.delivery_period_minutes ?? 0),
+              deliveryDate.getMinutes() + (store?.delivery_period_minutes ?? 0)
             );
             order.delivery_date = deliveryDate;
             order.totalItems = qnty;
             order.total = total;
-            order.grandTotal = total; //inside modal
+            order.grandTotal = Number(
+              (
+                Number(total || 0) +
+                Number(order.deliveryCharge || 0) +
+                Number(order.tax || 0) -
+                Number(order.discount || 0)
+              ).toFixed(2)
+            );
             order.address = address;
             await order.save({ transaction: t });
             const payment = await this.orderPayment(
               order.id,
               order.grandTotal,
               data.payment,
-              t,
+              t
             );
             const orderStatus = await this.orderStatus(
               order.id,
               order.status,
-              t,
+              t
             );
             newOrders.push({
               newOrder: order,
@@ -137,18 +144,23 @@ export class OrderPlaceService {
             await this.afterCommit(t, data, order, store, itms, address);
           }
           return newOrders;
-        },
+        }
       );
       return new DataResponseDto(result);
     } catch (err) {
       console.log(err);
+      if (this.shouldInitializeHostedCheckout(data, options)) {
+        if (err instanceof HttpException) throw err;
+        throw new InternalServerErrorException(getErrorMessage(err));
+      }
+
       try {
         return await this.orderLogService.create(
           userId,
           data,
           err instanceof HttpException == true
             ? err.message
-            : getErrorMessage(err),
+            : getErrorMessage(err)
         );
       } catch (err) {
         if (err instanceof HttpException) throw err;
@@ -157,9 +169,56 @@ export class OrderPlaceService {
     }
   }
 
+  private normalizeOrderQuantity(
+    item: { quantity?: unknown },
+    productId: number
+  ): number {
+    const quantity = Number(item?.quantity);
+
+    if (
+      Number.isNaN(quantity) ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      throw new BadRequestException(
+        `Invalid quantity for product ${productId} in order request`
+      );
+    }
+
+    return quantity;
+  }
+
+  private async loadStockProduct(productId: number, transaction: Transaction) {
+    const product = await Products.findOne({
+      where: { _id: productId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!product) {
+      throw new NotFoundException("Product not found.");
+    }
+
+    return product;
+  }
+
+  private async loadStockVariant(variantId: number, transaction: Transaction) {
+    const variant = await ProductVariant.findOne({
+      where: { id: variantId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!variant) {
+      throw new NotFoundException("Variant is Not Available");
+    }
+
+    return variant;
+  }
+
   async groupProducts(
     data: any[],
-    transaction?: Transaction,
+    transaction?: Transaction
   ): Promise<orderItemss[]> {
     try {
       const items: orderItemss[] = await data.reduce(
@@ -179,7 +238,7 @@ export class OrderPlaceService {
             variantId: item?.variantId,
           };
           const exist = acc.find(
-            (store: any) => store?.storeId == storeId?.store_id,
+            (store: any) => store?.storeId == storeId?.store_id
           );
           if (exist) {
             exist?.products?.push(obj);
@@ -191,7 +250,7 @@ export class OrderPlaceService {
           }
           return acc;
         },
-        Promise.resolve([]),
+        Promise.resolve([])
       );
       return items;
     } catch (err) {
@@ -232,14 +291,14 @@ export class OrderPlaceService {
         verified?.data?.addressId,
         "(type:",
         typeof verified?.data?.addressId,
-        ")",
+        ")"
       );
       console.log(
         "   - Request address.id:",
         data?.address?.id,
         "(type:",
         typeof data?.address?.id,
-        ")",
+        ")"
       );
 
       const tokenAddressId = Number(verified?.data?.addressId);
@@ -249,7 +308,7 @@ export class OrderPlaceService {
         "   - After conversion:",
         tokenAddressId,
         "vs",
-        requestAddressId,
+        requestAddressId
       );
 
       if (tokenAddressId !== requestAddressId) {
@@ -266,7 +325,7 @@ export class OrderPlaceService {
 
   private shouldInitializeHostedCheckout(
     data: CreateOrderDto,
-    options: CreateOrderOptions,
+    options: CreateOrderOptions
   ): boolean {
     if (options.skipDeliveryTokenVerification) {
       return false;
@@ -285,7 +344,7 @@ export class OrderPlaceService {
 
   private async initializeHostedCheckout(
     userId: number,
-    data: CreateOrderDto,
+    data: CreateOrderDto
   ): Promise<DataResponseDto> {
     switch (data.payment.type) {
       case PaymentTypeEnum.Paystack: {
@@ -301,7 +360,7 @@ export class OrderPlaceService {
       case PaymentTypeEnum.Stripe:
       case PaymentTypeEnum.Flutterwave:
         throw new NotImplementedException(
-          `${data.payment.type} checkout is not implemented yet.`,
+          `${data.payment.type} checkout is not implemented yet.`
         );
 
       default:
@@ -327,9 +386,13 @@ export class OrderPlaceService {
         const itemsTotal = await this.calculateItemsTotal(groupedProduct, t);
         const charges = this.getStoreChargeBreakdown(
           verified,
-          groupedProduct.storeId,
+          groupedProduct.storeId
         );
-        grandTotal += itemsTotal + charges.tax - charges.discount;
+        grandTotal +=
+          itemsTotal +
+          Number(charges.deliveryCharge || 0) +
+          Number(charges.tax || 0) -
+          Number(charges.discount || 0);
         store_summaries.push({
           store_id: groupedProduct.storeId,
           product_total: itemsTotal,
@@ -350,63 +413,65 @@ export class OrderPlaceService {
   private getStoreChargeBreakdown(verified: any, storeId: number) {
     const getStoreValue = (value: any, key: string, fallback = 0) => {
       if (Array.isArray(value)) {
-        return value.find((item: any) => item?.storeId === storeId)?.[key] ?? 0;
+        const match = value.find(
+          (item: any) =>
+            Number(item?.storeId ?? item?.store_id) === Number(storeId)
+        );
+        return Number(match?.[key] ?? match?.totalCharge ?? fallback);
       }
 
-      return value ?? fallback;
+      return Number(value ?? fallback);
     };
 
     return {
       discount: getStoreValue(verified?.data?.discount, "discount", 0),
       deliveryCharge: Array.isArray(verified?.data?.deliveryCharges)
-        ? verified?.data?.deliveryCharges?.find(
-            (item: any) => item?.storeId === storeId,
-          )?.totalCharge ?? 0
-        : verified?.data?.amount ?? 0,
+        ? Number(
+            verified?.data?.deliveryCharges?.find(
+              (item: any) =>
+                Number(item?.storeId ?? item?.store_id) === Number(storeId)
+            )?.totalCharge ?? 0
+          )
+        : Number(verified?.data?.amount ?? 0),
       tax: getStoreValue(verified?.data?.tax, "tax", 0),
     };
   }
 
   private async calculateItemsTotal(
     items: orderItemss,
-    transaction: Transaction,
+    transaction: Transaction
   ): Promise<number> {
     let total = 0;
 
     for (const item of items.products) {
-      const product = await Products.findOne({
-        where: { _id: item?.productId },
-        transaction,
-      });
+      const quantity = this.normalizeOrderQuantity(item, item?.productId);
+      const product = await this.loadStockProduct(item?.productId, transaction);
 
       if (!product) throw new NotFoundException("Product not found.");
       if (product.status == false)
         throw new ServiceUnavailableException("Product is Not Available");
       if (product.store_id != items.storeId)
         throw new ServiceUnavailableException(
-          "Product is Not Available on this store.",
+          "Product is Not Available on this store."
         );
-      if (product.unit == 0 || product.unit < item?.quantity)
+      if (product.unit < quantity)
         throw new ServiceUnavailableException("Product out of stock");
 
       let unitPrice = Number(product.retail_rate || 0);
 
       if (item?.variantId) {
-        const variant = await ProductVariant.findOne({
-          where: { id: item?.variantId },
-          transaction,
-        });
+        const variant = await this.loadStockVariant(item?.variantId, transaction);
 
         if (!variant) throw new NotFoundException("Variant is Not Available");
         if (variant.productId != item?.productId)
           throw new ServiceUnavailableException("Variant is Not Available");
-        if (variant.units == 0 || variant.units < item?.quantity)
+        if (variant.units < quantity)
           throw new ServiceUnavailableException("Variant is out of stock");
 
         unitPrice = Number(variant.price || 0);
       }
 
-      total += unitPrice * Number(item.quantity || 0);
+      total += unitPrice * quantity;
     }
 
     return total;
@@ -448,7 +513,7 @@ export class OrderPlaceService {
     product: orderItemss,
     verified: any,
     isMultiSeller: boolean,
-    transaction: Transaction,
+    transaction: Transaction
   ) {
     try {
       const charges = this.getStoreChargeBreakdown(verified, product?.storeId);
@@ -466,7 +531,7 @@ export class OrderPlaceService {
           payment_reference: data?.payment?.ref || undefined,
           transaction_reference: data?.payment?.ref || undefined,
         },
-        { transaction },
+        { transaction }
       );
       return newOrder;
     } catch (err) {
@@ -476,30 +541,42 @@ export class OrderPlaceService {
   async createItems(
     orderId: number,
     items: orderItemss,
-    t: Transaction,
+    t: Transaction
   ): Promise<[number, number, OrderItems[]]> {
     const orderItems: OrderItems[] = [];
     let total = 0;
     let quantity = 0;
     try {
       for (const item of items?.products) {
-        const product = await Products.findOne({
-          where: { _id: item?.productId },
-          transaction: t,
-        });
+        const orderedQuantity = this.normalizeOrderQuantity(item, item?.productId);
+        const product = await this.loadStockProduct(item?.productId, t);
         if (!product) throw new NotFoundException("Product not found.");
         if (product.status == false)
           throw new ServiceUnavailableException("Product is Not Available");
         if (product.store_id != items.storeId)
           throw new ServiceUnavailableException(
-            "Product is Not Available on this store.",
+            "Product is Not Available on this store."
           );
-        if (product.unit == 0 || product.unit < item?.quantity)
+        if (product.unit < orderedQuantity)
           throw new ServiceUnavailableException("Product out of stock");
-        await product.decrement("unit", {
-          by: Number(item?.quantity),
-          transaction: t,
-        });
+
+        const [updatedProductRows] = await Products.update(
+          { unit: literal(`unit - ${orderedQuantity}`) },
+          {
+            where: {
+              _id: product._id,
+              unit: {
+                [Op.gte]: orderedQuantity,
+              },
+            },
+            transaction: t,
+          }
+        );
+
+        if (updatedProductRows === 0) {
+          throw new ServiceUnavailableException("Product out of stock");
+        }
+
         await product.increment("orderCount", { by: 1, transaction: t });
         //============================================================================================
         const newItem = await OrderItems.create(
@@ -507,38 +584,47 @@ export class OrderPlaceService {
             orderId,
             productId: item?.productId,
             variantId: item?.variantId || undefined,
-            quantity: item?.quantity,
+            quantity: orderedQuantity,
             price: product.retail_rate,
-            totalPrice: 0, //inside modal,
+            totalPrice: Number(product.retail_rate || 0) * orderedQuantity,
             image: product.image,
             name: product.name,
             sku: product.sku,
             barcode: product.bar_code,
           } as any,
-          { transaction: t },
+          { transaction: t }
         );
         //===========================================================================
         if (item?.variantId) {
-          const variant = await ProductVariant.findOne({
-            where: { id: item?.variantId },
-            transaction: t,
-          });
-          if (!variant) throw new NotFoundException("Variant is Not Available");
+          const variant = await this.loadStockVariant(item?.variantId, t);
           if (variant.productId != item?.productId)
             throw new ServiceUnavailableException("Variant is Not Available");
-          if (variant.units == 0 || variant.units < item?.quantity)
+          if (variant.units < orderedQuantity)
             throw new ServiceUnavailableException("Variant is out of stock");
           newItem.price = variant.price;
-          newItem.totalPrice = 0; //inside modal
+          newItem.totalPrice = Number(variant.price || 0) * orderedQuantity;
           newItem.image = variant.image;
           newItem.sku = variant.sku;
           newItem.barcode = variant.barcode;
           newItem.combination = variant.combination;
           await newItem.save({ transaction: t });
-          await variant.decrement("units", {
-            by: Number(item?.quantity),
-            transaction: t,
-          });
+
+          const [updatedVariantRows] = await ProductVariant.update(
+            { units: literal(`units - ${orderedQuantity}`) },
+            {
+              where: {
+                id: variant.id,
+                units: {
+                  [Op.gte]: orderedQuantity,
+                },
+              },
+              transaction: t,
+            }
+          );
+
+          if (updatedVariantRows === 0) {
+            throw new ServiceUnavailableException("Variant is out of stock");
+          }
         }
         total += newItem.totalPrice;
         quantity += newItem.quantity;
@@ -562,7 +648,7 @@ export class OrderPlaceService {
 
   private async verifyPaymentWithGateway(
     paymentRef: string,
-    grandTotal: number,
+    grandTotal: number
   ) {
     if (this.isPaystackPayment(paymentRef)) {
       // Verify with Paystack
@@ -632,7 +718,7 @@ export class OrderPlaceService {
     orderId: number,
     grandTotal: number,
     payment: paymentType,
-    t: Transaction,
+    t: Transaction
   ) {
     const status = payment?.ref ? "pending" : "pending";
 
@@ -644,7 +730,7 @@ export class OrderPlaceService {
         ref: payment?.ref || "",
         amount: grandTotal * 100,
       } as any,
-      { transaction: t },
+      { transaction: t }
     );
   }
 
@@ -669,7 +755,7 @@ export class OrderPlaceService {
           status,
           remark: "your order is getting processed.",
         } as any,
-        { transaction: t },
+        { transaction: t }
       );
       return orderStatus;
     } catch (err) {
@@ -679,7 +765,7 @@ export class OrderPlaceService {
   async orderAddress(
     userId: number,
     addres: AddressType,
-    t: Transaction,
+    t: Transaction
   ): Promise<any> {
     try {
       console.log("[orderAddress] Looking for address:", {
@@ -707,7 +793,7 @@ export class OrderPlaceService {
     newOrder: any,
     store: Store,
     orderItems: any[],
-    address: any,
+    address: any
   ) {
     try {
       t.afterCommit(async () => {
@@ -734,7 +820,7 @@ export class OrderPlaceService {
           newOrder.order_id,
           newOrder.userId,
           orderItems[0]?.image,
-          user?.fcmtoken,
+          user?.fcmtoken
         );
         //seller notificcation.(push)
         await this.notificationService.sendPushNotification({

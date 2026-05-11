@@ -36,7 +36,6 @@ import { FirebaseService } from "../FIREBASE/firebase.service";
 import { Role } from "../shared/enum/role.enum";
 import { Store } from "../STORE/store.entity";
 import {
-  deriveUserType,
   normalizeRole,
   normalizeRoles,
   resolveActiveRole,
@@ -83,7 +82,7 @@ export class UserService {
     user.roles = normalizedRoles;
     user.active_role = resolvedActiveRole;
     user.role = resolvedActiveRole;
-    user.type = deriveUserType(normalizedRoles, resolvedActiveRole);
+    user.type = resolvedActiveRole;
     return user;
   }
 

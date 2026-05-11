@@ -177,8 +177,33 @@ export class AuthGuard implements CanActivate {
    * EXTRACT BEARER TOKEN
    */
   private extractTokenFromHeader(request: any): string | undefined {
-    const [type, token] = request.headers?.authorization?.split(" ") ?? [];
+    const headerToken = this.normalizeBearerToken(
+      request?.headers?.authorization,
+    );
 
-    return type === "Bearer" ? token : undefined;
+    if (headerToken) {
+      return headerToken;
+    }
+
+    return this.normalizeBearerToken(
+      request?.headers?.["x-access-token"],
+    );
+  }
+
+  private normalizeBearerToken(value: unknown): string | undefined {
+    if (!value) return;
+
+    const token = String(value).trim();
+    const [type, rawToken] = token.split(/\s+/);
+
+    if (!rawToken) {
+      return token;
+    }
+
+    if ((type || "").toLowerCase() === "bearer") {
+      return rawToken;
+    }
+
+    return;
   }
 }

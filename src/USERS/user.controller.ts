@@ -72,6 +72,17 @@ export class UserController {
     return this.UserService.refreshUserData(userId);
   }
 
+  //to get the currently logged-in user's details.
+  @UseGuards(AuthGuard)
+  @Get("me")
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @UseInterceptors(RemovePasswordInterceptor)
+  @ApiDataObjectResponse(UserDto)
+  me(@UserId() userId: number): Promise<DataResponseDto> {
+    return this.UserService.refreshUserData(userId);
+  }
+
   //to get a user's details only for admin
   @Roles(Role.Admin)
   @UseGuards(AuthGuard)

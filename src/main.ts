@@ -70,6 +70,28 @@ async function bootstrap() {
     logger: fileLogger,
   });
 
+  const httpAdapter = app.getHttpAdapter();
+  const expressApp = httpAdapter.getInstance();
+
+  if (typeof expressApp?.set === "function") {
+    expressApp.set("etag", false);
+  }
+
+  app.use((req: any, res: any, next: () => void) => {
+    const cacheControl =
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, private";
+    res.setHeader("Cache-Control", cacheControl);
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    res.setHeader("X-Accel-Expires", "0");
+    res.setHeader("X-Cache", "no-store");
+    if (res.removeHeader) {
+      res.removeHeader("ETag");
+    }
+    next();
+  });
+
   const logger = fileLogger;
   app.useLogger(fileLogger);
 
@@ -121,10 +143,31 @@ async function bootstrap() {
   }
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (
+        allowedOrigins.includes(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)
+      ) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "x-access-token",
+    ],
     exposedHeaders: ["Content-Disposition"],
   });
   // ==================================================

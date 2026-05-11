@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Header,
   Param,
   ParseIntPipe,
   Post,
@@ -38,6 +39,10 @@ export class NewAddressController {
   @Get()
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  @Header("Surrogate-Control", "no-store")
   @HttpCode(200)
   @ApiOperation({
     summary: "List saved addresses for the logged-in user",
@@ -50,10 +55,30 @@ export class NewAddressController {
     return this.newAddressService.findAll(userId, params);
   }
 
+  @Get("me")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  @Header("Surrogate-Control", "no-store")
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Get current user saved addresses",
+  })
+  @ApiOkResponse({ type: NewAddressDto })
+  findCurrent(@UserId() userId: number): Promise<DataResponseDto> {
+    return this.newAddressService.findCurrent(userId);
+  }
+
   // Get one address by ID
   @Get(":id")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  @Header("Surrogate-Control", "no-store")
   @HttpCode(200)
   @ApiOperation({
     summary: "Get one saved address by ID",
@@ -70,6 +95,7 @@ export class NewAddressController {
   // Create new address
   @Post()
   @UseGuards(AuthGuard)
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
   @ApiOperation({
     summary: "Create a saved address",
     description:

@@ -9,7 +9,6 @@ import { Address } from "./address.entity";
 import { CreateAddressDto } from "./dto/create.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { Transaction } from "sequelize";
-import { User } from "../USERS/user.entity";
 import { getErrorMessage } from "../shared/helpers/errormessage";
 import { UpdateAddressDto } from "./dto/updateAddress.dto";
 @Injectable()
@@ -27,13 +26,6 @@ export class AddressService {
         },
         attributes: { exclude: ["createdAt", "updatedAt"] },
         order: [["updatedAt", "DESC"]],
-        include: [
-          {
-            model: User,
-            required: true,
-            attributes: ["name"],
-          },
-        ],
       });
       return new DataResponseDto(allList, true, "success");
     } catch (err) {
@@ -41,10 +33,33 @@ export class AddressService {
     }
   }
 
+  async findOne(userId: number, id: number) {
+    try {
+      const address = await this.AddressRepository.findOne<Address>({
+        where: {
+          id,
+          userId,
+        },
+        attributes: { exclude: ["createdAt", "updatedAt"] },
+      });
+
+      if (!address) {
+        throw new NotFoundException("Address not found");
+      }
+
+      return new DataResponseDto(address, true, "success");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
   async create(userId: number, create: CreateAddressDto) {
     try {
-      const address = Address.build({ userId, ...create });
-      const createData = await address.save();
+      const createData = await this.AddressRepository.create({
+        userId,
+        ...create,
+      });
       return new DataResponseDto(createData, true, "Successfully added");
     } catch (err) {
       if (err instanceof HttpException) throw err;
@@ -80,7 +95,11 @@ export class AddressService {
   }
   async setDefault(userId: number, id: number) {
     try {
-      const result = await this.AddressRepository.sequelize.transaction(
+      const sequelize = this.AddressRepository.sequelize;
+      if (!sequelize) {
+        throw new InternalServerErrorException("Database instance is unavailable");
+      }
+      const result = await sequelize.transaction(
         async (transaction: Transaction) => {
           const setFalse = await this.AddressRepository.update(
             { default: false },

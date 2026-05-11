@@ -12,6 +12,7 @@ const collectionVariables = [
   { key: "baseUrl", value: "http://localhost:8000", type: "string" },
   { key: "authToken", value: "", type: "string" },
   { key: "refreshToken", value: "", type: "string" },
+  { key: "password", value: "Options123#", type: "string" },
   { key: "userId", value: "1", type: "number" },
   { key: "managedUserId", value: "1", type: "number" },
   { key: "userEmail", value: DEFAULT_EMAIL, type: "string" },
@@ -20,9 +21,29 @@ const collectionVariables = [
   { key: "orderId", value: "1", type: "number" },
   { key: "productId", value: "1", type: "number" },
   { key: "variantId", value: "1", type: "number" },
+  { key: "cartItemId", value: "1", type: "number" },
   { key: "addressId", value: "1", type: "number" },
   { key: "deliveryToken", value: "", type: "string" },
+  { key: "deliveryTokenAddressId", value: "", type: "number" },
+  { key: "deliveryCharge", value: "0", type: "number" },
+  { key: "deliveryDiscount", value: "0", type: "number" },
+  {
+    key: "callbackUrl",
+    value: "http://localhost:3000/payment/callback",
+    type: "string",
+  },
   { key: "paymentReference", value: "", type: "string" },
+  { key: "paystackAccessCode", value: "", type: "string" },
+  { key: "boosterPlanId", value: "1", type: "number" },
+  { key: "boosterConfigId", value: "1", type: "number" },
+  { key: "boosterReference", value: "", type: "string" },
+  { key: "boosterTier", value: "gold", type: "string" },
+  { key: "boosterDurationDays", value: "30", type: "number" },
+  { key: "managedRole", value: "admin", type: "string" },
+  { key: "managedStatus", value: "true", type: "boolean" },
+  { key: "adminEmail", value: "admin@example.com", type: "string" },
+  { key: "adminResetToken", value: "", type: "string" },
+  { key: "adminNewPassword", value: "NewStrongPassword123!", type: "string" },
   { key: "reconcileReference", value: "", type: "string" },
   { key: "guestEmail", value: DEFAULT_EMAIL, type: "string" },
   { key: "buyerEmail", value: DEFAULT_EMAIL, type: "string" },
@@ -37,6 +58,15 @@ const collectionVariables = [
   { key: "subCategoryId", value: "1", type: "number" },
   { key: "storeSlug", value: "", type: "string" },
   { key: "productPid", value: "", type: "string" },
+  { key: "productName", value: "Sample product", type: "string" },
+  {
+    key: "productImage",
+    value: "https://example.com/product.jpg",
+    type: "string",
+  },
+  { key: "productPrice", value: "5000", type: "number" },
+  { key: "productWeight", value: "1", type: "number" },
+  { key: "orderQuantity", value: "1", type: "number" },
   { key: "phone", value: "2348012345678", type: "string" },
   { key: "slug", value: "", type: "string" },
   { key: "token", value: "", type: "string" },
@@ -323,13 +353,13 @@ function sampleForResource(resource) {
     return { storeId: 123, productId: 456, days: 7, amount: 5000 };
   }
   if (resource.includes("auth") || resource.includes("login")) {
-    return { email: DEFAULT_EMAIL, password: "P@ssw0rd" };
+    return { email: DEFAULT_EMAIL, password: "Options123#" };
   }
   if (resource.includes("user") || resource.includes("users")) {
     return {
       name: "Jane Customer",
       email: DEFAULT_EMAIL,
-      password: "P@ssw0rd",
+      password: "Options123#",
       phone: "+2348012345678",
     };
   }
@@ -343,23 +373,184 @@ function sampleForResource(resource) {
     };
   }
   if (resource.includes("order")) {
-    return {
-      userId: 1,
-      items: [{ productId: 1, quantity: 2 }],
-      shippingAddressId: 1,
-      paymentMethod: "card",
-    };
+    return sampleForRequest("POST", ["order"]);
   }
   if (resource.includes("wishlist")) return { userId: 1, productId: 123 };
   if (resource.includes("cart")) {
     return { userId: 1, items: [{ productId: 1, quantity: 1 }] };
   }
-  return { example: "replace_with_actual_payload" };
+  return {};
 }
 
 function sampleForRequest(method, pathSegments = []) {
   const normalizedMethod = String(method || "").toUpperCase();
   const normalizedPath = (pathSegments || []).join("/");
+
+  if (normalizedMethod === "POST" && normalizedPath === "auth/login") {
+    return {
+      email: "{{userEmail}}",
+      password: "{{password}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "new-address") {
+    return {
+      address_type: "home",
+      full_address: "12 Test Street, Ikeja, Lagos",
+      pincode: "100001",
+      phone_no: "08000000000",
+      country_id: "{{countryId}}",
+      state_id: "{{stateId}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "cart") {
+    return {
+      productId: "{{productId}}",
+      variantId: "{{variantId}}",
+      quantity: "{{orderQuantity}}",
+    };
+  }
+
+  if (normalizedMethod === "PUT" && normalizedPath === "cart/{{id}}") {
+    return {};
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery"
+  ) {
+    return {
+      cart: [
+        {
+          id: "{{cartItemId}}",
+          userId: "{{userId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          quantity: "{{orderQuantity}}",
+          image: "{{productImage}}",
+          totalPrice: "{{productPrice}}",
+          buyPrice: "{{productPrice}}",
+          name: "{{productName}}",
+          productDetails: {
+            image: "{{productImage}}",
+            name: "{{productName}}",
+            price: "{{productPrice}}",
+          },
+          storeDetails: {},
+        },
+      ],
+      address: {
+        id: "{{addressId}}",
+        userId: "{{userId}}",
+        flat: "12",
+        fullAddress: "12 Test Street, Ikeja, Lagos",
+        pin_code: "100001",
+        state: "Lagos",
+        city: "Ikeja",
+        street: "Test Street",
+        alt_phone: "08000000000",
+        code: "NG",
+        geo_location: "",
+        type: "home",
+        lat: null,
+        long: null,
+      },
+      total: "{{productPrice}}",
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/new"
+  ) {
+    return {
+      cart: [
+        {
+          weight: "{{productWeight}}",
+          quantity: "{{orderQuantity}}",
+        },
+      ],
+      address: {
+        id: "{{addressId}}",
+        country_id: "{{countryId}}",
+        state_id: "{{stateId}}",
+      },
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/public"
+  ) {
+    return {
+      cart: [
+        {
+          id: "{{productId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          name: "{{productName}}",
+          quantity: "{{orderQuantity}}",
+          weight: "{{productWeight}}",
+          totalPrice: "{{productPrice}}",
+        },
+      ],
+      address: {
+        id: "guest_{{userId}}",
+        full_name: "Guest Buyer",
+        phone_no: "08000000000",
+        full_address: "12 Test Street, Ikeja, Lagos",
+        country_id: "{{countryId}}",
+        state_id: "{{stateId}}",
+        country: "Nigeria",
+        state: "Lagos",
+        is_guest: true,
+      },
+      total: "{{productPrice}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "order") {
+    return {
+      cart: [
+        {
+          id: "{{cartItemId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          quantity: "{{orderQuantity}}",
+        },
+      ],
+      payment: {
+        type: "paystack",
+        callback_url: "{{callbackUrl}}",
+      },
+      address: {
+        id: "{{addressId}}",
+      },
+      charges: {
+        token: "{{deliveryToken}}",
+      },
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "paystack/initialize-checkout"
+  ) {
+    return {
+      order_payload: sampleForRequest("POST", ["order"]),
+      callback_url: "{{callbackUrl}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "paystack/verify") {
+    return {
+      reference: "{{paymentReference}}",
+    };
+  }
 
   if (
     normalizedMethod === "PUT" &&
@@ -384,6 +575,81 @@ function sampleForRequest(method, pathSegments = []) {
   }
 
   return sampleForResource(pathSegments[0]);
+}
+
+function rawBodyForRequest(method, pathSegments = []) {
+  const normalizedMethod = String(method || "").toUpperCase();
+  const normalizedPath = pathSegments.join("/");
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery"
+  ) {
+    return [
+      "{",
+      '  "cart": [',
+      "    {",
+      '      "id": {{cartItemId}},',
+      '      "userId": {{userId}},',
+      '      "productId": {{productId}},',
+      '      "variantId": {{variantId}},',
+      '      "storeId": {{storeId}},',
+      '      "quantity": {{orderQuantity}},',
+      '      "image": "{{productImage}}",',
+      '      "totalPrice": {{productPrice}},',
+      '      "buyPrice": {{productPrice}},',
+      '      "name": "{{productName}}",',
+      '      "productDetails": {',
+      '        "image": "{{productImage}}",',
+      '        "name": "{{productName}}",',
+      '        "price": {{productPrice}}',
+      "      },",
+      '      "storeDetails": {}',
+      "    }",
+      "  ],",
+      '  "address": {',
+      '    "id": {{addressId}},',
+      '    "userId": {{userId}},',
+      '    "flat": "12",',
+      '    "fullAddress": "12 Test Street, Ikeja, Lagos",',
+      '    "pin_code": "100001",',
+      '    "state": "Lagos",',
+      '    "city": "Ikeja",',
+      '    "street": "Test Street",',
+      '    "alt_phone": "08000000000",',
+      '    "code": "NG",',
+      '    "geo_location": "",',
+      '    "type": "home",',
+      '    "lat": null,',
+      '    "long": null',
+      "  },",
+      '  "total": {{productPrice}}',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/new"
+  ) {
+    return [
+      "{",
+      '  "cart": [',
+      "    {",
+      '      "weight": {{productWeight}},',
+      '      "quantity": {{orderQuantity}}',
+      "    }",
+      "  ],",
+      '  "address": {',
+      '    "id": {{addressId}},',
+      '    "country_id": {{countryId}},',
+      '    "state_id": {{stateId}}',
+      "  }",
+      "}",
+    ].join("\n");
+  }
+
+  return JSON.stringify(sampleForRequest(method, pathSegments), null, 2);
 }
 
 function ensureJsonHeader(headers) {
@@ -419,7 +685,10 @@ function processItem(item, summary) {
 
   const pathSegments =
     Array.isArray(req.url?.path) && req.url.path.length > 0 ? req.url.path : [];
-  const sample = sampleForRequest(method, pathSegments.length ? pathSegments : [resource]);
+  const sample = sampleForRequest(
+    method,
+    pathSegments.length ? pathSegments : [resource],
+  );
   const hasBody =
     req.body &&
     ((req.body.raw && req.body.raw.trim() !== "") ||
@@ -427,10 +696,29 @@ function processItem(item, summary) {
 
   const shouldReplaceGenericBody =
     typeof req.body?.raw === "string" &&
-    ["{}", "{\n}"].includes(req.body.raw.trim());
+    (["{}", "{\n}"].includes(req.body.raw.trim()) ||
+      req.body.raw.includes("replace_with_actual_payload") ||
+      req.body.raw.includes('"shippingAddressId"') ||
+      req.body.raw.includes('"paymentMethod"'));
+  const shouldReplaceDeliveryBody =
+    method === "POST" &&
+    pathSegments.join("/") === "calculate_delivery/new" &&
+    typeof req.body?.raw === "string" &&
+    (req.body.raw.includes('"productDetails"') ||
+      req.body.raw.includes('"weight": "{{productWeight}}"'));
+  const shouldReplaceLegacyDeliveryBody =
+    method === "POST" &&
+    pathSegments.join("/") === "calculate_delivery" &&
+    typeof req.body?.raw === "string" &&
+    req.body.raw.includes('"id": "{{cartItemId}}"');
 
-  if (!hasBody || shouldReplaceGenericBody) {
-    req.body = { mode: "raw", raw: JSON.stringify(sample, null, 2) };
+  if (
+    !hasBody ||
+    shouldReplaceGenericBody ||
+    shouldReplaceDeliveryBody ||
+    shouldReplaceLegacyDeliveryBody
+  ) {
+    req.body = { mode: "raw", raw: rawBodyForRequest(method, pathSegments) };
     req.header = ensureJsonHeader(req.header);
     summary.updatedBodies += 1;
   }
@@ -601,11 +889,7 @@ function buildGeneratedRequest(route) {
   if (["POST", "PUT", "PATCH"].includes(route.method)) {
     request.body = {
       mode: "raw",
-      raw: JSON.stringify(
-        sampleForRequest(route.method, route.pathSegments),
-        null,
-        2,
-      ),
+      raw: rawBodyForRequest(route.method, route.pathSegments),
       options: { raw: { language: "json" } },
     };
   }
@@ -655,7 +939,9 @@ function syncControllerRoutes(collection) {
   const existingRequests = new Set(
     flattenRequests(collection.item).map((item) =>
       normalizeCollectionKey(
-        `${String(item.request.method || "GET").toUpperCase()} ${item.request.url.raw}`,
+        `${String(item.request.method || "GET").toUpperCase()} ${
+          item.request.url.raw
+        }`,
       ),
     ),
   );
@@ -695,7 +981,9 @@ function pruneUnknownRequests(items, knownRoutes) {
     const raw = String(item?.request?.url?.raw || "");
     const regex = toRouteRegex(raw);
     const isKnown = knownRoutes.some(
-      (route) => route.method === method && route.regex.test(raw.replace("{{baseUrl}}", "").split("?")[0]),
+      (route) =>
+        route.method === method &&
+        route.regex.test(raw.replace("{{baseUrl}}", "").split("?")[0]),
     );
 
     if (isKnown) {
@@ -711,6 +999,24 @@ function upsertTestScript(item, scriptLines) {
   const existing = item.event.find((entry) => entry.listen === "test");
   const script = {
     listen: "test",
+    script: {
+      type: "text/javascript",
+      exec: scriptLines,
+    },
+  };
+
+  if (existing) {
+    existing.script = script.script;
+  } else {
+    item.event.push(script);
+  }
+}
+
+function upsertPreRequestScript(item, scriptLines) {
+  item.event = Array.isArray(item.event) ? item.event : [];
+  const existing = item.event.find((entry) => entry.listen === "prerequest");
+  const script = {
+    listen: "prerequest",
     script: {
       type: "text/javascript",
       exec: scriptLines,
@@ -747,8 +1053,10 @@ function buildContextualScript(pathSegments = [], requestName = "") {
   const isUserLike = resource === "user" || resource === "users";
   const isStoreLike = resource === "coorporate_store";
   const isProductLike = resource === "products";
+  const isCartLike = resource === "cart";
+  const isCalculateDeliveryLike = resource === "calculate_delivery";
   const isOrderLike = resource === "order";
-  const isAddressLike = resource === "address";
+  const isAddressLike = resource === "address" || resource === "new-address";
   const isPaystackLike = resource === "paystack";
   const isCategoryLike = resource === "category";
   const isSubCategoryLike = resource === "sub_category";
@@ -768,6 +1076,23 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     "      if (pm.environment) {",
     "        pm.environment.set(key, normalized);",
     "      }",
+    "    }",
+    "  };",
+    "  const unsetVar = (key) => {",
+    "    pm.collectionVariables.unset(key);",
+    "    if (pm.environment) {",
+    "      pm.environment.unset(key);",
+    "    }",
+    "  };",
+    "  const decodeJwtPayload = (token) => {",
+    "    try {",
+    "      if (!token || String(token).split('.').length < 2) return null;",
+    "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+    "      while (payload.length % 4) payload += '=';",
+    "      return JSON.parse(atob(payload));",
+    "    } catch (error) {",
+    "      console.log('Unable to decode JWT payload', error);",
+    "      return null;",
     "    }",
     "  };",
     "  const data = json?.data ?? json;",
@@ -815,6 +1140,9 @@ function buildContextualScript(pathSegments = [], requestName = "") {
       "  setIf('productId', product?._id || product?.id || product?.productId || data?._id || data?.id);",
       "  setIf('productPid', product?.pid || product?._id || product?.id);",
       "  setIf('storeId', product?.store_id || product?.storeId || store?.id || data?.store_id || data?.storeId);",
+      "  setIf('productName', product?.name || product?.title || data?.name || data?.title);",
+      "  setIf('productPrice', product?.price || product?.retail_rate || product?.retailRate || data?.price || data?.retail_rate);",
+      "  setIf('productWeight', product?.product_weight || product?.productWeight || product?.weight || data?.product_weight || data?.productWeight || data?.weight);",
       "  setIf('storeSlug', store?.slug || first?.slug || data?.slug);",
       "  setIf('categoryId', product?.category || product?.categoryId || category?.id || category?._id || data?.category || data?.categoryId);",
       "  setIf('subCategoryId', product?.subCategory || product?.subCategoryId || subCategory?.id || subCategory?._id || data?.subCategory || data?.subCategoryId);",
@@ -822,9 +1150,64 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     );
   }
 
+  if (isCartLike) {
+    script.push(
+      "  const cartRoot = data?.cart || data?.item || data;",
+      "  const cartRows = Array.isArray(cartRoot?.rows) ? cartRoot.rows : [];",
+      "  const cartResults = Array.isArray(cartRoot?.results) ? cartRoot.results : [];",
+      "  const cartNested = Array.isArray(cartRoot?.data) ? cartRoot.data : [];",
+      "  const cartList = Array.isArray(cartRoot) ? cartRoot : (cartRows.length ? cartRows : (cartResults.length ? cartResults : cartNested));",
+      "  const cartItem = cartList[0] || cartRoot || first || {};",
+      "  const cartProduct = cartItem?.product || cartItem?.productDetails || product || {};",
+      "  const cartStore = cartItem?.store || cartItem?.storeDetails || store || {};",
+      "  const cartVariant = cartItem?.variant || cartItem?.variantDetails || firstVariant || {};",
+      "  const cartQuantity = cartItem?.quantity || cartItem?.qty || pm.collectionVariables.get('orderQuantity') || 1;",
+      "  const cartPrice = cartItem?.price || cartItem?.buyPrice || cartItem?.unit_price || cartItem?.unitPrice || cartProduct?.price || cartProduct?.retail_rate || (cartItem?.totalPrice && cartQuantity ? Number(cartItem.totalPrice) / Number(cartQuantity) : undefined);",
+      "  const cartWeight = cartItem?.productWeight || cartItem?.product_weight || cartItem?.weight || cartProduct?.product_weight || cartProduct?.productWeight || cartProduct?.weight || pm.collectionVariables.get('productWeight') || 1;",
+      "  setIf('cartItemId', cartItem?.id || cartItem?._id || cartItem?.cartId || cartItem?.cart_id);",
+      "  setIf('productId', cartItem?.productId || cartItem?.product_id || cartProduct?._id || cartProduct?.id || cartProduct?.productId);",
+      "  setIf('productPid', cartItem?.pid || cartProduct?.pid);",
+      "  setIf('variantId', cartItem?.variantId ?? cartItem?.variant_id ?? cartVariant?.id ?? cartVariant?._id ?? 'null');",
+      "  setIf('storeId', cartItem?.storeId || cartItem?.store_id || cartProduct?.store_id || cartProduct?.storeId || cartStore?.id || cartStore?._id);",
+      "  setIf('orderQuantity', cartQuantity);",
+      "  setIf('productPrice', cartPrice);",
+      "  setIf('productName', cartItem?.name || cartProduct?.name || cartProduct?.title);",
+      "  setIf('productImage', cartItem?.image || cartProduct?.image || cartVariant?.image);",
+      "  setIf('productWeight', cartWeight);",
+    );
+  }
+
   if (isAddressLike) {
     script.push(
-      "  setIf('addressId', address?.id || address?._id || data?.id || data?.addressId);",
+      "  const addressRoot = data?.address || data;",
+      "  const addressRows = Array.isArray(addressRoot?.rows) ? addressRoot.rows : [];",
+      "  const addressResults = Array.isArray(addressRoot?.results) ? addressRoot.results : [];",
+      "  const addressNested = Array.isArray(addressRoot?.data) ? addressRoot.data : [];",
+      "  const addressList = Array.isArray(addressRoot) ? addressRoot : (addressRows.length ? addressRows : (addressResults.length ? addressResults : addressNested));",
+      "  const selectedAddress = addressList[0] || addressRoot || address || {};",
+      "  const previousAddressId = pm.collectionVariables.get('addressId') || (pm.environment && pm.environment.get('addressId'));",
+      "  const nextAddressId = selectedAddress?.id || selectedAddress?._id || selectedAddress?.addressId || data?.id || data?.addressId;",
+      "  if (nextAddressId && previousAddressId && String(nextAddressId) !== String(previousAddressId)) {",
+      "    unsetVar('deliveryToken');",
+      "    unsetVar('deliveryTokenAddressId');",
+      "    unsetVar('deliveryCharge');",
+      "    unsetVar('deliveryDiscount');",
+      "  }",
+      "  setIf('addressId', selectedAddress?.id || selectedAddress?._id || selectedAddress?.addressId || data?.id || data?.addressId);",
+      "  setIf('countryId', selectedAddress?.country_id || selectedAddress?.countryId || data?.country_id || data?.countryId);",
+      "  setIf('stateId', selectedAddress?.state_id || selectedAddress?.stateId || data?.state_id || data?.stateId);",
+    );
+  }
+
+  if (isCalculateDeliveryLike) {
+    script.push(
+      "  const deliveryToken = json?.token || data?.token;",
+      "  const deliveryTokenPayload = decodeJwtPayload(deliveryToken);",
+      "  setIf('deliveryToken', deliveryToken);",
+      "  setIf('deliveryTokenAddressId', deliveryTokenPayload?.data?.addressId || pm.collectionVariables.get('addressId'));",
+      "  setIf('deliveryCharge', data?.amount || data?.delivery_charge || data?.deliveryCharge);",
+      "  setIf('deliveryDiscount', data?.discount);",
+      "  setIf('productWeight', data?.totalWeight || data?.total_weight || pm.collectionVariables.get('productWeight'));",
     );
   }
 
@@ -833,8 +1216,10 @@ function buildContextualScript(pathSegments = [], requestName = "") {
       "  const orderCandidate = order || first;",
       "  setIf('orderId', orderCandidate?.id || data?.id);",
       "  setIf('orderPublicId', orderCandidate?.order_id || data?.order_id);",
-      "  setIf('paymentReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
-      "  setIf('reconcileReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('paymentReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('reconcileReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('paystackAuthUrl', data?.authorization_url || data?.authorizationUrl || payment?.authorization_url);",
+      "  setIf('paystackAccessCode', data?.access_code || data?.accessCode || payment?.access_code);",
       "  setIf('guestEmail', orderCandidate?.guest_email || data?.email);",
       "  setIf('storeId', orderCandidate?.storeId || store?.id || data?.storeId);",
     );
@@ -930,6 +1315,43 @@ function buildContextualScript(pathSegments = [], requestName = "") {
   return script;
 }
 
+function buildOrderPreRequestScript() {
+  return [
+    "const addressId = pm.variables.get('addressId');",
+    "const deliveryToken = pm.variables.get('deliveryToken');",
+    "let tokenAddressId = pm.variables.get('deliveryTokenAddressId');",
+    "",
+    "const decodeJwtPayload = (token) => {",
+    "  try {",
+    "    if (!token || String(token).split('.').length < 2) return null;",
+    "    let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+    "    while (payload.length % 4) payload += '=';",
+    "    return JSON.parse(atob(payload));",
+    "  } catch (error) {",
+    "    console.log('Unable to decode delivery token', error);",
+    "    return null;",
+    "  }",
+    "};",
+    "",
+    "if (!deliveryToken) {",
+    "  throw new Error('Missing deliveryToken. Run POST /calculate_delivery/new after selecting address and cart, then retry /order.');",
+    "}",
+    "",
+    "if (!tokenAddressId) {",
+    "  const decoded = decodeJwtPayload(deliveryToken);",
+    "  tokenAddressId = decoded?.data?.addressId;",
+    "  if (tokenAddressId !== undefined && tokenAddressId !== null) {",
+    "    pm.collectionVariables.set('deliveryTokenAddressId', String(tokenAddressId));",
+    "    if (pm.environment) pm.environment.set('deliveryTokenAddressId', String(tokenAddressId));",
+    "  }",
+    "}",
+    "",
+    "if (addressId && tokenAddressId && String(addressId) !== String(tokenAddressId)) {",
+    "  throw new Error(`Stale deliveryToken: token addressId=${tokenAddressId}, order addressId=${addressId}. Run POST /calculate_delivery/new again, then retry /order.`);",
+    "}",
+  ];
+}
+
 function walkRequests(items, callback, trail = []) {
   for (const item of items || []) {
     if (Array.isArray(item.item)) {
@@ -1013,7 +1435,9 @@ function ensurePaystackManualSettlementAuditRequest(collection) {
     : [];
 
   const legacyPaystackGroup =
-    paymentsGroup.name === "PAYSTACK" ? null : findGroup(collection, "PAYSTACK");
+    paymentsGroup.name === "PAYSTACK"
+      ? null
+      : findGroup(collection, "PAYSTACK");
   if (legacyPaystackGroup && Array.isArray(legacyPaystackGroup.item)) {
     legacyPaystackGroup.item = legacyPaystackGroup.item.filter(
       (entry) => entry?.name !== "GET /paystack/manual-settlement/audit",
@@ -1542,6 +1966,422 @@ function ensureGuestOrderRequests(collection) {
   });
 }
 
+function ensureAdminAuthRequests(collection) {
+  const group = ensureTopLevelGroup(collection, "ADMIN AUTH");
+  const jsonHeaders = [{ key: "Content-Type", value: "application/json" }];
+  const authHeaders = [{ key: "Authorization", value: "Bearer {{authToken}}" }];
+  const authJsonHeaders = [
+    { key: "Content-Type", value: "application/json" },
+    { key: "Authorization", value: "Bearer {{authToken}}" },
+  ];
+
+  upsertRequest(group, {
+    name: "POST /admin/auth/forgot-password",
+    request: {
+      method: "POST",
+      header: jsonHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("POST", ["admin", "auth", "forgot-password"]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/auth/forgot-password",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "auth", "forgot-password"],
+      },
+      description:
+        "Public admin forgot-password endpoint. Sends a reset email when the address belongs to an active admin or super admin, and always returns a generic success message.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "POST /admin/auth/request-password-change",
+    request: {
+      method: "POST",
+      header: authHeaders,
+      url: {
+        raw: "{{baseUrl}}/admin/auth/request-password-change",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "auth", "request-password-change"],
+      },
+      description:
+        "Authenticated admin/super-admin endpoint. Sends the logged-in admin a reset link so password changes still go through the email reset flow.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "POST /admin/auth/reset-password",
+    request: {
+      method: "POST",
+      header: authJsonHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("POST", ["admin", "auth", "reset-password"]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/admin/auth/reset-password",
+        host: ["{{baseUrl}}"],
+        path: ["admin", "auth", "reset-password"],
+      },
+      description:
+        "Public admin reset endpoint. Use the one-time token from the email link with the new password.",
+    },
+    response: [],
+  });
+}
+
+function ensureSellerBoosterRequests(collection) {
+  const group = ensureTopLevelGroup(collection, "SELLER BOOSTER");
+  const authHeaders = [
+    { key: "Content-Type", value: "application/json" },
+    { key: "Authorization", value: "Bearer {{authToken}}" },
+  ];
+
+  upsertRequest(group, {
+    name: "GET /seller/booster/plans",
+    request: {
+      method: "GET",
+      header: [{ key: "Content-Type", value: "application/json" }],
+      url: {
+        raw: "{{baseUrl}}/seller/booster/plans",
+        host: ["{{baseUrl}}"],
+        path: ["seller", "booster", "plans"],
+      },
+      description:
+        "Fetch available seller booster plans. Returns basic, gold, and premium tiers with product limits, duration, amount, and boost score.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "POST /seller/booster/initialize",
+    request: {
+      method: "POST",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: [
+          "{",
+          '  "tier": "{{boosterTier}}",',
+          '  "product_ids": [',
+          "    1,",
+          "    2,",
+          "    3",
+          "  ],",
+          '  "duration_days": {{boosterDurationDays}},',
+          '  "callback_url": "http://localhost:3000/seller/booster/callback"',
+          "}",
+        ].join("\n"),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/seller/booster/initialize",
+        host: ["{{baseUrl}}"],
+        path: ["seller", "booster", "initialize"],
+      },
+      description:
+        "Seller-only Paystack initialization for product booster checkout. Basic and gold require product_ids owned by the seller store; premium ignores product_ids and boosts all active products after payment.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "POST /seller/booster/verify",
+    request: {
+      method: "POST",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("POST", ["seller", "booster", "verify"]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/seller/booster/verify",
+        host: ["{{baseUrl}}"],
+        path: ["seller", "booster", "verify"],
+      },
+      description:
+        "Seller-only payment verification. Use the boosterReference captured from initialize or Paystack callback to activate the booster plan.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "GET /seller/booster/status",
+    request: {
+      method: "GET",
+      header: [{ key: "Authorization", value: "Bearer {{authToken}}" }],
+      url: {
+        raw: "{{baseUrl}}/seller/booster/status",
+        host: ["{{baseUrl}}"],
+        path: ["seller", "booster", "status"],
+      },
+      description:
+        "Seller-only current booster status, including active plan details, expiry, boosted product count, and boosted products.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "PUT /seller/booster/products",
+    request: {
+      method: "PUT",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("PUT", ["seller", "booster", "products"]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/seller/booster/products",
+        host: ["{{baseUrl}}"],
+        path: ["seller", "booster", "products"],
+      },
+      description:
+        "Seller-only replacement of selected boosted products for active basic or gold plans. Premium boosters cannot be manually edited.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "POST /seller/booster/cancel",
+    request: {
+      method: "POST",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("POST", ["seller", "booster", "cancel"]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/seller/booster/cancel",
+        host: ["{{baseUrl}}"],
+        path: ["seller", "booster", "cancel"],
+      },
+      description:
+        "Seller-only booster cancellation. Marks the active plan and boosted product rows cancelled and clears product boost flags.",
+    },
+    response: [],
+  });
+}
+
+function ensureSuperAdminRequests(collection) {
+  const group = ensureTopLevelGroup(collection, "SUPER ADMIN");
+  const authHeaders = [
+    { key: "Content-Type", value: "application/json" },
+    { key: "Authorization", value: "Bearer {{authToken}}" },
+  ];
+  const authOnlyHeaders = [
+    { key: "Authorization", value: "Bearer {{authToken}}" },
+  ];
+
+  upsertRequest(group, {
+    name: "GET /super-admin/booster-plan-configs",
+    request: {
+      method: "GET",
+      header: authOnlyHeaders,
+      url: {
+        raw: "{{baseUrl}}/super-admin/booster-plan-configs",
+        host: ["{{baseUrl}}"],
+        path: ["super-admin", "booster-plan-configs"],
+      },
+      description:
+        "Super Admin-only list of booster plan configs. Sellers use the active configs returned by GET /seller/booster/plans for purchases.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "POST /super-admin/booster-plan-configs",
+    request: {
+      method: "POST",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("POST", ["super-admin", "booster-plan-configs"]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/super-admin/booster-plan-configs",
+        host: ["{{baseUrl}}"],
+        path: ["super-admin", "booster-plan-configs"],
+      },
+      description:
+        "Super Admin-only creation of a booster tier config. Names are basic, gold, or premium.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "PATCH /super-admin/booster-plan-configs/:id",
+    request: {
+      method: "PATCH",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("PATCH", [
+            "super-admin",
+            "booster-plan-configs",
+            "{{boosterConfigId}}",
+          ]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/super-admin/booster-plan-configs/{{boosterConfigId}}",
+        host: ["{{baseUrl}}"],
+        path: ["super-admin", "booster-plan-configs", "{{boosterConfigId}}"],
+      },
+      description:
+        "Super Admin-only update for editable booster config fields such as product_limit, boost_score, duration_days, price, is_active, and is_unlimited.",
+    },
+    response: [],
+  });
+
+  for (const action of ["disable", "enable"]) {
+    upsertRequest(group, {
+      name: `PATCH /super-admin/booster-plan-configs/:id/${action}`,
+      request: {
+        method: "PATCH",
+        header: authOnlyHeaders,
+        url: {
+          raw: `{{baseUrl}}/super-admin/booster-plan-configs/{{boosterConfigId}}/${action}`,
+          host: ["{{baseUrl}}"],
+          path: [
+            "super-admin",
+            "booster-plan-configs",
+            "{{boosterConfigId}}",
+            action,
+          ],
+        },
+        description: `Super Admin-only ${action} action for a booster plan config.`,
+      },
+      response: [],
+    });
+  }
+
+  upsertRequest(group, {
+    name: "GET /super-admin/users",
+    request: {
+      method: "GET",
+      header: authOnlyHeaders,
+      url: {
+        raw: "{{baseUrl}}/super-admin/users",
+        host: ["{{baseUrl}}"],
+        path: ["super-admin", "users"],
+      },
+      description: "Super Admin-only user list.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "GET /super-admin/admins",
+    request: {
+      method: "GET",
+      header: authOnlyHeaders,
+      url: {
+        raw: "{{baseUrl}}/super-admin/admins",
+        host: ["{{baseUrl}}"],
+        path: ["super-admin", "admins"],
+      },
+      description: "Super Admin-only admin and super-admin list.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "PATCH /super-admin/users/:id/role",
+    request: {
+      method: "PATCH",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("PATCH", [
+            "super-admin",
+            "users",
+            "{{managedUserId}}",
+            "role",
+          ]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/super-admin/users/{{managedUserId}}/role",
+        host: ["{{baseUrl}}"],
+        path: ["super-admin", "users", "{{managedUserId}}", "role"],
+      },
+      description:
+        "Super Admin-only user role update. Only Super Admin can assign super_admin.",
+    },
+    response: [],
+  });
+
+  upsertRequest(group, {
+    name: "PATCH /super-admin/users/:id/status",
+    request: {
+      method: "PATCH",
+      header: authHeaders,
+      body: {
+        mode: "raw",
+        raw: JSON.stringify(
+          sampleForRequest("PATCH", [
+            "super-admin",
+            "users",
+            "{{managedUserId}}",
+            "status",
+          ]),
+          null,
+          2,
+        ),
+        options: { raw: { language: "json" } },
+      },
+      url: {
+        raw: "{{baseUrl}}/super-admin/users/{{managedUserId}}/status",
+        host: ["{{baseUrl}}"],
+        path: ["super-admin", "users", "{{managedUserId}}", "status"],
+      },
+      description:
+        "Super Admin-only user enable/disable endpoint. The service prevents disabling the last active Super Admin.",
+    },
+    response: [],
+  });
+}
+
 function applyScripts(collection) {
   walkRequests(collection.item, (item) => {
     const pathSegments = Array.isArray(item?.request?.url?.path)
@@ -1549,6 +2389,36 @@ function applyScripts(collection) {
       : [];
 
     upsertTestScript(item, buildContextualScript(pathSegments, item.name));
+
+    const method = String(item?.request?.method || "").toUpperCase();
+    if (method === "POST" && pathSegments.join("/") === "order") {
+      upsertPreRequestScript(item, buildOrderPreRequestScript());
+    }
+  });
+}
+
+function removePlaceholderBodies(collection) {
+  walkRequests(collection.item, (item) => {
+    const request = item?.request;
+    const raw = request?.body?.raw;
+    if (
+      typeof raw !== "string" ||
+      !raw.includes("Update this body with the endpoint-specific DTO fields")
+    ) {
+      return;
+    }
+
+    const method = String(request.method || "").toUpperCase();
+    const pathSegments = Array.isArray(request.url?.path)
+      ? request.url.path
+      : [];
+
+    request.body = {
+      mode: "raw",
+      raw: rawBodyForRequest(method, pathSegments),
+      options: { raw: { language: "json" } },
+    };
+    request.header = ensureJsonHeader(request.header);
   });
 }
 
@@ -1577,11 +2447,20 @@ function updateCollectionFile(filePath) {
   ensurePaystackReconciliationRequests(collection);
   ensureUserManagementRoleRequests(collection);
   ensureGuestOrderRequests(collection);
-  collection.item = pruneUnknownRequests(collection.item, extractControllerRoutes());
+  ensureSellerBoosterRequests(collection);
+  ensureSuperAdminRequests(collection);
+  collection.item = pruneUnknownRequests(
+    collection.item,
+    extractControllerRoutes(),
+  );
+  if (Array.isArray(collection.item)) {
+    collection.item.forEach((item) => processItem(item, summary));
+  }
   walkRequests(collection.item, (item) => {
     normalizeEmailsInRequest(item.request);
   });
   applyScripts(collection);
+  removePlaceholderBodies(collection);
 
   fs.writeFileSync(filePath, JSON.stringify(collection, null, 2), "utf8");
   console.log("Updated Postman collection:", filePath);

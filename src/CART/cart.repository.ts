@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { CartTable } from "./cart.entity";
-import { Sequelize, Transaction } from "sequelize";
+import { Op, Sequelize, Transaction } from "sequelize";
 import { InjectModel } from "@nestjs/sequelize";
 import { Products } from "../PRODUCTS/products.entity";
 import { Store } from "../STORE/store.entity";
@@ -16,7 +16,7 @@ import { CreateCartDto } from "./dto/cart_create.dto";
 export class CartRepository {
   constructor(
     @InjectModel(CartTable)
-    private readonly cartRepository: typeof CartTable,
+    private readonly cartRepository: typeof CartTable
   ) {}
   async deleteCart(userId: number, id: number) {
     try {
@@ -29,6 +29,71 @@ export class CartRepository {
       throw err;
     }
   }
+
+  async deleteCartByAnyId(userId: number, id: string | number) {
+    try {
+      const idValue = String(id || "").trim();
+      const normalizedNumericId =
+        Number.isFinite(Number(idValue)) && Number.isSafeInteger(Number(idValue))
+          ? Number(idValue)
+          : null;
+
+      const candidateIds: Array<string | number> = [idValue];
+
+      if (normalizedNumericId !== null) {
+        candidateIds.push(normalizedNumericId);
+      }
+
+      const deleted = await this.cartRepository.destroy({
+        where: {
+          userId,
+          id: {
+            [Op.in]: candidateIds,
+          },
+        },
+      });
+      if (deleted == 0) throw new NotFoundException();
+      return deleted;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async deleteCartByProduct(
+    userId: number,
+    productId: string,
+    variantId?: string
+  ) {
+    try {
+      const rawProductId = String(productId || "").trim();
+      const numericProductId = Number(rawProductId);
+      const product = await Products.findOne({
+        where:
+          rawProductId && Number.isFinite(numericProductId)
+            ? { _id: numericProductId }
+            : { pid: rawProductId },
+        attributes: ["_id"],
+      });
+
+      if (!product) throw new NotFoundException("Product not found");
+
+      const normalizedVariantId =
+        variantId && Number(variantId) > 0 ? Number(variantId) : null;
+      const deleted = await this.cartRepository.destroy({
+        where: {
+          userId,
+          productId: product._id,
+          ...(normalizedVariantId ? { variantId: normalizedVariantId } : {}),
+        },
+      });
+
+      if (deleted == 0) throw new NotFoundException();
+      return deleted;
+    } catch (err) {
+      throw err;
+    }
+  }
+
   async findAll(userId: number) {
     try {
       const cart = await this.cartRepository.findAll({
@@ -45,19 +110,19 @@ export class CartRepository {
           [Sequelize.col("productDetails.store_id"), "storeId"],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."image", "productDetails"."image")`,
+              `COALESCE("variantDetails"."image", "productDetails"."image")`
             ),
             "image",
           ],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")`,
+              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")`
             ),
             "price",
           ],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")* "quantity"`,
+              `COALESCE("variantDetails"."price", "productDetails"."retail_rate")* "quantity"`
             ),
             "totalPrice",
           ],
@@ -65,11 +130,12 @@ export class CartRepository {
           [Sequelize.col("productDetails.slug"), "slug"],
           [
             Sequelize.literal(
-              `COALESCE("variantDetails"."units", "productDetails"."unit")`,
+              `COALESCE("variantDetails"."units", "productDetails"."unit")`
             ),
             "unit",
           ],
           [Sequelize.col("productDetails.status"), "status"],
+          [Sequelize.col("productDetails.product_weight"), "productWeight"],
           [Sequelize.col("productDetails.name"), "name"],
           [Sequelize.col("variantDetails.combination"), "combination"],
           [
@@ -105,8 +171,14 @@ export class CartRepository {
   async create(userId: number, data: CreateCartDto) {
     try {
       const requestedQuantity = Math.max(1, Number(data?.quantity || 1));
+      const rawProductId = String(data.productId || "").trim();
+      const numericProductId = Number(rawProductId);
+      const productWhere =
+        rawProductId && Number.isFinite(numericProductId)
+          ? { _id: numericProductId }
+          : { pid: rawProductId };
       const product = await Products.findOne({
-        where: { pid: data.productId },
+        where: productWhere,
         attributes: ["_id", "name", "status", "unit"],
       });
 
@@ -119,10 +191,6 @@ export class CartRepository {
       }
 
       let availableUnits = Number(product.unit || 0);
-
-      if (availableUnits <= 0) {
-        throw new ServiceUnavailableException("Product is out of stock");
-      }
 
       const normalizedVariantId =
         data?.variantId && Number(data.variantId) > 0
@@ -140,7 +208,7 @@ export class CartRepository {
 
         if (!variant) {
           throw new NotFoundException(
-            "Variant not found for the selected product",
+            "Variant not found for the selected product"
           );
         }
 
@@ -149,13 +217,17 @@ export class CartRepository {
         if (availableUnits <= 0) {
           throw new ServiceUnavailableException("Variant is out of stock");
         }
+      } else if (availableUnits <= 0) {
+        throw new ServiceUnavailableException("Product is out of stock");
       }
 
       const maxAllowedQuantity = Math.min(25, availableUnits);
 
       if (requestedQuantity > maxAllowedQuantity) {
         throw new BadRequestException(
-          `Only ${maxAllowedQuantity} item${maxAllowedQuantity === 1 ? "" : "s"} left in stock`,
+          `Only ${maxAllowedQuantity} item${
+            maxAllowedQuantity === 1 ? "" : "s"
+          } left in stock`
         );
       }
 
@@ -179,7 +251,9 @@ export class CartRepository {
 
         if (nextQuantity > maxAllowedQuantity) {
           throw new BadRequestException(
-            `Only ${maxAllowedQuantity} item${maxAllowedQuantity === 1 ? "" : "s"} left in stock`,
+            `Only ${maxAllowedQuantity} item${
+              maxAllowedQuantity === 1 ? "" : "s"
+            } left in stock`
           );
         }
 
@@ -195,14 +269,29 @@ export class CartRepository {
     try {
       const [data] = await this.cartRepository.sequelize.query(
         `UPDATE "CART"
-      SET "quantity" = GREATEST(0, LEAST("CART"."quantity" + ?, "PRODUCTS"."unit"))
+      SET "quantity" = GREATEST(
+        0,
+        LEAST(
+          "CART"."quantity" + ?,
+          COALESCE(
+            (
+              SELECT "units"
+              FROM "PRODUCT_VARIANT"
+              WHERE "PRODUCT_VARIANT"."id" = "CART"."variantId"
+              AND "PRODUCT_VARIANT"."productId" = "PRODUCTS"."_id"
+            ),
+            "PRODUCTS"."unit"
+          ),
+          25
+        )
+      )
       FROM "PRODUCTS"
       WHERE "CART"."productId" = "PRODUCTS"."_id"
       AND "CART"."id" = ?
       AND "CART"."userId" = ?
       RETURNING *;
       `,
-        { replacements: [quantity, where.id, where.userId], transaction },
+        { replacements: [quantity, where.id, where.userId], transaction }
       );
       return { count: 1, data: data };
     } catch (err) {
@@ -226,7 +315,6 @@ export class CartRepository {
       const deleted = await this.cartRepository.destroy({
         where: { userId },
       });
-      if (deleted == 0) throw new NotFoundException("No Products in Cart");
       return deleted;
     } catch (err) {
       throw err;

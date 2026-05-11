@@ -12,7 +12,7 @@ import {
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { JwtService } from "@nestjs/jwt";
-import { Op, Transaction, WhereOptions } from "sequelize";
+import { Op, Transaction, WhereOptions, literal } from "sequelize";
 
 import { CreateGuestOrderDto } from "./dto/create-guest-order.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -55,6 +55,53 @@ export class GuestOrderService {
     private readonly mailService: MailService,
     private readonly jwtService: JwtService,
   ) {}
+
+  private normalizeOrderQuantity(
+    item: { quantity?: unknown },
+    productId: number
+  ): number {
+    const quantity = Number(item?.quantity);
+
+    if (
+      Number.isNaN(quantity) ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      throw new BadRequestException(
+        `Invalid quantity for product ${productId} in order request`
+      );
+    }
+
+    return quantity;
+  }
+
+  private async loadStockProduct(productId: number, transaction: Transaction) {
+    const product = await Products.findOne({
+      where: { _id: productId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product ${productId} not found`);
+    }
+
+    return product;
+  }
+
+  private async loadStockVariant(variantId: number, transaction: Transaction) {
+    const variant = await ProductVariant.findOne({
+      where: { id: variantId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!variant) {
+      throw new NotFoundException(`Variant ${variantId} not found`);
+    }
+
+    return variant;
+  }
 
   private getOrphanedGuestCheckoutDisplayStatus(checkout: any): string {
     const checkoutStatus = String(checkout?.status || "").toLowerCase();
@@ -2144,10 +2191,11 @@ export class GuestOrderService {
 
     try {
       for (const item of storeGroup.products) {
-        const product = await Products.findOne({
-          where: { _id: item.productId },
-          transaction: t,
-        });
+        const orderedQuantity = this.normalizeOrderQuantity(
+          item,
+          item.productId
+        );
+        const product = await this.loadStockProduct(item.productId, t);
 
         if (!product) {
           throw new NotFoundException(`Product ${item.productId} not found`);
@@ -2159,16 +2207,29 @@ export class GuestOrderService {
           );
         }
 
-        if (product.unit === 0 || product.unit < item.quantity) {
+        if (product.unit < orderedQuantity) {
           throw new ServiceUnavailableException(
             `Product "${product.name}" is out of stock`,
           );
         }
 
-        await product.decrement("unit", {
-          by: Number(item.quantity),
-          transaction: t,
-        });
+        const [updatedProductRows] = await Products.update(
+          { unit: literal(`unit - ${orderedQuantity}`) },
+          {
+            where: {
+              _id: product._id,
+              unit: {
+                [Op.gte]: orderedQuantity,
+              },
+            },
+            transaction: t,
+          }
+        );
+        if (updatedProductRows === 0) {
+          throw new ServiceUnavailableException(
+            `Product "${product.name}" is out of stock`,
+          );
+        }
 
         await product.increment("orderCount", { by: 1, transaction: t });
 
@@ -2177,7 +2238,7 @@ export class GuestOrderService {
             orderId,
             productId: item.productId,
             variantId: item.variantId,
-            quantity: item.quantity,
+            quantity: orderedQuantity,
             price: product.retail_rate,
             totalPrice: 0,
             image: product.image,
@@ -2189,10 +2250,7 @@ export class GuestOrderService {
         );
 
         if (item.variantId) {
-          const variant = await ProductVariant.findOne({
-            where: { id: item.variantId },
-            transaction: t,
-          });
+          const variant = await this.loadStockVariant(item.variantId, t);
 
           if (!variant) {
             throw new NotFoundException(`Variant ${item.variantId} not found`);
@@ -2202,7 +2260,7 @@ export class GuestOrderService {
             throw new ServiceUnavailableException("Variant mismatch");
           }
 
-          if (variant.units === 0 || variant.units < item.quantity) {
+          if (variant.units < orderedQuantity) {
             throw new ServiceUnavailableException(
               `Variant "${item.variantName}" is out of stock`,
             );
@@ -2214,10 +2272,23 @@ export class GuestOrderService {
           newItem.barcode = variant.barcode;
           newItem.combination = variant.combination;
 
-          await variant.decrement("units", {
-            by: Number(item.quantity),
-            transaction: t,
-          });
+          const [updatedVariantRows] = await ProductVariant.update(
+            { units: literal(`units - ${orderedQuantity}`) },
+            {
+              where: {
+                id: variant.id,
+                units: {
+                  [Op.gte]: orderedQuantity,
+                },
+              },
+              transaction: t,
+            }
+          );
+          if (updatedVariantRows === 0) {
+            throw new ServiceUnavailableException(
+              `Variant "${item.variantName}" is out of stock`,
+            );
+          }
         }
 
         newItem.totalPrice = newItem.price * newItem.quantity;
