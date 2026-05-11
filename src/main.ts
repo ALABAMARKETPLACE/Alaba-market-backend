@@ -78,13 +78,17 @@ async function bootstrap() {
   }
 
   app.use((req: any, res: any, next: () => void) => {
-    res.setHeader(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
-    );
+    const cacheControl =
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0, private";
+    res.setHeader("Cache-Control", cacheControl);
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
     res.setHeader("Surrogate-Control", "no-store");
+    res.setHeader("X-Accel-Expires", "0");
+    res.setHeader("X-Cache", "no-store");
+    if (res.removeHeader) {
+      res.removeHeader("ETag");
+    }
     next();
   });
 
