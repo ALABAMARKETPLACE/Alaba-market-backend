@@ -70,6 +70,24 @@ async function bootstrap() {
     logger: fileLogger,
   });
 
+  const httpAdapter = app.getHttpAdapter();
+  const expressApp = httpAdapter.getInstance();
+
+  if (typeof expressApp?.set === "function") {
+    expressApp.set("etag", false);
+  }
+
+  app.use((req: any, res: any, next: () => void) => {
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+    );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    next();
+  });
+
   const logger = fileLogger;
   app.useLogger(fileLogger);
 
