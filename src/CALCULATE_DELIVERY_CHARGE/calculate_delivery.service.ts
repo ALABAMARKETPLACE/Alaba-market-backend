@@ -199,6 +199,42 @@ export class CalculateDeliveryChargeService {
   // New method for weight-based delivery charge calculation
   async getNewDeliveryCharge(data: NewCalculateDeliveryDto) {
     try {
+      const weightBasedDeliveryEnabled = String(
+        process.env.ENABLE_WEIGHT_BASED_DELIVERY || "",
+      ).toLowerCase();
+
+      // Default behavior: disable weight-based charges unless explicitly enabled.
+      if (weightBasedDeliveryEnabled !== "1" && weightBasedDeliveryEnabled !== "true") {
+        return {
+          data: {
+            amount: 0,
+            discount: 0,
+            totalWeight: 0,
+          },
+          status: true,
+          message: "Success",
+          details: {
+            totalCharge: 0,
+            weightCharge: 0,
+            discount: 0,
+          },
+          statusCode: 200,
+          token: this.jwtService.sign(
+            {
+              data: {
+                amount: 0,
+                status: true,
+                addressId: data.address?.id,
+                discount: 0,
+                tax: 0,
+                totalWeight: 0,
+              },
+            },
+            { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY },
+          ),
+        };
+      }
+
       // Validate address has either country_id or state_id
       if (!data.address?.country_id && !data.address?.state_id) {
         throw new BadRequestException(
