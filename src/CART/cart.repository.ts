@@ -30,6 +30,18 @@ export class CartRepository {
     }
   }
 
+  async deleteCartByAnyId(userId: number, id: string | number) {
+    try {
+      const deleted = await this.cartRepository.destroy({
+        where: { id, userId },
+      });
+      if (deleted == 0) throw new NotFoundException();
+      return deleted;
+    } catch (err) {
+      throw err;
+    }
+  }
+
   async deleteCartByProduct(
     userId: number,
     productId: string,

@@ -222,14 +222,25 @@ export class CartServices {
       idInput && Number.isSafeInteger(Number(idInput)) ? Number(idInput) : null;
 
     try {
-      if (numericId !== null) {
-        const deleted = await this.cartRepo.deleteCart(userId, numericId);
+      if (idInput) {
+        const deleted = await this.cartRepo.deleteCartByAnyId(userId, idInput);
         if (deleted > 0) {
           return new DataResponseDto(
             {},
             true,
             "Successfully Removed item from cart",
           );
+        }
+
+        if (numericId !== null) {
+          const deletedByNumeric = await this.cartRepo.deleteCart(userId, numericId);
+          if (deletedByNumeric > 0) {
+            return new DataResponseDto(
+              {},
+              true,
+              "Successfully Removed item from cart",
+            );
+          }
         }
       }
 
