@@ -15,6 +15,7 @@ import { CartRepository } from "./cart.repository";
 import { Products } from "../PRODUCTS/products.entity";
 import { CartDataResponseDto } from "./dto/cart.dto";
 import { InjectModel } from "@nestjs/sequelize";
+// cspell:ignore productvariant
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 
 @Injectable()
@@ -134,7 +135,12 @@ export class CartServices {
   async update(userId: number, id: number, action: string) {
     const where = { id, userId };
     try {
-      const result = await this.cartRepository.sequelize.transaction(
+      const sequelize = this.cartRepository.sequelize;
+      if (!sequelize) {
+        throw new InternalServerErrorException("Database connection unavailable");
+      }
+
+      const result = await sequelize.transaction(
         async (transaction: Transaction) => {
           let message = "";
           if (action == "add") {
