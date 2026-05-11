@@ -33,6 +33,27 @@ export class AddressService {
     }
   }
 
+  async findOne(userId: number, id: number) {
+    try {
+      const address = await this.AddressRepository.findOne<Address>({
+        where: {
+          id,
+          userId,
+        },
+        attributes: { exclude: ["createdAt", "updatedAt"] },
+      });
+
+      if (!address) {
+        throw new NotFoundException("Address not found");
+      }
+
+      return new DataResponseDto(address, true, "success");
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
   async create(userId: number, create: CreateAddressDto) {
     try {
       const address = Address.build({ userId, ...create });
