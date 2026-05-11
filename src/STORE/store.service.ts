@@ -41,7 +41,6 @@ import { Settlements } from "../SETTLEMENTS/settlements.entity";
 import { PaystackSubaccountService } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.service";
 import { PaystackSubaccount } from "../PAYSTACK_SUBACCOUNTS/paystack-subaccount.entity";
 import {
-  deriveUserType,
   normalizeRoles,
   resolveActiveRole,
 } from "../shared/helpers/user-role.helper";
@@ -86,7 +85,7 @@ export class StoreService {
     user.roles = normalizedRoles;
     user.active_role = resolvedActiveRole;
     user.role = resolvedActiveRole;
-    user.type = deriveUserType(normalizedRoles, resolvedActiveRole);
+    user.type = resolvedActiveRole;
 
     return user;
   }

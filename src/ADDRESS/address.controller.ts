@@ -44,6 +44,15 @@ export class AddressController {
     return this.addressService.findAll(userId);
   }
 
+  @UseGuards(AuthGuard)
+  @Get("me")
+  @ApiBearerAuth()
+  @HttpCode(200)
+  @ApiOkResponse({ type: [AddressDto] })
+  findMine(@UserId() userId: number): Promise<DataResponseDto> {
+    return this.addressService.findAll(userId);
+  }
+
   @Roles(Role.Admin)
   @UseGuards(AuthGuard)
   @Get("all/:id")

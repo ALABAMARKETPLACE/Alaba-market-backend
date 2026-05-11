@@ -57,7 +57,6 @@ export class CartController {
   ): Promise<CartDataResponseDto> {
     return this.cartService.create(userId, createCart);
   }
-  
 
   //update the quantity of items in cart increase or decrease by 1
   @UseGuards(AuthGuard)
@@ -80,6 +79,20 @@ export class CartController {
   @ApiBearerAuth()
   clearAll(@UserId() userId: number): Promise<DataResponseDto> {
     return this.cartService.clearCart(userId);
+  }
+
+  //to remove one item from cart by product UUID/internal product id
+  @UseGuards(AuthGuard)
+  @Delete("product/:productId")
+  @ApiOkResponse({ type: CartTable })
+  @ApiParam({ name: "productId", required: true })
+  @ApiBearerAuth()
+  deleteByProduct(
+    @UserId() userId: number,
+    @Param("productId") productId: string,
+    @Query("variantId") variantId?: string
+  ): Promise<DataResponseDto> {
+    return this.cartService.deleteByProduct(userId, productId, variantId);
   }
 
   //to remove one item from cart
