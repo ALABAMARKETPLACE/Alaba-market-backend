@@ -288,7 +288,6 @@ export class CartRepository {
       const deleted = await this.cartRepository.destroy({
         where: { userId },
       });
-      if (deleted == 0) throw new NotFoundException("No Products in Cart");
       return deleted;
     } catch (err) {
       throw err;

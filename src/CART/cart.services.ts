@@ -210,13 +210,38 @@ export class CartServices {
     }
   }
 
-  async delete(userId: number, id: number) {
+  async delete(userId: number, id: number, variantId?: string) {
     try {
       const deleted = await this.cartRepo.deleteCart(userId, id);
+      if (deleted == 0) {
+        throw new NotFoundException();
+      }
+
       const message = "Successfully Removed item from cart";
       return new DataResponseDto({}, true, message);
     } catch (err) {
-      if (err instanceof HttpException) throw err;
+      if (err instanceof HttpException) {
+        if (err.getStatus() === 404) {
+          try {
+            const deletedByProduct = await this.cartRepo.deleteCartByProduct(
+              userId,
+              String(id),
+              variantId,
+            );
+            if (deletedByProduct > 0) {
+              return new DataResponseDto(
+                {},
+                true,
+                "Successfully Removed item from cart",
+              );
+            }
+          } catch (fallbackErr) {
+            if (fallbackErr instanceof HttpException) throw fallbackErr;
+          }
+        }
+
+        throw err;
+      }
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
