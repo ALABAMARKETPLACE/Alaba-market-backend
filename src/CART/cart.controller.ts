@@ -103,8 +103,9 @@ export class CartController {
   @ApiBearerAuth()
   delete(
     @UserId() userId: number,
-    @Param("id", new ParseIntPipe()) id: number
+    @Param("id", new ParseIntPipe()) id: number,
+    @Query("variantId") variantId?: string
   ): Promise<DataResponseDto> {
-    return this.cartService.delete(userId, id);
+    return this.cartService.delete(userId, id, variantId);
   }
 }
