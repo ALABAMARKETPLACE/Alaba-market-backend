@@ -10,8 +10,25 @@ import {
 } from "sequelize-typescript";
 import { User } from "../USERS/user.entity";
 
+export interface AddressCreationAttributes {
+  userId: number;
+  flat: string;
+  fullAddress: string;
+  pin_code?: string;
+  state: string;
+  city: string;
+  country: string;
+  street: string;
+  alt_phone: string;
+  code: string;
+  type: string;
+  lat: number;
+  long: number;
+  default?: boolean;
+}
+
 @Table({ tableName: "ADDRESS" })
-export class Address extends Model<Address> {
+export class Address extends Model<Address, AddressCreationAttributes> {
   @PrimaryKey
   @AutoIncrement
   @Column({

@@ -1201,6 +1201,62 @@
           ]
         },
         {
+          "name": "GET /address/:id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/address/{{addressId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "address",
+                "{{addressId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) { pm.environment.set(key, normalized); }",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const selectedAddress = data?.address || data || {};",
+                  "  setIf('addressId', selectedAddress?.id || selectedAddress?._id || data?.id || data?.addressId);",
+                  "  setIf('countryId', selectedAddress?.country_id || selectedAddress?.countryId || data?.country_id || data?.countryId);",
+                  "  setIf('stateId', selectedAddress?.state_id || selectedAddress?.stateId || data?.state_id || data?.stateId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "POST /address",
           "request": {
             "method": "POST",
@@ -14291,6 +14347,32 @@
               }
             }
           ]
+        },
+        {
+          "name": "GET /new-address/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/new-address/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "new-address",
+                "me"
+              ]
+            }
+          }
         },
         {
           "name": "GET /new-address/:id",
