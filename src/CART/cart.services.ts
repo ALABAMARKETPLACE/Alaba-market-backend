@@ -15,6 +15,7 @@ import { CartRepository } from "./cart.repository";
 import { Products } from "../PRODUCTS/products.entity";
 import { CartDataResponseDto } from "./dto/cart.dto";
 import { InjectModel } from "@nestjs/sequelize";
+// cspell:ignore productvariant
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 
 @Injectable()
@@ -134,7 +135,12 @@ export class CartServices {
   async update(userId: number, id: number, action: string) {
     const where = { id, userId };
     try {
-      const result = await this.cartRepository.sequelize.transaction(
+      const sequelize = this.cartRepository.sequelize;
+      if (!sequelize) {
+        throw new InternalServerErrorException("Database connection unavailable");
+      }
+
+      const result = await sequelize.transaction(
         async (transaction: Transaction) => {
           let message = "";
           if (action == "add") {
@@ -210,38 +216,50 @@ export class CartServices {
     }
   }
 
-  async delete(userId: number, id: number, variantId?: string) {
+  async delete(userId: number, id: string, variantId?: string) {
+    const idInput = String(id || "").trim();
+    const numericId =
+      idInput && Number.isSafeInteger(Number(idInput)) ? Number(idInput) : null;
+
     try {
-      const deleted = await this.cartRepo.deleteCart(userId, id);
-      if (deleted == 0) {
-        throw new NotFoundException();
+      if (numericId !== null) {
+        const deleted = await this.cartRepo.deleteCart(userId, numericId);
+        if (deleted > 0) {
+          return new DataResponseDto(
+            {},
+            true,
+            "Successfully Removed item from cart",
+          );
+        }
       }
 
-      const message = "Successfully Removed item from cart";
-      return new DataResponseDto({}, true, message);
+      const deletedByProduct = await this.cartRepo.deleteCartByProduct(
+        userId,
+        idInput,
+        variantId,
+      );
+
+      if (deletedByProduct > 0) {
+        return new DataResponseDto({}, true, "Successfully Removed item from cart");
+      }
+
+      return new DataResponseDto(
+        {},
+        true,
+        "Item not found in cart. Nothing to remove.",
+      );
     } catch (err) {
       if (err instanceof HttpException) {
-        if (err.getStatus() === 404) {
-          try {
-            const deletedByProduct = await this.cartRepo.deleteCartByProduct(
-              userId,
-              String(id),
-              variantId,
-            );
-            if (deletedByProduct > 0) {
-              return new DataResponseDto(
-                {},
-                true,
-                "Successfully Removed item from cart",
-              );
-            }
-          } catch (fallbackErr) {
-            if (fallbackErr instanceof HttpException) throw fallbackErr;
-          }
+        if (err instanceof NotFoundException) {
+          return new DataResponseDto(
+            {},
+            true,
+            "Item not found in cart. Nothing to remove.",
+          );
         }
-
         throw err;
       }
+
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
@@ -255,6 +273,13 @@ export class CartServices {
         "Successfully Removed item from cart"
       );
     } catch (err) {
+      if (err instanceof NotFoundException) {
+        return new DataResponseDto(
+          {},
+          true,
+          "Item not found in cart. Nothing to remove.",
+        );
+      }
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
