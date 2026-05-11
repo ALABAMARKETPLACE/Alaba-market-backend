@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   ParseIntPipe,
@@ -38,6 +39,10 @@ export class AddressController {
   @UseGuards(AuthGuard)
   @Get("all")
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  @Header("Surrogate-Control", "no-store")
   @HttpCode(200)
   @ApiOkResponse({ type: [AddressDto] })
   findAll(@UserId() userId: number): Promise<DataResponseDto> {
@@ -47,6 +52,10 @@ export class AddressController {
   @UseGuards(AuthGuard)
   @Get("me")
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  @Header("Surrogate-Control", "no-store")
   @HttpCode(200)
   @ApiOkResponse({ type: [AddressDto] })
   findMine(@UserId() userId: number): Promise<DataResponseDto> {
@@ -56,6 +65,10 @@ export class AddressController {
   @UseGuards(AuthGuard)
   @Get(":id")
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  @Header("Surrogate-Control", "no-store")
   @HttpCode(200)
   @ApiOkResponse({ type: AddressDto })
   findOne(@UserId() userId: number, @Param("id", new ParseIntPipe()) id: number): Promise<DataResponseDto> {
@@ -66,6 +79,10 @@ export class AddressController {
   @UseGuards(AuthGuard)
   @Get("all/:id")
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
+  @Header("Surrogate-Control", "no-store")
   @HttpCode(200)
   @ApiParam({ name: "id", required: true })
   @ApiOkResponse({ type: [AddressDto] })
