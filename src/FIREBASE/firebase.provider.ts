@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 // import * as admin from "firebase-admin";
 // import { ConfigService } from "../shared/config/config.service";
 // export const FirebaseProvider = {
@@ -16,13 +17,17 @@
 import * as admin from "firebase-admin";
 import { ConfigService } from "../shared/config/config.service";
 
+const appLog = createStructuredLogger("firebase_provider");
+
 export const FirebaseProvider = {
   provide: "FIREBASE_ADMIN",
   useFactory: (configService: ConfigService) => {
    
     const cfg = configService.firebaseConfig;
-    console.log("Firebase project_id:", cfg.project_id);
-    console.log("Private key starts with:", cfg.private_key?.slice(0, 30));
+    appLog.info(
+      { event: "firebase_initialization", projectId: cfg.project_id },
+      "Firebase provider initializing",
+    );
     
     if (!admin.apps.length) {
       admin.initializeApp({
@@ -35,6 +40,5 @@ export const FirebaseProvider = {
   },
   inject: [ConfigService],
 };
-
 
 

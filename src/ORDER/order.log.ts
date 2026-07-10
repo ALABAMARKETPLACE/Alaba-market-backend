@@ -1,6 +1,9 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
+  forwardRef,
   HttpException,
+  Inject,
   Injectable,
   InternalServerErrorException,
 } from "@nestjs/common";
@@ -33,6 +36,9 @@ import { MailService } from "../MAILS/Mails.services";
 import { JwtService } from "@nestjs/jwt";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { PaymentTypeEnum } from "./dto/payment-type.enum";
+import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+
+const appLog = createStructuredLogger("order_log");
 
 @Injectable()
 export class OrderLogService {
@@ -41,6 +47,8 @@ export class OrderLogService {
     private readonly orderRepository: typeof Order,
     private readonly paymentGatewayService: PaymentGateWayService,
     private readonly paystackService: PaystackService,
+    @Inject(forwardRef(() => BudPayService))
+    private readonly budPayService: BudPayService,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
     private readonly jwtService: JwtService
@@ -243,6 +251,25 @@ export class OrderLogService {
     paymentRef: string,
     grandTotal: number
   ) {
+    if (paymentRef.startsWith("budpay_")) {
+      const budPayResponse = await this.budPayService.verifyPayment({
+        reference: paymentRef,
+      });
+      const amountInKobo = Number(budPayResponse.data?.amount);
+      const expectedAmountInKobo = Math.round(grandTotal * 100);
+
+      return {
+        verified:
+          budPayResponse.status && budPayResponse.data?.status === "success",
+        status:
+          amountInKobo === expectedAmountInKobo ? "success" : "incomplete",
+        amount: amountInKobo,
+        currency: budPayResponse.data?.currency,
+        email: budPayResponse.data?.customer?.email,
+        gateway: "budpay",
+      };
+    }
+
     if (this.isPaystackPayment(paymentRef)) {
       // Verify with Paystack
       try {
@@ -347,7 +374,7 @@ export class OrderLogService {
           );
           paymentStatus = paymentInfo.status;
         } catch (verifyError) {
-          console.error(
+          appLog.error(
             "Payment verification error in log service:",
             verifyError
           );
@@ -387,6 +414,7 @@ export class OrderLogService {
   private resolveOrderPaymentType(payment?: paymentType): string {
     switch (payment?.type) {
       case PaymentTypeEnum.Paystack:
+      case PaymentTypeEnum.BudPay:
       case PaymentTypeEnum.Stripe:
       case PaymentTypeEnum.Flutterwave:
         return "pay-online";

@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   ConflictException,
   HttpException,
@@ -45,6 +46,8 @@ import {
   resolveActiveRole,
 } from "../shared/helpers/user-role.helper";
 import { UpgradeToSellerDto } from "./dto/upgradeToSeller.dto";
+
+const appLog = createStructuredLogger("store_service");
 
 @Injectable()
 export class StoreService {
@@ -373,16 +376,16 @@ export class StoreService {
               });
               if (planFromDb) {
                 subscriptionPlanId = planFromDb.id;
-                console.log(
+                appLog.info(
                   `[StoreService.create] Found subscription plan by name: ${subscriptionPlanName}, ID: ${subscriptionPlanId}`
                 );
               } else {
-                console.warn(
+                appLog.warn(
                   `[StoreService.create] Subscription plan "${subscriptionPlanName}" not found in database`
                 );
               }
             } catch (err) {
-              console.error(
+              appLog.error(
                 "[StoreService.create] Error looking up subscription plan:",
                 err
               );
@@ -395,7 +398,7 @@ export class StoreService {
           store.subscription_price = data.subscription_price || 0;
           store.subscription_boosts = data.subscription_boosts || 0;
 
-          console.log("[StoreService.create] Storing subscription plan info:", {
+          appLog.info("[StoreService.create] Storing subscription plan info:", {
             subscription_plan_id: subscriptionPlanId,
             subscription_plan_name: subscriptionPlanName,
             subscription_plan: store.subscription_plan,
@@ -406,7 +409,7 @@ export class StoreService {
           const created = await store.save({ transaction });
           
           // Create PaystackSubaccount entry if bank details provided
-          console.log('Checking for Paystack subaccount creation...', {
+          appLog.info('Checking for Paystack subaccount creation...', {
             settlement_bank: data.settlement_bank,
             settlement_account_number: data.settlement_account_number,
             settlement_account_name: data.settlement_account_name
@@ -416,7 +419,7 @@ export class StoreService {
             const provisionalCode = this.generateProvisionalSubaccountCode();
             
             try {
-              console.log('Creating PAYSTACK_SUBACCOUNTS entry for store:', created.id);
+              appLog.info('Creating PAYSTACK_SUBACCOUNTS entry for store:', created.id);
               await this.StoreRepository.sequelize.query(
                 `INSERT INTO "PAYSTACK_SUBACCOUNTS" 
                 (store_id, subaccount_code, business_name, settlement_bank, 
@@ -441,9 +444,9 @@ export class StoreService {
                 }
               );
 
-              console.log('✓ Subaccount request created with code:', provisionalCode);
+              appLog.info('✓ Subaccount request created with code:', provisionalCode);
             } catch (error) {
-              console.error('Error creating subaccount request:', error);
+              appLog.error('Error creating subaccount request:', error);
             }
           }
 
@@ -543,16 +546,16 @@ export class StoreService {
               });
               if (planFromDb) {
                 subscriptionPlanId = planFromDb.id;
-                console.log(
+                appLog.info(
                   `[StoreService.becomeSeller] Found subscription plan by name: ${subscriptionPlanName}, ID: ${subscriptionPlanId}`
                 );
               } else {
-                console.warn(
+                appLog.warn(
                   `[StoreService.becomeSeller] Subscription plan "${subscriptionPlanName}" not found in database`
                 );
               }
             } catch (err) {
-              console.error(
+              appLog.error(
                 "[StoreService.becomeSeller] Error looking up subscription plan:",
                 err
               );
@@ -565,7 +568,7 @@ export class StoreService {
           store.subscription_price = resolvedData.subscription_price || 0;
           store.subscription_boosts = resolvedData.subscription_boosts || 0;
 
-          console.log(
+          appLog.info(
             "[StoreService.becomeSeller] Storing subscription plan info:",
             {
               subscription_plan_id: subscriptionPlanId,
@@ -579,7 +582,7 @@ export class StoreService {
           const created = await store.save({ transaction });
           
           // Create PaystackSubaccount entry if bank details provided
-          console.log('Checking for Paystack subaccount creation in becomeSeller...', {
+          appLog.info('Checking for Paystack subaccount creation in becomeSeller...', {
             settlement_bank: resolvedData.settlement_bank,
             settlement_account_number: resolvedData.settlement_account_number,
             settlement_account_name: resolvedData.settlement_account_name
@@ -593,7 +596,7 @@ export class StoreService {
             const provisionalCode = this.generateProvisionalSubaccountCode();
             
             try {
-              console.log('Creating PAYSTACK_SUBACCOUNTS entry for store:', created.id);
+              appLog.info('Creating PAYSTACK_SUBACCOUNTS entry for store:', created.id);
               await this.StoreRepository.sequelize.query(
                 `INSERT INTO "PAYSTACK_SUBACCOUNTS" 
                 (store_id, subaccount_code, business_name, settlement_bank, 
@@ -618,9 +621,9 @@ export class StoreService {
                 }
               );
 
-              console.log('✓ Subaccount request created with code:', provisionalCode);
+              appLog.info('✓ Subaccount request created with code:', provisionalCode);
             } catch (error) {
-              console.error('Error creating subaccount request:', error);
+              appLog.error('Error creating subaccount request:', error);
             }
           }
           
@@ -867,7 +870,7 @@ export class StoreService {
               });
 
               if (subaccountRequest) {
-                console.log(
+                appLog.info(
                   "[StoreService.updateStatus] Auto-approving Paystack subaccount for store:",
                   id
                 );
@@ -877,12 +880,12 @@ export class StoreService {
                   1 // TODO: replace with real admin ID from context if needed
                 );
 
-                console.log(
+                appLog.info(
                   "[StoreService.updateStatus] ✓ Paystack subaccount approved"
                 );
               }
             } catch (payErr) {
-              console.error(
+              appLog.error(
                 "[StoreService.updateStatus] Paystack approval failed",
                 payErr
               );
@@ -912,13 +915,13 @@ export class StoreService {
               this.mailService.sellerEmails(rejectionMail);
             }
           } catch (notifyErr) {
-            console.error(
+            appLog.error(
               "[StoreService.updateStatus] Notification/email error",
               notifyErr
             );
           }
         } catch (asyncErr) {
-          console.error(
+          appLog.error(
             "[StoreService.updateStatus] Async task failed",
             asyncErr
           );
@@ -993,7 +996,7 @@ export class StoreService {
         (await this.SettlementsRepository.sum("paid", {
           where: { storeId: id, status: "success" },
         })) ?? 0;
-      console.log("therse are teh settled amount", settled_amount);
+      appLog.info("therse are teh settled amount", settled_amount);
       const result = {
         statusCode: 200,
         status: true,

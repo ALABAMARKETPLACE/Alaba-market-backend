@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Body,
   Controller,
@@ -43,6 +44,8 @@ import { ProductUploadService } from "./product_upload_services";
 import { FileInterceptor, FilesInterceptor } from "@nestjs/platform-express";
 import { UploadProductsDto } from "./dto/upload_products.dto";
 import { Response } from "express";
+
+const appLog = createStructuredLogger("products_controller");
 
 @Controller("products")
 @ApiTags("products")
@@ -139,8 +142,10 @@ export class ProductsController {
     @Body() createProductsDto: ProductsPayloadDto,
     @Req() req
   ): Promise<DataResponseDto> {
-    console.log("raw req.body:", req.body);
-    console.log("mapped DTO:", createProductsDto);
+    appLog.debug(
+      { event: "product_creation_requested" },
+      "product creation requested",
+    );
     return this.ProductsService.create(storeId, createProductsDto);
   }
 

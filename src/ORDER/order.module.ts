@@ -18,6 +18,7 @@ import { OrderLogService } from "./order.log";
 import { GuestOrderService } from "./guest-order.service";
 import { Order } from "./order.entity";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
+import { BudPayModule } from "../BUDPAY_PAYMENT/budpay.module";
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
     CartModule,
     PaymentGatewayModule,
     forwardRef(() => PaystackModule),
+    forwardRef(() => BudPayModule),
     OrderLogModule,
     NotificationsModule,
   ],

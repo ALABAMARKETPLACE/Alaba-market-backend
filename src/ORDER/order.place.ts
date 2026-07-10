@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   Inject,
@@ -42,6 +43,9 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { JwtService } from "@nestjs/jwt";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { PaymentTypeEnum } from "./dto/payment-type.enum";
+import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+
+const appLog = createStructuredLogger("order_place");
 
 type CreateOrderOptions = {
   skipDeliveryTokenVerification?: boolean;
@@ -56,6 +60,8 @@ export class OrderPlaceService {
     private readonly paymentGatewayService: PaymentGateWayService,
     @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
+    @Inject(forwardRef(() => BudPayService))
+    private readonly budPayService: BudPayService,
     private readonly cartService: CartServices,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
@@ -146,9 +152,34 @@ export class OrderPlaceService {
           return newOrders;
         }
       );
+      appLog.info(
+        {
+          event: "order_creation_succeeded",
+          userId,
+          orderIds: result
+            .map((entry: any) => entry?.newOrder?.id)
+            .filter(Boolean),
+          storeIds: result
+            .map((entry: any) => entry?.newOrder?.storeId)
+            .filter(Boolean),
+          paymentReference: data.payment?.ref,
+          gateway: data.payment?.type,
+        },
+        "authenticated order creation succeeded",
+      );
       return new DataResponseDto(result);
     } catch (err) {
-      console.log(err);
+      appLog.error(
+        {
+          event: "order_creation_failed",
+          userId,
+          paymentReference: data.payment?.ref,
+          gateway: data.payment?.type,
+          storeIds: data.cart?.map((item) => item.storeId),
+          err,
+        },
+        "authenticated order creation failed",
+      );
       if (this.shouldInitializeHostedCheckout(data, options)) {
         if (err instanceof HttpException) throw err;
         throw new InternalServerErrorException(getErrorMessage(err));
@@ -260,7 +291,15 @@ export class OrderPlaceService {
 
   async basicCheck(data: CreateOrderDto, options: CreateOrderOptions = {}) {
     try {
-      console.log("🔍 [basicCheck] Starting order validation...");
+      appLog.debug(
+        {
+          event: "order_validation_started",
+          paymentReference: data.payment?.ref,
+          gateway: data.payment?.type,
+          itemCount: data.cart?.length,
+        },
+        "order validation started",
+      );
 
       if (data?.payment?.type === PaymentTypeEnum.CashOnDelivery) {
         throw new BadRequestException("Cash on delivery is not available");
@@ -274,51 +313,42 @@ export class OrderPlaceService {
       let verified: any = options.verifiedChargesData;
 
       if (!options.skipDeliveryTokenVerification) {
-        console.log("🔍 [basicCheck] Verifying delivery charge token...");
         verified = await this.jwtService.verifyAsync(data?.charges?.token);
       }
-
-      console.log("✅ [basicCheck] Verified token:", verified);
 
       if (!verified || isNaN(Number(verified?.data?.amount))) {
         throw new BadRequestException("Failed to Calculate Delivery charge.");
       }
 
       //=====================
-      console.log("[basicCheck] Comparing address IDs:");
-      console.log(
-        "   - Token addressId:",
-        verified?.data?.addressId,
-        "(type:",
-        typeof verified?.data?.addressId,
-        ")"
-      );
-      console.log(
-        "   - Request address.id:",
-        data?.address?.id,
-        "(type:",
-        typeof data?.address?.id,
-        ")"
-      );
-
       const tokenAddressId = Number(verified?.data?.addressId);
       const requestAddressId = Number(data?.address?.id);
-
-      console.log(
-        "   - After conversion:",
-        tokenAddressId,
-        "vs",
-        requestAddressId
-      );
 
       if (tokenAddressId !== requestAddressId) {
         throw new ServiceUnavailableException("Invalid Address Found.");
       }
 
-      console.log("✅ [basicCheck] Address validation passed!");
+      appLog.debug(
+        {
+          event: "order_validation_succeeded",
+          addressId: requestAddressId,
+          paymentReference: data.payment?.ref,
+          gateway: data.payment?.type,
+        },
+        "order validation succeeded",
+      );
       return verified;
     } catch (err) {
-      console.error("❌ [basicCheck] Error:", (err as any).message);
+      appLog.warn(
+        {
+          event: "order_validation_failed",
+          addressId: data.address?.id,
+          paymentReference: data.payment?.ref,
+          gateway: data.payment?.type,
+          err,
+        },
+        "order validation failed",
+      );
       throw err;
     }
   }
@@ -337,6 +367,7 @@ export class OrderPlaceService {
   private isOnlineGateway(paymentType?: PaymentTypeEnum): boolean {
     return [
       PaymentTypeEnum.Paystack,
+      PaymentTypeEnum.BudPay,
       PaymentTypeEnum.Stripe,
       PaymentTypeEnum.Flutterwave,
     ].includes(paymentType as PaymentTypeEnum);
@@ -356,6 +387,18 @@ export class OrderPlaceService {
 
         return new DataResponseDto(result.data, true, result.message);
       }
+
+      case PaymentTypeEnum.BudPay:
+        {
+          const result =
+            await this.budPayService.initializeAuthenticatedCheckout(userId, {
+              order_payload: data,
+              callback_url: data.payment.callback_url,
+              payment_provider: "budpay",
+            });
+
+          return new DataResponseDto(result.data, true, result.message);
+        }
 
       case PaymentTypeEnum.Stripe:
       case PaymentTypeEnum.Flutterwave:
@@ -650,6 +693,25 @@ export class OrderPlaceService {
     paymentRef: string,
     grandTotal: number
   ) {
+    if (paymentRef.startsWith("budpay_")) {
+      const budPayResponse: any = await this.budPayService.verifyPayment({
+        reference: paymentRef,
+      });
+      const amountInKobo = Number(budPayResponse.data?.amount);
+      const expectedAmountInKobo = Math.round(grandTotal * 100);
+
+      return {
+        verified:
+          budPayResponse.status && budPayResponse.data?.status === "success",
+        status:
+          amountInKobo === expectedAmountInKobo ? "success" : "incomplete",
+        amount: amountInKobo,
+        currency: budPayResponse.data?.currency,
+        email: budPayResponse.data?.customer?.email,
+        gateway: "budpay",
+      };
+    }
+
     if (this.isPaystackPayment(paymentRef)) {
       // Verify with Paystack
       const paystackResponse: any = await this.paystackService.verifyPayment({
@@ -737,6 +799,7 @@ export class OrderPlaceService {
   private resolveOrderPaymentType(payment?: paymentType): string {
     switch (payment?.type) {
       case PaymentTypeEnum.Paystack:
+      case PaymentTypeEnum.BudPay:
       case PaymentTypeEnum.Stripe:
       case PaymentTypeEnum.Flutterwave:
         return "pay-online";
@@ -768,22 +831,25 @@ export class OrderPlaceService {
     t: Transaction
   ): Promise<any> {
     try {
-      console.log("[orderAddress] Looking for address:", {
-        addressId: addres?.id,
-        userId,
-      });
       const address = await NewAddress.findOne({
         where: { id: Number(addres?.id) },
         raw: true,
         transaction: t,
       });
-      console.log("[orderAddress] Address found:", address);
       if (!address) throw new ServiceUnavailableException("Address Not found.");
       if (address.user_id != userId)
         throw new UnauthorizedException("Invalid Address");
       return address;
     } catch (err) {
-      console.error("[orderAddress] Error:", (err as any).message);
+      appLog.warn(
+        {
+          event: "order_address_resolution_failed",
+          addressId: addres?.id,
+          userId,
+          err,
+        },
+        "order address resolution failed",
+      );
       throw err;
     }
   }

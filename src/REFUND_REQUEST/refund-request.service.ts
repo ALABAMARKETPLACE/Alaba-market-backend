@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   HttpStatus,
@@ -23,6 +24,8 @@ import { RefundRequest } from "./refund-request.entity";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import { StoreReview } from "../STORE_REVIEW/storereview.entity";
 import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
+
+const appLog = createStructuredLogger("refund_request_service");
 
 @Injectable()
 export class RefundRequestService {
@@ -121,7 +124,7 @@ export class RefundRequestService {
         });
       return new DataResponseDto(rows, true, "Success", pageOptionsDto, count);
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -269,7 +272,7 @@ export class RefundRequestService {
         `Refund request ${result.status} successfully`
       );
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }

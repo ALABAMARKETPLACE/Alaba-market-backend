@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { Op, Sequelize } from "sequelize";
 import { HttpException, Inject, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
@@ -8,6 +9,8 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { StoreLocationCategoryDto, StoreLocationDto } from "./dto/store_latlong.dto";
 import { Settings } from "../SETTINGS/settings.entity";
 import { Category } from "../CATEGORY/category.entity";
+
+const appLog = createStructuredLogger("store_search_service");
 
 const successMsg = "Products Successfully Fetched";
 @Injectable()
@@ -132,7 +135,7 @@ export class StoreSearchServices {
 
   async getCategoryByStore(query: StoreLocationCategoryDto) {
     const { lattitude, longitude, category } = query;
-    console.log("this is the query", query);
+    appLog.info("this is the query", query);
     const attributes: any[] = [
       "id",
       "name",

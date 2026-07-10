@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Inject,
   Injectable,
@@ -10,6 +11,8 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { Cache } from "cache-manager";
 import { JwtService } from "@nestjs/jwt";
+
+const appLog = createStructuredLogger("services");
 
 @Injectable()
 export class TokenManagementService {
@@ -72,7 +75,7 @@ export class TokenManagementService {
       }
       return new DataResponseDto({}, false, "failed to sigout");
     } catch (err) {
-      console.log(err)
+      appLog.info(err)
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }

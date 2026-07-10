@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -34,6 +35,8 @@ import { Role } from "../shared/enum/role.enum";
 import { OrderItems } from '../ORDER_ITEMS/order_items.entity';
 import { OfferProducts } from "../OFFER_PRODUCTS/offer_products.entity";
 import { SubstituteProducts } from "../ORDER_SUBSTITUTION/substitute.products.entity";
+
+const appLog = createStructuredLogger("products_services");
 
 const pVariantAttributes = [
   "image",
@@ -72,18 +75,20 @@ export class ProductsService {
     }: ProductsPayloadDto
   ) {
     try {
-      // Debug: Log what we receive
-      console.log("=== DEBUG CREATE PRODUCT ===");
-      console.log("information:", JSON.stringify(information, null, 2));
-      console.log("product_weight value:", information?.product_weight);
-      console.log("product_weight type:", typeof information?.product_weight);
+      appLog.info(
+        {
+          event: "product_creation_started",
+          storeId,
+          productWeight: information?.product_weight,
+          imageCount: images?.length,
+          variantCount: variants?.length,
+        },
+        "product creation started",
+      );
 
       const response = await this.ProductsRepository.sequelize.transaction(
         async (transaction: Transaction) => {
 
-          console.log("Cover image received:", coverImage);
-          console.log("coverImage.url:", coverImage?.url);
-          
           if (!coverImage?.url) {
             throw new BadRequestException("Cover image not found.");
           }
@@ -118,22 +123,20 @@ export class ProductsService {
             product_weight: information?.product_weight,
           };
 
-          // Debug: Log what we're sending to DB
-          console.log("newP.product_weight:", information?.product_weight);
-          console.error("newP object:", JSON.stringify(newP, null, 2));
-
           //adding new product
           const product = await this.ProductsRepository.create(newP, {
             transaction: transaction,
           });
 
-          // Debug: Log what was saved
-          console.error("Saved product weight:", product.product_weight);
-          console.error(
-            "Saved product full:",
-            JSON.stringify(product.toJSON(), null, 2)
+          appLog.info(
+            {
+              event: "product_record_created",
+              storeId,
+              productId: product._id,
+              productWeight: product.product_weight,
+            },
+            "product record created",
           );
-          console.error("=== END DEBUG ===");
           //adding product images
           const image = await this.productsImageService.create(
             product,

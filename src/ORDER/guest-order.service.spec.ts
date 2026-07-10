@@ -55,6 +55,7 @@ describe("GuestOrderService", () => {
       orderRepository as any,
       guestCheckoutRepository as any,
       paystackService as any,
+      { verifyPayment: jest.fn() } as any,
       {} as any,
       {} as any,
       jwtService as any,

@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Body,
   Controller,
@@ -45,6 +46,9 @@ import { Fid } from "../shared/decorator/fid.decorator";
 import { Public } from "../shared/decorator/optional.decorator";
 import { TokenManagementService } from "../TOKEN_MANAGEMENT/services";
 import { AuthChangePasswordDto } from "./dto/auth-change-password.dto";
+import { Throttle } from "@nestjs/throttler";
+
+const appLog = createStructuredLogger("auth_controller");
 class CheckEmailParams {
   @IsNotEmpty({ message: "Please Provide an Email ID" })
   @IsEmail({}, { message: "Invalid email format" })
@@ -109,10 +113,14 @@ export class AuthController {
 
   //to create new account using email and phone.. phone should be verified with otp
   @Post("signup")
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiCreatedResponse({ type: DataResponseDto })
   @UseInterceptors(RemovePasswordInterceptor)
   signup(@Body() signup_Request: signup_Request): Promise<DataResponseDto> {
-    console.log({ signup_Request });
+    appLog.info(
+      { event: "signup_requested" },
+      "user signup requested",
+    );
     return this.AuthService.signup(signup_Request);
   }
 
@@ -146,31 +154,25 @@ export class AuthController {
 
   //login with email id and password.
   @Post("login")
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   @UsePipes(new ValidationPipe({ transform: true }))
   @UseInterceptors(RemovePasswordInterceptor)
   login(@Body() login_Request: login_Request) {
-    console.log("=== AUTH CONTROLLER LOGIN ===");
-    console.log("Login Request Body:", JSON.stringify(login_Request, null, 2));
-    console.log("Email:", login_Request.email);
-    console.log(
-      "Password length:",
-      login_Request.password ? login_Request.password.length : "undefined",
-    );
+    appLog.info({ event: "login_requested" }, "user login requested");
 
     const result = this.AuthService.emailLogin(login_Request);
 
     result
-      .then((response) => {
-        console.log(
-          "Login Success Response:",
-          JSON.stringify(response, null, 2),
-        );
+      .then(() => {
+        appLog.info({ event: "login_succeeded" }, "user login succeeded");
       })
       .catch((error) => {
-        console.log("Login Error:", error.message);
-        console.log("Login Error Details:", JSON.stringify(error, null, 2));
+        appLog.warn(
+          { event: "login_failed", err: error },
+          "user login failed",
+        );
       });
 
     return result;
@@ -191,6 +193,7 @@ export class AuthController {
 
   //login via phone using phone verification via otp firebase
   @Post("phone-login")
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   @UseInterceptors(RemovePasswordInterceptor)
@@ -200,6 +203,7 @@ export class AuthController {
 
   //login with google(gmail login) verification by firebase
   @Post("google-login")
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   @UseInterceptors(RemovePasswordInterceptor)
@@ -209,6 +213,7 @@ export class AuthController {
 
   //login with apple(apple login) verification by firebase
   @Post("apple-login")
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   @UseInterceptors(RemovePasswordInterceptor)
@@ -218,15 +223,17 @@ export class AuthController {
 
   //reuest for password change link.. takes email address in body
   @Post("forgot-password")
+  @Throttle({ default: { ttl: 60000, limit: 3 } })
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   forgot(@Body() forgot: ForgotPasswordDto): Promise<DataResponseDto> {
-    console.log({ forgot });
+    appLog.info({ forgot });
     return this.AuthService.forgotPassword(forgot);
   }
 
   //to reset the password. requires token in body and new password
   @Post("reset-password")
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiCreatedResponse({ type: DataResponseDto })
   @ApiBearerAuth()
   resetPassword(@Body() forgot: ChangePasswordDto): Promise<DataResponseDto> {

@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 // NEWS_AND_BLOGS/newsandblogs.service.ts
 import {
   Injectable,
@@ -10,6 +11,8 @@ import { UpdateNewsDto } from "./dto/update-news.dto";
 import { QueryNewsDto } from "./dto/query-news.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { ImgcompressService } from "../IMAGE_COMPRESS/img_compress.service";
+
+const appLog = createStructuredLogger("newsandblogs_service");
 
 @Injectable()
 export class NewsAndBlogsService {
@@ -29,7 +32,7 @@ export class NewsAndBlogsService {
         "News articles retrieved successfully",
       );
     } catch (err) {
-      console.error("Failed to fetch news:", err);
+      appLog.error("Failed to fetch news:", err);
       throw new InternalServerErrorException("Failed to fetch news");
     }
   }
@@ -96,7 +99,7 @@ export class NewsAndBlogsService {
         "News article created successfully",
       );
     } catch (err) {
-      console.error("Failed to create news:", err);
+      appLog.error("Failed to create news:", err);
       throw new InternalServerErrorException("Failed to create news");
     }
   }
@@ -175,7 +178,7 @@ export class NewsAndBlogsService {
       );
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
-      console.error("Failed to update news:", err);
+      appLog.error("Failed to update news:", err);
       throw new InternalServerErrorException("Failed to update news");
     }
   }
@@ -216,7 +219,7 @@ export class NewsAndBlogsService {
       return new DataResponseDto({}, true, "News article deleted successfully");
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
-      console.error("Failed to delete news:", err);
+      appLog.error("Failed to delete news:", err);
       throw new InternalServerErrorException("Failed to delete news");
     }
   }
@@ -235,7 +238,7 @@ export class NewsAndBlogsService {
       const match = url.match(/amazonaws\.com\/(.+)$/);
       return match ? match[1] : null;
     } catch (err) {
-      console.error("Failed to extract S3 key from URL:", url, err);
+      appLog.error("Failed to extract S3 key from URL:", url, err);
       return null;
     }
   }

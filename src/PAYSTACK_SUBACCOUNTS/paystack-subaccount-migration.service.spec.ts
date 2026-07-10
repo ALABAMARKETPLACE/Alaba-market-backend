@@ -3,27 +3,36 @@ import { of, throwError } from "rxjs";
 import { PaystackSubaccountMigrationService } from "./paystack-subaccount-migration.service";
 
 describe("PaystackSubaccountMigrationService", () => {
-  const buildStore = (overrides: Record<string, any> = {}) => ({
-    id: 7,
-    name: "Seller Owner",
-    email: "seller@example.com",
-    phone: "08012345678",
-    store_name: "Seller Store",
-    business_name: "Seller Store Ltd",
-    settlement_bank: "058",
-    settlement_account_number: "0123456789",
-    primary_contact_email: "seller@example.com",
-    primary_contact_name: "Seller Owner",
-    primary_contact_phone: "08012345678",
-    percentage_charge: 95,
-    settlement_schedule: "auto",
-    paystack_subaccount_code: "ACCT_LEGACY_123",
-    paystack_subaccount_code_old: "ACCT_LEGACY_123",
-    paystack_subaccount_code_new: null,
-    paystack_subaccount_migration_status: "pending",
-    update: jest.fn(async () => undefined),
-    ...overrides,
-  });
+  const buildStore = (overrides: Record<string, any> = {}) => {
+    const store: Record<string, any> = {
+      id: 7,
+      name: "Seller Owner",
+      email: "seller@example.com",
+      phone: "08012345678",
+      store_name: "Seller Store",
+      business_name: "Seller Store Ltd",
+      settlement_bank: "058",
+      settlement_account_number: "0123456789",
+      primary_contact_email: "seller@example.com",
+      primary_contact_name: "Seller Owner",
+      primary_contact_phone: "08012345678",
+      percentage_charge: 95,
+      settlement_schedule: "auto",
+      paystack_subaccount_code: "ACCT_LEGACY_123",
+      paystack_subaccount_code_old: "ACCT_LEGACY_123",
+      paystack_subaccount_code_new: null,
+      paystack_subaccount_migration_status: "pending",
+      update: jest.fn(async (payload: Record<string, any>) => {
+        Object.assign(store, payload);
+      }),
+      set: jest.fn((payload: Record<string, any>) => {
+        Object.assign(store, payload);
+      }),
+      save: jest.fn(async () => undefined),
+    };
+
+    return Object.assign(store, overrides);
+  };
 
   let httpService: { post: any; get: any };
   let storeRepository: any;
@@ -103,14 +112,14 @@ describe("PaystackSubaccountMigrationService", () => {
     const result = await service.migrateStoreById(store.id, {});
 
     expect(result.data.result).toBe("failed");
-    expect(store.update).toHaveBeenCalledWith(
+    expect(store.set).toHaveBeenCalledWith(
       expect.objectContaining({
         paystack_subaccount_migration_status: "failed",
         paystack_subaccount_migration_error:
           "[400] Invalid account number",
       }),
-      expect.any(Object),
     );
+    expect(store.save).toHaveBeenCalledWith(expect.any(Object));
   });
 
   it("updates the store when migration succeeds", async () => {
@@ -140,15 +149,15 @@ describe("PaystackSubaccountMigrationService", () => {
       }),
       expect.any(Object),
     );
-    expect(store.update).toHaveBeenCalledWith(
+    expect(store.set).toHaveBeenCalledWith(
       expect.objectContaining({
         paystack_subaccount_code_old: "ACCT_LEGACY_123",
         paystack_subaccount_code_new: "ACCT_NEW_901",
         paystack_subaccount_migration_status: "success",
-        paystack_subaccount_migration_error: null,
+        paystack_subaccount_migration_error: undefined,
       }),
-      expect.any(Object),
     );
+    expect(store.save).toHaveBeenCalledWith(expect.any(Object));
   });
 
   it("syncs copied new-account subaccounts back into local stores", async () => {
@@ -182,6 +191,7 @@ describe("PaystackSubaccountMigrationService", () => {
     const result = await service.syncExistingNewSubaccounts({
       dryRun: false,
       perPage: 100,
+      includeResults: true,
     });
 
     expect(httpService.get).toHaveBeenCalledWith(
@@ -191,15 +201,15 @@ describe("PaystackSubaccountMigrationService", () => {
       }),
     );
     expect(paystackAccountConfigService.getHeaders).toHaveBeenCalledWith("new");
-    expect(store.update).toHaveBeenCalledWith(
+    expect(store.set).toHaveBeenCalledWith(
       expect.objectContaining({
         paystack_subaccount_code_new: "ACCT_NEW_SYNCED",
         paystack_subaccount_id: 3001,
         paystack_subaccount_migration_status: "success",
         percentage_charge: 93.5,
       }),
-      expect.any(Object),
     );
+    expect(store.save).toHaveBeenCalledWith(expect.any(Object));
     expect(result.data.summary.updated).toBe(1);
     expect(result.data.results[0]).toEqual(
       expect.objectContaining({
@@ -256,6 +266,7 @@ describe("PaystackSubaccountMigrationService", () => {
     const result = await service.syncExistingNewSubaccounts({
       dryRun: false,
       perPage: 100,
+      includeResults: true,
     });
 
     expect(store.update).not.toHaveBeenCalled();

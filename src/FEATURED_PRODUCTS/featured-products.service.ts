@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Injectable,
   Inject,
@@ -15,6 +16,8 @@ import { GetAllProductsDto } from "./dto/get-all-products.dto";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 import { FeaturedRotationState } from "./featured-rotation-state.entity";
 import { GetPositionProductsDto } from "./dto/get-position-products.dto";
+
+const appLog = createStructuredLogger("featured_products_service");
 
 interface RotationContext {
   planName: string | null;
@@ -512,7 +515,40 @@ export class FeaturedProductsService {
       };
     }
 
-    // console.log(
+    // Multiple app instances run this same cron tick in parallel behind a load
+    // balancer. Claim this rotation with an atomic compare-and-swap on
+    // next_rotation_at before doing any work — if another instance already
+    // claimed it (updated the row since we read `state`), this affects 0 rows
+    // and we back off instead of double-rotating. Forced/manual rotations
+    // (e.g. an admin action) skip this since they're not a periodic-tick race.
+    if (!force) {
+      const [claimedRows] = await this.rotationStateRepository.update(
+        {
+          next_rotation_at: new Date(now.getTime() + rotationMinutes * 60 * 1000),
+        },
+        {
+          where: {
+            position,
+            next_rotation_at: state.next_rotation_at ?? null,
+          },
+        },
+      );
+
+      if (claimedRows === 0) {
+        return {
+          rotated: false,
+          state,
+          context: {
+            planName: queueInfo.planName,
+            totalBatches: totalBatchesForContext,
+            queueLength: queue.length,
+            batchIndex: state.current_batch_index ?? 0,
+          },
+        };
+      }
+    }
+
+    // appLog.info(
     //   "[FeaturedProducts] Rotation start=======================",
     //   JSON.stringify({
     //     context: options.logContext ?? "[Service]",
@@ -576,7 +612,7 @@ export class FeaturedProductsService {
 
     await state.save();
 
-    // console.log(
+    // appLog.info(
     //   "[FeaturedProducts] Rotation complete",
     //   JSON.stringify({
     //     context: options.logContext ?? "[Service]",
@@ -869,7 +905,7 @@ export class FeaturedProductsService {
   // Get all products with pagination and filters
   async getAllProducts(query: GetAllProductsDto): Promise<DataResponseDto> {
     try {
-      console.log(
+      appLog.info(
         "[FeaturedProducts.getAllProducts] Incoming query:",
         JSON.stringify(query, null, 2),
       );
@@ -906,7 +942,7 @@ export class FeaturedProductsService {
 
       // Filter by store/seller
       if (store_id) {
-        console.log(
+        appLog.info(
           "[FeaturedProducts.getAllProducts] Processing store_id:",
           store_id,
           "Type:",
@@ -917,13 +953,13 @@ export class FeaturedProductsService {
           ? null
           : normalizedStoreId;
 
-        console.log(
+        appLog.info(
           "[FeaturedProducts.getAllProducts] Normalized store_id:",
           storeFilter,
         );
 
         if (!storeFilter) {
-          console.log(
+          appLog.info(
             "[FeaturedProducts.getAllProducts] Invalid store_id, returning empty result",
           );
           return new DataResponseDto([], true, "Successfull", query, 0);
@@ -934,20 +970,20 @@ export class FeaturedProductsService {
         });
 
         if (!storeRecord) {
-          console.warn(
+          appLog.warn(
             "[FeaturedProducts.getAllProducts] No store found for id",
             storeFilter,
           );
           return new DataResponseDto([], true, "Successfull", query, 0);
         }
 
-        console.log(
+        appLog.info(
           "[FeaturedProducts.getAllProducts] Store record:",
           JSON.stringify(storeRecord.toJSON(), null, 2),
         );
 
         whereClause.store_id = storeFilter;
-        console.log(
+        appLog.info(
           "[FeaturedProducts.getAllProducts] Added store_id to whereClause:",
           whereClause.store_id,
         );
@@ -990,7 +1026,7 @@ export class FeaturedProductsService {
         ];
       }
 
-      console.log(
+      appLog.info(
         "[FeaturedProducts.getAllProducts] Final whereClause:",
         JSON.stringify(whereClause, null, 2),
       );
@@ -1022,13 +1058,13 @@ export class FeaturedProductsService {
           },
         };
         findOptions.include.push(storeInclude);
-        console.log(
+        appLog.info(
           "[FeaturedProducts.getAllProducts] Added Store include with filter:",
           JSON.stringify(storeInclude.where, null, 2),
         );
       }
 
-      console.log(
+      appLog.info(
         "[FeaturedProducts.getAllProducts] Executing query with options:",
         JSON.stringify(
           {
@@ -1046,14 +1082,14 @@ export class FeaturedProductsService {
         findOptions,
       );
 
-      // console.log(
+      // appLog.info(
       //   "[FeaturedProducts.getAllProducts] Query results - Count:",
       //   count,
       //   "Rows:",
       //   rows.length,
       // );
       // if (rows.length > 0) {
-      //   console.log(
+      //   appLog.info(
       //     "[FeaturedProducts.getAllProducts] First product sample:",
       //     JSON.stringify(
       //       {
@@ -1071,14 +1107,14 @@ export class FeaturedProductsService {
       // ✅ SORT: Electronics first
       const sortedRows = this.sortByElectronicsFirst(rows);
 
-      console.log(
+      appLog.info(
         "[FeaturedProducts.getAllProducts] Query results - Count:",
         count,
         "Rows:",
         sortedRows.length,
       );
       if (sortedRows.length > 0) {
-        console.log(
+        appLog.info(
           "[FeaturedProducts.getAllProducts] First product sample:",
           JSON.stringify(
             {
@@ -1099,11 +1135,11 @@ export class FeaturedProductsService {
       // ✅ SORT: Electronics first
       return new DataResponseDto(sortedRows, true, "Successfull", query, count);
     } catch (err) {
-      console.error(
+      appLog.error(
         "[FeaturedProducts.getAllProducts] Error occurred:",
         err?.message || err,
       );
-      console.error(
+      appLog.error(
         "[FeaturedProducts.getAllProducts] Error stack:",
         err?.stack,
       );

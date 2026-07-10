@@ -286,7 +286,7 @@ describe("PaystackSubaccountService", () => {
   });
 
   it("lists unmatched remote subaccounts", async () => {
-    storeRepository.findAll.mockResolvedValue([
+    const linkedStores = [
       {
         id: 4548,
         store_name: "Seller Store",
@@ -296,6 +296,9 @@ describe("PaystackSubaccountService", () => {
         primary_contact_phone: "08012345678",
         paystack_subaccount_code_new: "ACCT_MATCHED",
       },
+    ];
+    const classificationStores = [
+      ...linkedStores,
       {
         id: 5001,
         store_name: "Recoverable Store",
@@ -305,7 +308,10 @@ describe("PaystackSubaccountService", () => {
         primary_contact_phone: "08099999999",
         paystack_subaccount_code_new: null,
       },
-    ]);
+    ];
+    storeRepository.findAll
+      .mockResolvedValueOnce(linkedStores)
+      .mockResolvedValueOnce(classificationStores);
     httpService.get.mockReturnValue(
       of({
         data: {
@@ -360,7 +366,7 @@ describe("PaystackSubaccountService", () => {
   });
 
   it("classifies true orphan remote subaccounts", async () => {
-    storeRepository.findAll.mockResolvedValue([
+    const linkedStores = [
       {
         id: 4548,
         store_name: "Seller Store",
@@ -370,7 +376,10 @@ describe("PaystackSubaccountService", () => {
         primary_contact_phone: "08012345678",
         paystack_subaccount_code_new: "ACCT_MATCHED",
       },
-    ]);
+    ];
+    storeRepository.findAll
+      .mockResolvedValueOnce(linkedStores)
+      .mockResolvedValueOnce(linkedStores);
     httpService.get.mockReturnValue(
       of({
         data: {
@@ -412,7 +421,7 @@ describe("PaystackSubaccountService", () => {
   });
 
   it("previews safe resolution for missing_local_link unmatched records", async () => {
-    storeRepository.findAll.mockResolvedValue([
+    const linkedStores = [
       {
         id: 4548,
         store_name: "Seller Store",
@@ -422,6 +431,9 @@ describe("PaystackSubaccountService", () => {
         primary_contact_phone: "08012345678",
         paystack_subaccount_code_new: "ACCT_MATCHED",
       },
+    ];
+    const classificationStores = [
+      ...linkedStores,
       {
         id: 5001,
         store_name: "Recoverable Store",
@@ -431,7 +443,10 @@ describe("PaystackSubaccountService", () => {
         primary_contact_phone: "08099999999",
         paystack_subaccount_code_new: null,
       },
-    ]);
+    ];
+    storeRepository.findAll
+      .mockResolvedValueOnce(linkedStores)
+      .mockResolvedValueOnce(classificationStores);
     httpService.get.mockReturnValue(
       of({
         data: {
@@ -488,7 +503,7 @@ describe("PaystackSubaccountService", () => {
   it("links safe missing_local_link unmatched records", async () => {
     const storeUpdate = jest.fn(async () => undefined);
 
-    storeRepository.findAll.mockResolvedValue([
+    const linkedStores = [
       {
         id: 4548,
         store_name: "Seller Store",
@@ -498,6 +513,9 @@ describe("PaystackSubaccountService", () => {
         primary_contact_phone: "08012345678",
         paystack_subaccount_code_new: "ACCT_MATCHED",
       },
+    ];
+    const classificationStores = [
+      ...linkedStores,
       {
         id: 5001,
         store_name: "Recoverable Store",
@@ -510,7 +528,10 @@ describe("PaystackSubaccountService", () => {
         paystack_subaccount_code_old: null,
         update: storeUpdate,
       },
-    ]);
+    ];
+    storeRepository.findAll
+      .mockResolvedValueOnce(linkedStores)
+      .mockResolvedValueOnce(classificationStores);
     httpService.get.mockReturnValue(
       of({
         data: {

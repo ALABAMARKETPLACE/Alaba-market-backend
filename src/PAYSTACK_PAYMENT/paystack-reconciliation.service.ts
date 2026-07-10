@@ -39,7 +39,10 @@ export class PaystackReconciliationService {
    * These are orphaned payments that succeeded but orders weren't created
    */
   async findOrphanedPaystackPayments() {
-    this.logger.log("🔍 Scanning for orphaned Paystack payments...");
+    this.logger.log(
+      { event: "reconciliation_scan_started", gateway: "paystack" },
+      "scanning for orphaned Paystack payments",
+    );
 
     try {
       // Get all ORDER_PAYMENTS with pay-online success status
@@ -54,7 +57,12 @@ export class PaystackReconciliationService {
         });
 
       this.logger.log(
-        `✓ Found ${successfulOnlinePayments.length} successful online payments in ORDER_PAYMENTS`,
+        {
+          event: "reconciliation_payments_loaded",
+          gateway: "paystack",
+          paymentCount: successfulOnlinePayments.length,
+        },
+        "successful online payments loaded",
       );
 
       // Get all orders
@@ -75,7 +83,12 @@ export class PaystackReconciliationService {
       });
 
       this.logger.log(
-        `⚠️  Found ${orphanedPayments.length} ORPHANED payments (successful but no corresponding order)`,
+        {
+          event: "reconciliation_orphaned_payments_found",
+          gateway: "paystack",
+          orphanedCount: orphanedPayments.length,
+        },
+        "orphaned successful payments found",
       );
 
       return {
@@ -90,7 +103,14 @@ export class PaystackReconciliationService {
         })),
       };
     } catch (error) {
-      this.logger.error("Error during reconciliation scan:", error);
+      this.logger.error(
+        {
+          event: "reconciliation_scan_failed",
+          gateway: "paystack",
+          err: error,
+        },
+        "Paystack reconciliation scan failed",
+      );
       throw error;
     }
   }
@@ -99,7 +119,10 @@ export class PaystackReconciliationService {
    * Check for guest orders that reference Paystack payments
    */
   async findOrphanedGuestCheckout() {
-    this.logger.log("🔍 Scanning for orphaned guest checkouts...");
+    this.logger.log(
+      { event: "guest_checkout_reconciliation_scan_started" },
+      "scanning for orphaned guest checkouts",
+    );
 
     try {
       // Get all guest checkouts with success payment status but not moved to orders
@@ -113,7 +136,11 @@ export class PaystackReconciliationService {
       });
 
       this.logger.log(
-        `⚠️  Found ${unprocessedCheckouts.length} guest checkouts with successful payment but NOT completed`,
+        {
+          event: "orphaned_guest_checkouts_found",
+          checkoutCount: unprocessedCheckouts.length,
+        },
+        "successful guest checkouts awaiting finalization found",
       );
 
       return {
@@ -127,7 +154,10 @@ export class PaystackReconciliationService {
         })),
       };
     } catch (error) {
-      this.logger.error("Error checking guest checkouts:", error);
+      this.logger.error(
+        { event: "guest_checkout_reconciliation_scan_failed", err: error },
+        "guest checkout reconciliation scan failed",
+      );
       throw error;
     }
   }
@@ -136,7 +166,10 @@ export class PaystackReconciliationService {
    * Generate a detailed reconciliation report
    */
   async generateReconciliationReport(page = 1, take = 50) {
-    this.logger.log("📊 Generating comprehensive reconciliation report...");
+    this.logger.log(
+      { event: "reconciliation_report_started", gateway: "paystack" },
+      "generating reconciliation report",
+    );
 
     try {
       const sanitizedPage = Math.max(1, Number(page) || 1);
@@ -396,7 +429,14 @@ export class PaystackReconciliationService {
           "Review orphaned payments and guest checkouts to determine if orders need to be manually created or if payments need to be refunded.",
       };
     } catch (error) {
-      this.logger.error("Error generating reconciliation report:", error);
+      this.logger.error(
+        {
+          event: "reconciliation_report_failed",
+          gateway: "paystack",
+          err: error,
+        },
+        "reconciliation report generation failed",
+      );
       throw error;
     }
   }
@@ -405,7 +445,10 @@ export class PaystackReconciliationService {
    * Get sample of mismatch between ORDER table and ORDER_PAYMENTS
    */
   async auditOrderPaymentMismatches() {
-    this.logger.log("🔍 Auditing ORDER ↔ ORDER_PAYMENTS mismatches...");
+    this.logger.log(
+      { event: "order_payment_audit_started" },
+      "auditing order and payment mismatches",
+    );
 
     try {
       // Orders with payment_reference but no corresponding ORDER_PAYMENTS record
@@ -450,7 +493,10 @@ export class PaystackReconciliationService {
         },
       };
     } catch (error) {
-      this.logger.error("Error auditing mismatches:", error);
+      this.logger.error(
+        { event: "order_payment_audit_failed", err: error },
+        "order and payment mismatch audit failed",
+      );
       throw error;
     }
   }

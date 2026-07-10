@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -32,6 +33,10 @@ import { OrderSubstitution } from "../ORDER_SUBSTITUTION/substitution.entity";
 import { Role } from "../shared/enum/role.enum";
 import { RefundRequest } from "../REFUND_REQUEST/refund-request.entity";
 import { PaymentGateWayService } from "../PAYMENT_GATEWAY/payment_gateway.service";
+import { InjectModel } from "@nestjs/sequelize";
+import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
+
+const appLog = createStructuredLogger("order_service");
 
 @Injectable()
 export class OrderService {
@@ -42,6 +47,8 @@ export class OrderService {
     private readonly mailService: MailService,
     private readonly notificationService: NotificationsService,
     private readonly paymentGateWayService: PaymentGateWayService,
+    @InjectModel(GuestCheckout)
+    private readonly guestCheckoutRepository: typeof GuestCheckout,
   ) {}
 
   includeModals: any[] = [
@@ -634,7 +641,16 @@ export class OrderService {
               await this.mailService.sellerEmails(email);
             } catch (err) {
               //Never crash the app after commit
-              console.error("Order update email failed:", err);
+              appLog.error(
+                {
+                  event: "order_update_email_failed",
+                  orderId: order.id,
+                  userId: order.userId,
+                  storeId: order.storeId,
+                  err,
+                },
+                "order update email failed",
+              );
             }
           });
 
@@ -910,6 +926,111 @@ export class OrderService {
         ],
       });
       return new DataResponseDto(rows, true, "Success", pageOptionsDto, count);
+    } catch (err) {
+      if (err instanceof HttpException) throw err;
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  // ==================== PUBLIC ORDER TRACKING ====================
+
+  /**
+   * Public lookup by Paystack/BudPay reference, used by the unauthenticated
+   * "track my order" page for both guest and authenticated checkouts. Only
+   * returns the safe subset a stranger with just a reference should see —
+   * no guest email/phone/payment internals.
+   */
+  async trackOrderByReference(reference: string) {
+    try {
+      const order = await this.OrderRepository.findOne({
+        where: {
+          [Op.or]: [
+            { payment_reference: reference },
+            { transaction_reference: reference },
+          ],
+        },
+        include: [
+          {
+            model: OrderStatus,
+            required: false,
+          },
+          {
+            model: OrderItems,
+            required: false,
+            attributes: ["id"],
+          },
+        ],
+      });
+
+      if (order) {
+        const trackingUpdates = (order.orderStatus || [])
+          .slice()
+          .sort(
+            (a: any, b: any) =>
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+          )
+          .map((entry: any) => ({
+            status: entry.status,
+            remark: entry.remark || null,
+            timestamp: entry.createdAt,
+          }));
+
+        const deliveryAddress = order.is_guest_order
+          ? [
+              order.delivery_address,
+              order.delivery_city,
+              order.delivery_state,
+            ]
+              .filter(Boolean)
+              .join(", ")
+          : ((order.address as any)?.full_address ??
+              (order.address as any)?.address ??
+              null);
+
+        return new DataResponseDto(
+          {
+            reference,
+            order_status: order.status,
+            items_count: (order.orderItems || []).length,
+            total_amount: order.grandTotal,
+            delivery_address: deliveryAddress,
+            estimated_delivery: order.delivery_date,
+            tracking_updates: trackingUpdates,
+          },
+          true,
+          "Order found",
+        );
+      }
+
+      // No order yet — check for a paid-but-not-yet-finalized guest checkout
+      // so we can show "confirming your payment" instead of a false 404.
+      const guestCheckout = await this.guestCheckoutRepository.findOne({
+        where: { reference },
+      });
+
+      if (guestCheckout) {
+        const isPending =
+          String(guestCheckout.payment_status).toLowerCase() === "success" &&
+          String(guestCheckout.status).toLowerCase() !== "completed";
+
+        return new DataResponseDto(
+          {
+            reference,
+            order_status: isPending ? "pending" : guestCheckout.status,
+            items_count: 0,
+            total_amount: null,
+            delivery_address: null,
+            estimated_delivery: null,
+            tracking_updates: [],
+          },
+          true,
+          isPending
+            ? "Payment received, confirming your order"
+            : "Order is being processed",
+        );
+      }
+
+      throw new NotFoundException("No order found for this reference");
     } catch (err) {
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));

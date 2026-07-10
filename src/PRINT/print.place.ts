@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -39,6 +40,8 @@ import { PrintItems } from "../PRINT_ITEMS/print_items.entity";
 import { PrintConfigeration } from "../PRINT_CONFIGERATION/print_configeration.entity";
 import { PrintStatus } from "../PRINT_STATUS/print_status.entity";
 import { ExceptionsHandler } from "@nestjs/core/exceptions/exceptions-handler";
+
+const appLog = createStructuredLogger("print_place");
 
 @Injectable()
 export class PrintPlaceService {
@@ -103,7 +106,7 @@ export class PrintPlaceService {
       });
       return new DataResponseDto(result);
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
       if (err instanceof NotFoundException) {
         throw err; 
       }
@@ -282,7 +285,7 @@ export class PrintPlaceService {
     t: Transaction
   ) {
     try {
-      console.log('this is the printId',printId)
+      appLog.info('this is the printId',printId)
       const paymentInfo = payment?.ref
         ? await this.paymentGatewayService.getOrderDetails(payment?.ref)
         : null;
@@ -322,7 +325,7 @@ export class PrintPlaceService {
       );
       return newPayment;
     } catch (err) {
-      console.log('this is the errror',err)
+      appLog.info('this is the errror',err)
       throw err;
     }
   }
