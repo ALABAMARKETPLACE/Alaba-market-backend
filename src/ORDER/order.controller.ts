@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Body,
   Controller,
@@ -48,6 +49,8 @@ import { Public } from "../shared/decorator/optional.decorator";
 import { CreateGuestOrderDto } from "./dto/create-guest-order.dto";
 import { GetGuestOrdersDto } from "./dto/get-guest-orders.dto";
 
+const appLog = createStructuredLogger("order_controller");
+
 @Controller("order")
 @ApiTags("order")
 export class OrderController {
@@ -72,6 +75,25 @@ export class OrderController {
     @Body() orderData: CreateGuestOrderDto
   ): Promise<DataResponseDto> {
     return this.guestOrderService.createGuestOrder(orderData);
+  }
+
+  @Get("track/:reference")
+  @Public()
+  @ApiOperation({
+    summary: "Track an order by payment reference (guest or authenticated)",
+    description:
+      "Public lookup by Paystack/BudPay reference. Returns only status/tracking info — no guest contact or payment details.",
+  })
+  @ApiParam({
+    name: "reference",
+    required: true,
+    description: "Payment reference or transaction reference",
+  })
+  @ApiOkResponse({ type: DataResponseDto })
+  async trackOrder(
+    @Param("reference") reference: string
+  ): Promise<DataResponseDto> {
+    return this.orderService.trackOrderByReference(reference);
   }
 
   @Post("guest/orders")
@@ -242,46 +264,6 @@ export class OrderController {
   @ApiOkResponse({ type: DataResponseDto })
   async reconcileAllGuestCheckouts(): Promise<DataResponseDto> {
     return this.guestOrderService.reconcileAllGuestCheckouts();
-  }
-
-  //DEBUG: Get ALL orders without any filtering (for testing)
-  @Get("all-orders-debug")
-  @ApiExcludeEndpoint()
-  async getAllOrdersDebug(@Query() query: any) {
-    console.log("[DEBUG] Getting ALL orders with query:", query);
-    try {
-      const orders = await this.orderService["OrderRepository"].findAll({
-        attributes: [
-          "id",
-          "order_id",
-          "status",
-          "storeId",
-          "userId",
-          "delivery_company_id",
-          "grandTotal",
-          "createdAt",
-        ],
-        limit: query.limit ? parseInt(query.limit) : 100,
-        offset: query.offset ? parseInt(query.offset) : 0,
-        order: [["createdAt", "DESC"]],
-      });
-      const totalCount = await this.orderService["OrderRepository"].count();
-      console.log(
-        `Found ${totalCount} total orders, returning ${orders.length}`
-      );
-      return {
-        status: true,
-        data: orders,
-        meta: {
-          itemCount: totalCount,
-          page: Math.floor((query.offset || 0) / (query.limit || 100)) + 1,
-          take: query.limit || 100,
-        },
-      };
-    } catch (err) {
-      console.error("Error:", err);
-      throw err;
-    }
   }
 
   //get all orders for a store (or all orders for admin)
@@ -490,11 +472,15 @@ export class OrderController {
     @UserId() userId: number,
     @Body() create: CreateOrderDto
   ): Promise<DataResponseDto> {
-    // Log the attempt (optional - for analytics)
-    // this.orderLogger.create(userId, create).catch(console.error);
-
-    // Create the actual order
-    console.log({ create });
+    appLog.info(
+      {
+        event: "order_creation_requested",
+        userId,
+        gateway: create?.payment?.type,
+        paymentReference: create?.payment?.ref,
+      },
+      "order creation requested",
+    );
     return this.placeOrder.create(userId, create);
   }
 
