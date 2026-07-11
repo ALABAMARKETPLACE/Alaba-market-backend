@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import { Controller, Post, Body, UseGuards, HttpCode } from "@nestjs/common";
 import { CalculateDeliveryChargeService } from "./calculate_delivery.service";
 import {
@@ -12,6 +13,8 @@ import { AuthGuard } from "../shared/guards/auth.guard";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { Public } from "../shared/decorator/optional.decorator";
 import { CalculateDeliveryPublicDto } from "./dto/calculateDeliveryPublic.dto";
+
+const appLog = createStructuredLogger("calculate_delivery_controller");
 
 @Controller("calculate_delivery")
 @ApiTags("calculate_delivery")
@@ -49,7 +52,10 @@ export class CalculateDeliveryController {
   calculateNewDelivery(
     @Body() body: NewCalculateDeliveryDto,
   ): Promise<DataResponseDto> {
-    console.log({body})
+    appLog.debug(
+      { event: "delivery_calculation_requested" },
+      "delivery calculation requested",
+    );
     return this.deliveryService.getNewDeliveryCharge(body);
   }
 

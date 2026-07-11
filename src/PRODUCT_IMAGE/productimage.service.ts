@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   HttpStatus,
@@ -18,6 +19,8 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { UpdateProductImageDto2 } from "./dto/updateProductImage.dto";
 import { NotFoundError } from "rxjs";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
+
+const appLog = createStructuredLogger("productimage_service");
 const defaultImage =
   "https://bairuha-bucket.s3.ap-south-1.amazonaws.com/nextmiddleeast/no-image-icon-23485.png";
 @Injectable()
@@ -111,7 +114,7 @@ export class ProductImageService {
       }
       return [];
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
       throw new Error("Failed to Add Product Image@@");
     }
   }

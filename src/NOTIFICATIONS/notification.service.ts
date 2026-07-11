@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 // import {
 //   Inject,
 //   Injectable,
@@ -69,13 +70,13 @@
 //       };
 //       this.fcm?.send(message, function (err, response) {
 //         if (err) {
-//           console.log("Something has gone wrong!");
+//           appLog.info("Something has gone wrong!");
 //         } else {
-//           console.log("Successfully sent with response: ", response);
+//           appLog.info("Successfully sent with response: ", response);
 //         }
 //       });
 //     } catch (err) {
-//       console.log(err);
+//       appLog.info(err);
 //     }
 //   }
 
@@ -95,9 +96,9 @@
 //       };
 //       this.fcm?.send(message, function (err, response) {
 //         if (err) {
-//           console.log("Something has gone wrong!");
+//           appLog.info("Something has gone wrong!");
 //         } else {
-//           console.log("Successfully sent seller notification: ", response);
+//           appLog.info("Successfully sent seller notification: ", response);
 //         }
 //       });
 //     } catch (err) {}
@@ -114,6 +115,8 @@ import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { ConfigService } from "../shared/config/config.service";
 import * as admin from "firebase-admin";
+
+const appLog = createStructuredLogger("notification_service");
 
 @Injectable()
 export class NotificationsService {
@@ -146,7 +149,7 @@ export class NotificationsService {
         image,
       });
     } catch (err) {
-      console.error("Error creating notification:", err);
+      appLog.error("Error creating notification:", err);
       return null;
     }
   }
@@ -157,7 +160,7 @@ export class NotificationsService {
   ): Promise<DataResponseDto> {
     const { take, offset } = pageOptions;
     try {
-      console.log(`[NotificationService.findAll] Fetching notifications for user ${userId}`);
+      appLog.info(`[NotificationService.findAll] Fetching notifications for user ${userId}`);
       const { rows, count } = await this.repository.findAndCountAll({
         where: { userId },
         offset,
@@ -165,11 +168,11 @@ export class NotificationsService {
         order: [["createdAt", "DESC"]],
         attributes: { exclude: ["updatedAt", "userId"] },
       });
-      console.log(`[NotificationService.findAll] Found ${count} notifications, returning ${rows.length} rows`);
-      console.log(`[NotificationService.findAll] Unread count: ${rows.filter((n: any) => !n.is_read).length}`);
+      appLog.info(`[NotificationService.findAll] Found ${count} notifications, returning ${rows.length} rows`);
+      appLog.info(`[NotificationService.findAll] Unread count: ${rows.filter((n: any) => !n.is_read).length}`);
       return new DataResponseDto(rows, pageOptions, count);
     } catch (err) {
-      console.error("Error fetching notifications:", err);
+      appLog.error("Error fetching notifications:", err);
       throw new InternalServerErrorException("Error fetching notifications");
     }
   }
@@ -181,14 +184,14 @@ export class NotificationsService {
         return new DataResponseDto({}, false, "Notification not found");
       }
       
-      console.log(`[NotificationService.markAsRead] Marking notification ${id} as read for user ${userId}`);
+      appLog.info(`[NotificationService.markAsRead] Marking notification ${id} as read for user ${userId}`);
       notif.is_read = true;
       await notif.save();
-      console.log(`[NotificationService.markAsRead] Successfully marked notification ${id} as read`);
+      appLog.info(`[NotificationService.markAsRead] Successfully marked notification ${id} as read`);
       
       return new DataResponseDto({ id: notif.id }, true, "Marked as read");
     } catch (err) {
-      console.error("Error marking notification as read:", err);
+      appLog.error("Error marking notification as read:", err);
       throw new InternalServerErrorException("Error updating notification");
     }
   }
@@ -215,9 +218,9 @@ export class NotificationsService {
         },
       };
       const response = await this.messaging.send(message);
-      console.log("Successfully sent test notification:", response);
+      appLog.info("Successfully sent test notification:", response);
     } catch (err) {
-      console.error("Error sending test notification:", err);
+      appLog.error("Error sending test notification:", err);
     }
   }
 
@@ -248,9 +251,9 @@ export class NotificationsService {
       };
 
       const response = await this.messaging.send(message);
-      console.log("Successfully sent push notification:", response);
+      appLog.info("Successfully sent push notification:", response);
     } catch (err) {
-      console.error("Error sending push notification:", err);
+      appLog.error("Error sending push notification:", err);
     }
   }
 }

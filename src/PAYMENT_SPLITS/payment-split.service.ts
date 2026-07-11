@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   Inject,
   forwardRef,
+  Logger,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { Transaction } from "sequelize";
@@ -31,6 +32,8 @@ type PaymentSplitActor = {
 
 @Injectable()
 export class PaymentSplitService {
+  private readonly logger = new Logger(PaymentSplitService.name);
+
   constructor(
     @InjectModel(PaymentSplit)
     private readonly paymentSplitRepository: typeof PaymentSplit,
@@ -251,7 +254,7 @@ export class PaymentSplitService {
   ============================================ */
   async createPaymentSplit(orderId: number, actor?: PaymentSplitActor) {
     try {
-      return await this.paymentSplitRepository.sequelize.transaction(
+      const result = await this.paymentSplitRepository.sequelize.transaction(
         async (transaction: Transaction) => {
           const order = await this.getOrderWithStore(orderId, transaction);
           this.assertActorCanManageOrder(order, actor);
@@ -295,7 +298,22 @@ export class PaymentSplitService {
           );
         },
       );
+      this.logger.log(
+        {
+          event: "payment_split_created",
+          orderId,
+          storeId: result?.store_id,
+          paymentStatus: result?.split_status,
+          amount: result?.total_amount,
+        },
+        "payment split created or reused",
+      );
+      return result;
     } catch (err) {
+      this.logger.error(
+        { event: "payment_split_creation_failed", orderId, err },
+        "payment split creation failed",
+      );
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -310,7 +328,7 @@ export class PaymentSplitService {
     actor?: PaymentSplitActor,
   ) {
     try {
-      return await this.paymentSplitRepository.sequelize.transaction(
+      const result = await this.paymentSplitRepository.sequelize.transaction(
         async (transaction: Transaction) => {
           const order = await this.getOrderWithStore(orderId, transaction);
           this.assertActorCanManageOrder(order, actor);
@@ -384,7 +402,30 @@ export class PaymentSplitService {
           };
         },
       );
+      this.logger.log(
+        {
+          event: "split_payment_initialized",
+          gateway: "paystack",
+          orderId,
+          storeId: result?.paymentSplit?.store_id,
+          paymentReference: result?.paystack?.reference,
+          paymentStatus: result?.paymentSplit?.split_status,
+          amount: result?.paymentSplit?.total_amount,
+        },
+        "split payment initialized",
+      );
+      return result;
     } catch (err) {
+      this.logger.error(
+        {
+          event: "split_payment_initialization_failed",
+          gateway: "paystack",
+          orderId,
+          paymentReference: paymentData?.reference,
+          err,
+        },
+        "split payment initialization failed",
+      );
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -408,6 +449,15 @@ export class PaymentSplitService {
         "Payment verified successfully",
       );
     } catch (err) {
+      this.logger.error(
+        {
+          event: "split_payment_verification_failed",
+          gateway: "paystack",
+          paymentReference: reference,
+          err,
+        },
+        "split payment verification failed",
+      );
       throw new InternalServerErrorException(
         `Payment verification failed: ${err.message}`,
       );
@@ -430,6 +480,18 @@ export class PaymentSplitService {
       split_status: success ? "completed" : "failed",
       paystack_split_response: this.toPlainJson(data),
     });
+    this.logger.log(
+      {
+        event: "split_payment_status_synced",
+        gateway: "paystack",
+        paymentReference: reference,
+        orderId: paymentSplit.order_id,
+        storeId: paymentSplit.store_id,
+        paymentStatus: success ? "success" : "failed",
+        amount: data?.amount,
+      },
+      "split payment status synchronized",
+    );
   }
 
   async syncPaymentStatusFromWebhook(reference: string, data: any) {

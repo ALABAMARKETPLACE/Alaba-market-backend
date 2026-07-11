@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -17,6 +18,8 @@ import { UpdateBannerPositionDto } from "./dto/updatePosition.dto";
 import { UpdateBannerDto } from "./dto/update.dto";
 import { Role } from "../shared/enum/role.enum";
 import { ImgcompressService } from "../IMAGE_COMPRESS/img_compress.service";
+
+const appLog = createStructuredLogger("banner_service");
 
 type BannerFiles = {
   img_desk?: Express.Multer.File[];
@@ -93,7 +96,7 @@ export class BannerService {
           // no replacements - literals are built above to avoid unsupported replacement usage
         });
 
-      console.log({ pageOptions });
+      appLog.info({ pageOptions });
       
       return new DataResponseDto(rows, true, "Successfull", pageOptions, count);
     } catch (err) {

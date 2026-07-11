@@ -1,11 +1,14 @@
+import { createStructuredLogger } from "../logger/structured-logger";
 import { Injectable } from "@nestjs/common";
 import { Dialect } from "sequelize";
+
+const appLog = createStructuredLogger("config_service");
 
 @Injectable()
 export class ConfigService {
   get sequelizeOrmConfig() {
-    console.log("DATABASE_SSL =", process.env.DATABASE_SSL);
-    console.log("DATABASE_HOST =", process.env.DATABASE_HOST);
+    appLog.info("DATABASE_SSL =", process.env.DATABASE_SSL);
+    appLog.info("DATABASE_HOST =", process.env.DATABASE_HOST);
 
     return {
       // dialect: process.env.DATABASE as Dialect,

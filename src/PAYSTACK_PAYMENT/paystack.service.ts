@@ -60,8 +60,6 @@ import {
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import computeSplit from "../shared/helpers/computeSplit";
 import { getErrorMessage } from "../shared/helpers/errormessage";
-import { SellerBoosterService } from "../SELLER_BOOSTER/seller-booster.service";
-import { SELLER_BOOSTER_CHECKOUT_TYPE } from "../SELLER_BOOSTER/seller-booster.constants";
 
 @Injectable()
 export class PaystackService {
@@ -98,8 +96,6 @@ export class PaystackService {
 
     @Inject(forwardRef(() => OrderPlaceService))
     private readonly orderPlaceService: OrderPlaceService,
-    @Inject(forwardRef(() => SellerBoosterService))
-    private readonly sellerBoosterService?: SellerBoosterService,
   ) {}
 
   /* ----------------------------------
@@ -2320,23 +2316,6 @@ export class PaystackService {
         },
         "payment webhook received without reference",
       );
-      return;
-    }
-
-    if (paymentData?.metadata?.checkout_type === SELLER_BOOSTER_CHECKOUT_TYPE) {
-      if (!this.sellerBoosterService) {
-        this.logger.warn(
-          `Seller booster service is unavailable for Paystack reference ${reference}`,
-        );
-        return;
-      }
-
-      if (paymentStatus === "success") {
-        await this.sellerBoosterService.activateFromWebhook(paymentData);
-      } else {
-        await this.sellerBoosterService.markPaymentFailed(reference);
-      }
-
       return;
     }
 

@@ -33,7 +33,14 @@ const collectionVariables = [
     type: "string",
   },
   { key: "paymentReference", value: "", type: "string" },
+  { key: "paymentProvider", value: "paystack", type: "string" },
   { key: "paystackAccessCode", value: "", type: "string" },
+  { key: "budpayAccessCode", value: "", type: "string" },
+  { key: "budpayCustomerId", value: "", type: "string" },
+  { key: "budpayVirtualAccountId", value: "", type: "string" },
+  { key: "budpayAccountNumber", value: "", type: "string" },
+  { key: "budpayImportStatus", value: "", type: "string" },
+  { key: "budpayWebhookSignature", value: "", type: "string" },
   { key: "boosterPlanId", value: "1", type: "number" },
   { key: "boosterConfigId", value: "1", type: "number" },
   { key: "boosterReference", value: "", type: "string" },
@@ -105,8 +112,6 @@ const controllerGroupOverrides = {
   userhistory: "USERHISTORY",
   subscription_plans: "SUBSCRIPTION PLANS",
   boost_requests: "BOOST REQUESTS",
-  seller_booster: "SELLER BOOSTER",
-  super_admin: "SUPER ADMIN",
   featured_products: "FEATURED PRODUCTS",
   paystack_subaccounts: "PAYSTACK SUBACCOUNTS",
   subtitution_token: "SUBTITUTION TOKEN",
@@ -540,123 +545,149 @@ function sampleForRequest(method, pathSegments = []) {
 
   if (
     normalizedMethod === "POST" &&
-    normalizedPath === "paystack/initialize-checkout"
+    ["paystack/initialize-checkout", "budpay/initialize-checkout"].includes(
+      normalizedPath,
+    )
   ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : "{{paymentProvider}}";
+    const orderPayload = sampleForRequest("POST", ["order"]);
+    orderPayload.payment.type = provider;
     return {
-      order_payload: sampleForRequest("POST", ["order"]),
+      payment_provider: provider,
+      order_payload: orderPayload,
       callback_url: "{{callbackUrl}}",
     };
   }
 
-  if (normalizedMethod === "POST" && normalizedPath === "paystack/verify") {
+  if (
+    normalizedMethod === "POST" &&
+    ["paystack/verify", "budpay/verify"].includes(normalizedPath)
+  ) {
     return {
       reference: "{{paymentReference}}",
     };
   }
 
-  if (
-    normalizedMethod === "POST" &&
-    normalizedPath === "seller/booster/initialize"
-  ) {
+  if (normalizedMethod === "POST" && normalizedPath === "budpay/initialize") {
     return {
-      tier: "{{boosterTier}}",
-      product_ids: [1, 2, 3],
-      duration_days: 30,
-      callback_url: "http://localhost:3000/seller/booster/callback",
-    };
-  }
-
-  if (
-    normalizedMethod === "POST" &&
-    normalizedPath === "seller/booster/verify"
-  ) {
-    return {
-      reference: "{{boosterReference}}",
-    };
-  }
-
-  if (
-    normalizedMethod === "PUT" &&
-    normalizedPath === "seller/booster/products"
-  ) {
-    return {
-      product_ids: [4, 5, 6],
-    };
-  }
-
-  if (
-    normalizedMethod === "POST" &&
-    normalizedPath === "seller/booster/cancel"
-  ) {
-    return {};
-  }
-
-  if (
-    normalizedMethod === "POST" &&
-    normalizedPath === "super-admin/booster-plan-configs"
-  ) {
-    return {
-      name: "basic",
-      display_name: "Basic",
-      description: "Boost up to 5 selected active products.",
-      product_limit: 5,
-      boost_score: 30,
-      duration_days: 30,
-      price: 500000,
+      payment_provider: "budpay",
+      email: "{{userEmail}}",
+      amount: 500000,
       currency: "NGN",
-      is_active: true,
-      is_unlimited: false,
-    };
-  }
-
-  if (
-    normalizedMethod === "PATCH" &&
-    normalizedPath === "super-admin/booster-plan-configs/{{boosterConfigId}}"
-  ) {
-    return {
-      product_limit: 8,
-      boost_score: 35,
-      duration_days: 30,
-      price: 600000,
-      is_active: true,
-      is_unlimited: false,
-    };
-  }
-
-  if (
-    normalizedMethod === "PATCH" &&
-    normalizedPath === "super-admin/users/{{managedUserId}}/role"
-  ) {
-    return {
-      role: "{{managedRole}}",
-    };
-  }
-
-  if (
-    normalizedMethod === "PATCH" &&
-    normalizedPath === "super-admin/users/{{managedUserId}}/status"
-  ) {
-    return {
-      is_active: true,
+      callback_url: "{{callbackUrl}}",
+      reference: "",
+      metadata: {
+        source: "postman",
+      },
     };
   }
 
   if (
     normalizedMethod === "POST" &&
-    normalizedPath === "admin/auth/forgot-password"
+    ["paystack/initialize-guest", "budpay/initialize-guest"].includes(
+      normalizedPath,
+    )
   ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : "{{paymentProvider}}";
     return {
-      email: "{{adminEmail}}",
+      payment_provider: provider,
+      guest_info: {
+        email: "{{guestEmail}}",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        {
+          product_id: "{{productId}}",
+          store_id: "{{storeId}}",
+          quantity: 1,
+          unit_price: 500000,
+        },
+      ],
+      amount: 500000,
+      delivery_charge: 0,
+      currency: "NGN",
+      callback_url: "{{callbackUrl}}",
+      order_payload: {
+        guest_info: {
+          email: "{{guestEmail}}",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        delivery_address: {
+          id: "guest_address_001",
+          full_name: "Guest Buyer",
+          phone_no: "08000000000",
+          full_address: "12 Test Street, Ikeja, Lagos",
+          city: "Ikeja",
+          state: "Lagos",
+          state_id: "{{stateId}}",
+          country: "Nigeria",
+          country_id: "{{countryId}}",
+        },
+        cart_items: [
+          {
+            product_id: "{{productId}}",
+            store_id: "{{storeId}}",
+            product_name: "{{productName}}",
+            quantity: 1,
+            unit_price: 500000,
+            total_price: 500000,
+          },
+        ],
+        payment: {
+          payment_method: provider,
+          payment_status: "pending",
+        },
+        delivery: {
+          delivery_token: "{{deliveryToken}}",
+        },
+        order_summary: {
+          subtotal: 5000,
+          delivery_fee: 0,
+          discount: 0,
+          tax: 0,
+          total: 5000,
+        },
+      },
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "budpay/webhook") {
+    return {
+      notify: "transaction",
+      notifyType: "successful",
+      data: {
+        reference: "{{paymentReference}}",
+        status: "success",
+        amount: "500000",
+        currency: "NGN",
+        customer: {
+          email: "{{guestEmail}}",
+        },
+        metadata: {
+          payment_provider: "budpay",
+        },
+      },
     };
   }
 
   if (
     normalizedMethod === "POST" &&
-    normalizedPath === "admin/auth/reset-password"
+    normalizedPath === "budpay/admin/import-paystack-subaccounts"
   ) {
     return {
-      token: "{{adminResetToken}}",
-      newPassword: "{{adminNewPassword}}",
+      dryRun: true,
+      limit: 25,
+      storeId: "{{storeId}}",
+      retryFailed: false,
+      force: false,
     };
   }
 
@@ -819,17 +850,133 @@ function processItem(item, summary) {
     pathSegments.join("/") === "calculate_delivery" &&
     typeof req.body?.raw === "string" &&
     req.body.raw.includes('"id": "{{cartItemId}}"');
+  const shouldRefreshPaymentProviderBody =
+    method === "POST" &&
+    [
+      "paystack/initialize-checkout",
+      "paystack/initialize-guest",
+      "budpay/initialize",
+      "budpay/initialize-checkout",
+      "budpay/initialize-guest",
+      "budpay/verify",
+      "budpay/webhook",
+      "budpay/admin/import-paystack-subaccounts",
+    ].includes(pathSegments.join("/"));
 
   if (
     !hasBody ||
     shouldReplaceGenericBody ||
     shouldReplaceDeliveryBody ||
-    shouldReplaceLegacyDeliveryBody
+    shouldReplaceLegacyDeliveryBody ||
+    shouldRefreshPaymentProviderBody
   ) {
     req.body = { mode: "raw", raw: rawBodyForRequest(method, pathSegments) };
     req.header = ensureJsonHeader(req.header);
     summary.updatedBodies += 1;
   }
+}
+
+function configureBudPayRequests(collection) {
+  const descriptions = {
+    "POST budpay/initialize":
+      "Initialize a direct BudPay Standard transaction. Amount is in kobo.",
+    "POST budpay/initialize-checkout":
+      "Authenticated BudPay checkout using the same order_payload contract as Paystack.",
+    "POST budpay/initialize-guest":
+      "Guest BudPay checkout using the same request contract as Paystack.",
+    "POST budpay/verify":
+      "Verify a BudPay reference and validate stored checkout amount/email.",
+    "GET budpay/verify":
+      "Verify a BudPay reference using a query parameter.",
+    "POST budpay/webhook":
+      "BudPay webhook example. Production webhooks are server-verified against BudPay before order finalization.",
+    "GET budpay/public-key":
+      "Return the configured BudPay public key when frontend use requires it.",
+    "POST budpay/admin/import-paystack-subaccounts":
+      "Admin-only seller payout-profile import. Start with dryRun=true. force=true may replace stored BudPay identifiers.",
+    "GET budpay/admin/import-paystack-subaccounts/preview":
+      "Admin-only read-only preview. Shows ready, missing-data, and already-imported stores without mutation.",
+    "GET budpay/admin/import-paystack-subaccounts/status":
+      "Admin-only BudPay seller payout-profile import status.",
+  };
+
+  walkRequests(collection.item, (item) => {
+    const request = item?.request;
+    const segments = Array.isArray(request?.url?.path) ? request.url.path : [];
+    if (segments[0] !== "budpay") {
+      return;
+    }
+
+    const method = String(request.method || "GET").toUpperCase();
+    const route = segments.join("/");
+    const key = `${method} ${route}`;
+    request.description = descriptions[key] || request.description;
+
+    const isPublic =
+      route === "budpay/webhook" ||
+      route === "budpay/public-key" ||
+      route === "budpay/initialize-guest";
+    request.header = (request.header || []).filter(
+      (header) =>
+        !isPublic || String(header.key || "").toLowerCase() !== "authorization",
+    );
+
+    if (route === "budpay/webhook") {
+      request.header = ensureJsonHeader(request.header);
+      request.header = request.header.filter(
+        (header) =>
+          String(header.key || "").toLowerCase() !== "x-budpay-signature",
+      );
+      request.header.push({
+        key: "x-budpay-signature",
+        value: "{{budpayWebhookSignature}}",
+        disabled: true,
+        description:
+          "Enable only when BUDPAY_WEBHOOK_SECRET/signature validation is configured.",
+      });
+    }
+
+    if (method === "GET" && route === "budpay/verify") {
+      request.url.raw = "{{baseUrl}}/budpay/verify?reference={{paymentReference}}";
+      request.url.query = [
+        { key: "reference", value: "{{paymentReference}}" },
+      ];
+    }
+
+    if (
+      method === "GET" &&
+      route === "budpay/admin/import-paystack-subaccounts/preview"
+    ) {
+      request.url.raw =
+        "{{baseUrl}}/budpay/admin/import-paystack-subaccounts/preview?limit=100&storeId=";
+      request.url.query = [
+        { key: "limit", value: "100" },
+        {
+          key: "storeId",
+          value: "{{storeId}}",
+          disabled: true,
+          description: "Enable for a targeted store preview.",
+        },
+      ];
+    }
+
+    if (
+      method === "GET" &&
+      route === "budpay/admin/import-paystack-subaccounts/status"
+    ) {
+      request.url.raw =
+        "{{baseUrl}}/budpay/admin/import-paystack-subaccounts/status?limit=100&storeId=";
+      request.url.query = [
+        { key: "limit", value: "100" },
+        {
+          key: "storeId",
+          value: "{{storeId}}",
+          disabled: true,
+          description: "Enable for one store.",
+        },
+      ];
+    }
+  });
 }
 
 function upsertCollectionVariables(collection) {
@@ -1166,13 +1313,11 @@ function buildContextualScript(pathSegments = [], requestName = "") {
   const isOrderLike = resource === "order";
   const isAddressLike = resource === "address" || resource === "new-address";
   const isPaystackLike = resource === "paystack";
+  const isBudPayLike = resource === "budpay";
   const isCategoryLike = resource === "category";
   const isSubCategoryLike = resource === "sub_category";
   const isProductSearchLike = resource === "product_search";
   const isEnquiryLike = resource === "enquiry";
-  const isSellerBoosterLike =
-    resource === "seller" && pathSegments[1] === "booster";
-  const isSuperAdminLike = resource === "super-admin";
   const isPaystackReconcile =
     isPaystackLike && requestLabel.includes("transactions/reconcile");
   const isPaystackReconciliation =
@@ -1359,28 +1504,18 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     }
   }
 
-  if (isSellerBoosterLike) {
+  if (isBudPayLike) {
     script.push(
-      "  const boosterPlan = data?.booster_plan || data?.active_plan || first?.booster_plan || first?.active_plan || data;",
-      "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-      "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-      "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-      "  setIf('boosterReference', boosterReference);",
-      "  setIf('paymentReference', boosterReference);",
-      "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-      "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-      "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-    );
-  }
-
-  if (isSuperAdminLike) {
-    script.push(
-      "  const config = data?.booster_plan_config || data?.config || first || data;",
-      "  const userTarget = data?.user || first || data;",
-      "  setIf('boosterConfigId', config?.id);",
-      "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-      "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-      "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
+      "  const budpayReference = data?.reference || json?.reference || payment?.ref;",
+      "  const importResult = results[0] || (Array.isArray(data?.stores) ? data.stores[0] : null) || first;",
+      "  setIf('paymentReference', budpayReference);",
+      "  setIf('reconcileReference', budpayReference);",
+      "  setIf('budpayAccessCode', data?.access_code || json?.access_code);",
+      "  setIf('budpayCustomerId', importResult?.budpay?.customer_id || importResult?.budpay_customer_id || data?.customer?.id);",
+      "  setIf('budpayVirtualAccountId', importResult?.budpay?.virtual_account_id || importResult?.budpay_virtual_account_id);",
+      "  setIf('budpayAccountNumber', importResult?.budpay?.account_number || importResult?.budpay_account_number);",
+      "  setIf('budpayImportStatus', importResult?.result || importResult?.status || data?.status || json?.status);",
+      "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
     );
   }
 
@@ -2574,6 +2709,7 @@ function updateCollectionFile(filePath) {
   upsertCollectionVariables(collection);
   normalizeExistingRequestUrls(collection);
   syncControllerRoutes(collection);
+  configureBudPayRequests(collection);
   ensurePaystackReconcileRequest(collection);
   ensurePaystackManualSettlementAuditRequest(collection);
   ensurePaystackSubaccountPercentageUpdateRequest(collection);
@@ -2581,7 +2717,6 @@ function updateCollectionFile(filePath) {
   ensurePaystackUnmatchedRemoteRequest(collection);
   ensurePaystackResolveUnmatchedRequest(collection);
   ensurePaystackReconciliationRequests(collection);
-  ensureAdminAuthRequests(collection);
   ensureUserManagementRoleRequests(collection);
   ensureGuestOrderRequests(collection);
   ensureSellerBoosterRequests(collection);
@@ -2593,6 +2728,7 @@ function updateCollectionFile(filePath) {
   if (Array.isArray(collection.item)) {
     collection.item.forEach((item) => processItem(item, summary));
   }
+  configureBudPayRequests(collection);
   walkRequests(collection.item, (item) => {
     normalizeEmailsInRequest(item.request);
   });

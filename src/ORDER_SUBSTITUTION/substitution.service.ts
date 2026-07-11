@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -28,6 +29,8 @@ import { MailService } from "../MAILS/Mails.services";
 import { TokenGateway } from "../SUBSTITUTION_SOKET/token.gateway";
 import { error } from "console";
 
+const appLog = createStructuredLogger("substitution_service");
+
 @Injectable()
 export class OrderSubstitutionService {
   constructor(
@@ -42,7 +45,7 @@ export class OrderSubstitutionService {
 
   async create(data: CreateSubstitutionDto, storeId: number) {
     try {
-      console.log("this is the data i get", data, storeId);
+      appLog.info("this is the data i get", data, storeId);
       const result = await this.repository.sequelize.transaction(async (transaction) => {
         const orderItems: any = await OrderItems.findOne({
           where: { id: data.orderItemId },
@@ -60,7 +63,7 @@ export class OrderSubstitutionService {
         if (!orderItems) {
           throw new NotFoundException("Selected Order not found");
         }
-        console.log("orderItems.quantity", orderItems.quantity);
+        appLog.info("orderItems.quantity", orderItems.quantity);
         const newone = await this.repository.create(
           {
             orderId: literal(
@@ -119,7 +122,7 @@ export class OrderSubstitutionService {
             _id: data?.substitute,
           },
         });
-        console.log("this one order", order);
+        appLog.info("this one order", order);
         await this.afterCommit(
           transaction,
           data,
@@ -132,12 +135,12 @@ export class OrderSubstitutionService {
 
         // Get the userId from the order
         if (!orderItems.orderDetails || !orderItems.orderDetails.userId) {
-          console.log(
+          appLog.info(
             `No userId found for order ${data.orderId}, cannot send WebSocket notification`
           );
         } else {
           const userId = orderItems.orderDetails.userId;
-          console.log(`Sending substitution notification to user ${userId}`);
+          appLog.info(`Sending substitution notification to user ${userId}`);
 
           // Make sure we're explicitly using broadcastToUser not broadcastToken
           this.tokenGateway.broadcastToUser(userId, {
@@ -156,7 +159,7 @@ export class OrderSubstitutionService {
 
       return new DataResponseDto(result);
     } catch (err) {
-      console.log("this is the error", err);
+      appLog.info("this is the error", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -221,8 +224,8 @@ export class OrderSubstitutionService {
 
   async getFiveMintCheck(userId: number) {
     try {
-      console.log("userId", userId);
-      console.log("userId", userId);
+      appLog.info("userId", userId);
+      appLog.info("userId", userId);
       // Get the current timestamp
       const currentTime = new Date();
 
@@ -673,7 +676,7 @@ export class OrderSubstitutionService {
         this.mailService.sellerEmails(userMail);
       });
     } catch (err) {
-      console.log('error',err)
+      appLog.info('error',err)
       return null;
     }
   }

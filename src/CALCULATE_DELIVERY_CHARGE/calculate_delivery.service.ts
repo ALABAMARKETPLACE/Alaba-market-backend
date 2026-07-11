@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -15,6 +16,8 @@ import { DeliveryChargeService } from "../DELIVERY_CHARGE/deliverycharge.service
 import { JwtService } from "@nestjs/jwt";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { CalculateDeliveryPublicDto } from "./dto/calculateDeliveryPublic.dto";
+
+const appLog = createStructuredLogger("calculate_delivery_service");
 
 @Injectable()
 export class CalculateDeliveryChargeService {
@@ -114,7 +117,7 @@ export class CalculateDeliveryChargeService {
   //       token,
   //     };
   //   } catch (err) {
-  //     console.log(err);
+  //     appLog.info(err);
   //     if (err instanceof HttpException) throw err;
   //     throw new InternalServerErrorException(getErrorMessage(err));
   //   }
@@ -133,21 +136,16 @@ export class CalculateDeliveryChargeService {
       // product/order-value delivery charge so checkout remains available.
       const result = await DistanceCharge.sequelize!.transaction(
         async (transaction: Transaction) => {
-          console.log({ transaction });
           for (const _store of groupedProducts) {
-            const productCharge =
-              await this.deliveryChargeService.getDeliveryCharge(
-                { amount: data.total ?? 0 },
-                transaction,
-              );
+            await this.deliveryChargeService.getDeliveryCharge(
+              { amount: data.total ?? 0 },
+              transaction,
+            );
 
-            console.log({ productCharge });
             amount += 0;
             chargeDetails.productCharge += 0;
             chargeDetails.totalCharge = amount;
           }
-
-          console.log({ amount, chargeDetails });
 
           return { amount, chargeDetails };
         },
@@ -166,17 +164,14 @@ export class CalculateDeliveryChargeService {
         { expiresIn: process.env.DELIVERY_TOKEN_EXPIRY },
       );
 
-      console.log({
-        data: {
+      appLog.info(
+        {
+          event: "delivery_charge_calculated",
           amount: result.amount,
-          discount,
+          storeCount: groupedProducts.length,
         },
-        status: true,
-        message: "Success",
-        details: result.chargeDetails,
-        statusCode: 200,
-        token,
-      });
+        "delivery charge calculated",
+      );
 
       return {
         data: {
@@ -190,7 +185,10 @@ export class CalculateDeliveryChargeService {
         token,
       };
     } catch (err) {
-      console.log(err);
+      appLog.error(
+        { event: "delivery_charge_calculation_failed", err },
+        "delivery charge calculation failed",
+      );
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -303,7 +301,7 @@ export class CalculateDeliveryChargeService {
 
       // ✅ TEMPORARY: Use default delivery charge if none configured
       const deliveryCharge = deliveryChargeRecord?.delivery_charge || 0; // Default to 0 if no config
-      console.log(
+      appLog.info(
         "⚠️ [Delivery] Using default charge for unconfigured location:",
         {
           state_id: data.address.state_id,
@@ -354,7 +352,7 @@ export class CalculateDeliveryChargeService {
         token,
       };
     } catch (err) {
-      console.log("Error calculating new delivery charge:", err);
+      appLog.info("Error calculating new delivery charge:", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -409,7 +407,7 @@ export class CalculateDeliveryChargeService {
         guestToken,
       );
     } catch (err) {
-      console.log("Error calculating public delivery charge:", err);
+      appLog.info("Error calculating public delivery charge:", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
