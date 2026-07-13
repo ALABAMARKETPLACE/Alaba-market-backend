@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Alaba Backend
+    orgId: 1
+    folder: Alaba Backend
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

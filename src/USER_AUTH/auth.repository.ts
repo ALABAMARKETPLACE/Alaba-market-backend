@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import { Inject, Injectable } from "@nestjs/common";
 import { User } from "../USERS/user.entity";
 import { Op, Sequelize } from "sequelize";
@@ -6,6 +7,8 @@ import { generateFromEmail } from "unique-username-generator";
 import { signup_Request } from "./dto/signup.dto";
 import { Role } from "../shared/enum/role.enum";
 import { Store } from "../STORE/store.entity";
+
+const appLog = createStructuredLogger("auth_repository");
 
 @Injectable()
 export class AuthRepository {
@@ -56,7 +59,6 @@ export class AuthRepository {
   }
 
   async saveFcm(fcmtoken: string, _id: number) {
-    console.log("==fcmtoken===", fcmtoken);
     try {
       const save = await User.update(
         {
@@ -183,7 +185,7 @@ export class AuthRepository {
       });
       return user;
     } catch (error) {
-      console.log(error)
+      appLog.info(error)
       return error;
     }
   }
@@ -208,7 +210,7 @@ export class AuthRepository {
       store.fcmtoken = fcmToken;
       await store.save();
     } catch (err) {
-      console.log("failed to save seller fcm");
+      appLog.info("failed to save seller fcm");
     }
   }
 
@@ -233,7 +235,7 @@ export class AuthRepository {
       });
       return user;
     } catch (error) {
-      console.log("error", error);
+      appLog.info("error", error);
       return null;
     }
   }

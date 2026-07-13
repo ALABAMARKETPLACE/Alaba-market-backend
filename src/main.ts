@@ -4,71 +4,62 @@ import { ValidationPipe } from "@nestjs/common";
 import { setupSwagger } from "./swagger";
 import * as dotenv from "dotenv";
 import * as bodyParser from "body-parser";
+import helmet from "helmet";
 import { AllExceptionsFilter } from "./shared/filters/all-exceptions.filter";
-import * as path from "path";
-import { FileLogger, patchConsole } from "./shared/logger/file-logger";
-import { createRequestLogger } from "./shared/logger/request-logger";
+import { validateEnvironment } from "./config/env.validation";
+import { Logger as PinoNestLogger } from "nestjs-pino";
+import { createBootstrapLogger } from "./shared/logger/pino.config";
 
 // ✅ Load .env FIRST (before anything else)
 dotenv.config();
 
-// Catch crashes OUTSIDE Nest (very important for PM2)
+const bootstrapLogger = createBootstrapLogger();
+
 process.on("unhandledRejection", (reason: any) => {
-  console.error("❌ UNHANDLED REJECTION:", reason);
-  // Don't exit in production - let PM2 handle it
+  bootstrapLogger.error(
+    { err: reason instanceof Error ? reason : new Error(String(reason)) },
+    "unhandled promise rejection",
+  );
 });
 
 process.on("uncaughtException", (error) => {
-  console.error("❌ UNCAUGHT EXCEPTION:", error);
-  // Don't exit in production - let PM2 handle it
+  bootstrapLogger.fatal({ err: error }, "uncaught exception");
+});
+
+process.on("warning", (warning) => {
+  bootstrapLogger.warn(
+    {
+      module: "Process",
+      event: "process_warning",
+      warningName: warning.name,
+      warningMessage: warning.message,
+      warningStack: warning.stack,
+    },
+    "process warning",
+  );
 });
 
 async function bootstrap() {
   // ================= ENV VALIDATION =================
+  const envValidation = validateEnvironment();
   const NODE_ENV = process.env.NODE_ENV || "development";
   const PORT = parseInt(process.env.PORT, 10) || 8000;
-  const LOG_FILE_PATH =
-    process.env.LOG_FILE_PATH ||
-    path.join(process.cwd(), "logs", "app.log");
-  const LOG_ERROR_FILE_PATH =
-    process.env.LOG_ERROR_FILE_PATH ||
-    path.join(process.cwd(), "logs", "error.log");
-  const LOG_WARN_FILE_PATH =
-    process.env.LOG_WARN_FILE_PATH ||
-    path.join(process.cwd(), "logs", "warn.log");
-  const LOG_ROTATE_DAILY = process.env.LOG_ROTATE_DAILY !== "false";
-  const LOG_REQUESTS = process.env.LOG_REQUESTS !== "false";
-  const LOG_REQUEST_BODIES = process.env.LOG_REQUEST_BODIES !== "false";
-  const LOG_REQUEST_HEADERS = process.env.LOG_REQUEST_HEADERS === "true";
-
-  const originalConsole = {
-    log: console.log.bind(console),
-    error: console.error.bind(console),
-    warn: console.warn.bind(console),
-    debug: console.debug.bind(console),
-    info: console.info.bind(console),
-  };
-
-  const fileLogger = new FileLogger({
-    logFilePath: LOG_FILE_PATH,
-    errorLogFilePath: LOG_ERROR_FILE_PATH,
-    warnLogFilePath: LOG_WARN_FILE_PATH,
-    appName: "NestApplication",
-    mirrorToConsole: true,
-    consoleMethods: originalConsole,
-    rotateDaily: LOG_ROTATE_DAILY,
-  });
-
-  patchConsole(fileLogger, { forwardToConsole: false });
-
-  console.log("📋 Environment:", NODE_ENV);
-  console.log("🗄️  Database:", process.env.DATABASE_HOST);
-  console.log("🌐 Port:", PORT);
-  // ==================================================
 
   const app = await NestFactory.create(AppModule, {
-    logger: fileLogger,
+    bufferLogs: true,
   });
+  const logger = app.get(PinoNestLogger);
+  app.useLogger(logger);
+  app.flushLogs();
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: NODE_ENV === "production" ? undefined : false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+
+  envValidation.warnings.forEach((warning) => logger.warn(warning));
 
   const httpAdapter = app.getHttpAdapter();
   const expressApp = httpAdapter.getInstance();
@@ -91,9 +82,6 @@ async function bootstrap() {
     }
     next();
   });
-
-  const logger = fileLogger;
-  app.useLogger(fileLogger);
 
   const captureRawBody = (req: any, _res: any, buf: Buffer) => {
     if (buf?.length) {
@@ -167,53 +155,52 @@ async function bootstrap() {
       "X-Requested-With",
       "Accept",
       "x-access-token",
+      "X-Request-Id",
+      "X-Correlation-Id",
     ],
-    exposedHeaders: ["Content-Disposition"],
+    exposedHeaders: ["Content-Disposition", "X-Request-Id"],
   });
-  // ==================================================
-
-  // ================= REQUEST LOGGER =================
-  if (LOG_REQUESTS) {
-    app.use(
-      createRequestLogger(logger, {
-        logBodies: LOG_REQUEST_BODIES,
-        logHeaders: LOG_REQUEST_HEADERS,
-      }),
-    );
-  }
   // ==================================================
 
   // ================= SWAGGER ========================
   // ✅ Only enable Swagger in development/staging
   if (NODE_ENV !== "production") {
     setupSwagger(app);
-    logger.log(`📚 Swagger: http://localhost:${PORT}/api/docs`);
+    logger.log(
+      { module: "Bootstrap", port: PORT },
+      "Swagger documentation enabled",
+    );
   }
   // ==================================================
 
   // ================= GRACEFUL SHUTDOWN ==============
   // ✅ Handle PM2 shutdown signals
   process.on("SIGTERM", async () => {
-    logger.log("⚠️  SIGTERM received, shutting down gracefully...");
+    logger.log({ module: "Bootstrap", signal: "SIGTERM" }, "shutdown started");
     await app.close();
     process.exit(0);
   });
 
   process.on("SIGINT", async () => {
-    logger.log("⚠️  SIGINT received, shutting down gracefully...");
+    logger.log({ module: "Bootstrap", signal: "SIGINT" }, "shutdown started");
     await app.close();
     process.exit(0);
   });
   // ==================================================
 
-  await app.listen(PORT, "0.0.0.0", () => {
-    logger.log(`🚀 Server running on http://localhost:${PORT}`);
-    logger.log(`📊 Environment: ${NODE_ENV}`);
-    logger.log(`🗄️  Database: ${process.env.DATABASE_HOST}`);
-    if (NODE_ENV !== "production") {
-      logger.log(`📚 Swagger: http://localhost:${PORT}/api/docs`);
-    }
-  });
+  await app.listen(PORT, "0.0.0.0");
+  logger.log(
+    {
+      module: "Bootstrap",
+      port: PORT,
+      environment: NODE_ENV,
+      databaseHost: process.env.DATABASE_HOST,
+    },
+    "application started",
+  );
 }
 
-bootstrap();
+bootstrap().catch((error) => {
+  bootstrapLogger.fatal({ err: error }, "application bootstrap failed");
+  process.exitCode = 1;
+});

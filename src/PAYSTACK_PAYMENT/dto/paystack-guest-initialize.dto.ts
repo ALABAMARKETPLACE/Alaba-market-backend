@@ -9,6 +9,7 @@ import {
   IsString,
   Min,
   IsArray,
+  IsIn,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
@@ -49,12 +50,20 @@ class CartItemDto {
   @IsNumber()
   store_id: number;
 
+  @ApiProperty({ description: "Variant ID, if this item is a product variant", required: false })
+  @IsOptional()
+  @IsNumber()
+  variant_id?: number;
+
   @ApiProperty({ description: "Quantity" })
   @IsNumber()
   @Min(1)
   quantity: number;
 
-  @ApiProperty({ description: "Unit price in kobo" })
+  @ApiProperty({
+    description:
+      "Client-supplied unit price. Informational only — the backend recomputes the real price from the product/variant record and ignores this value when charging.",
+  })
   @IsNumber()
   unit_price: number;
 }
@@ -64,6 +73,25 @@ class CartItemDto {
 ========================= */
 
 export class PaystackGuestInitializeDto {
+  @ApiProperty({
+    description:
+      "Optional payment provider selector. Missing values remain Paystack for backward compatibility.",
+    enum: ["paystack", "budpay"],
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(["paystack", "budpay"])
+  payment_provider?: "paystack" | "budpay";
+
+  @ApiProperty({
+    description: "Alias for payment_provider.",
+    enum: ["paystack", "budpay"],
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(["paystack", "budpay"])
+  payment_channel?: "paystack" | "budpay";
+
   @ApiProperty({
     description: "Guest information",
     type: GuestInfoDto,

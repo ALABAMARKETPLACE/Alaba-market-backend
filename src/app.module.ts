@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { ScheduleModule } from "@nestjs/schedule";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { SharedModule } from "./shared/shared.module";
 
 import { UserModule } from "./USERS/user.module";
@@ -71,12 +73,21 @@ import { FeaturedProductsModule } from "./FEATURED_PRODUCTS/featured-products.mo
 import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.module";
 import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
 import { MarketplaceFeedModule } from "./MARKETPLACE_FEED/marketplace-feed.module";
+import { BudPayModule } from "./BUDPAY_PAYMENT/budpay.module";
+import { LoggingModule } from "./shared/logger/logging.module";
 
 
 @Module({
   imports: [
+    LoggingModule,
     DatabaseModule,
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     FirebaseModule,
     NestJwtModule,
     CacheModule.register({
@@ -141,6 +152,7 @@ import { MarketplaceFeedModule } from "./MARKETPLACE_FEED/marketplace-feed.modul
     PrintItemsModule,
     PrintStatusModule,
     PaystackModule,
+    BudPayModule,
     PaystackSubaccountModule,
     CountriesModule,
     NewDistanceChargeModule,
@@ -152,6 +164,11 @@ import { MarketplaceFeedModule } from "./MARKETPLACE_FEED/marketplace-feed.modul
     MarketplaceFeedModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

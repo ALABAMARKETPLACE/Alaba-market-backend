@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   Inject,
@@ -11,6 +12,8 @@ import { Products } from "../PRODUCTS/products.entity";
 import { Sequelize } from "sequelize";
 import { PageOptionsDto } from "../shared/dto/pageOptions.dto";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
+
+const appLog = createStructuredLogger("userhistory_service");
 @Injectable()
 export class UserHistoryService {
   constructor(
@@ -72,7 +75,7 @@ export class UserHistoryService {
       }));
       return new DataResponseDto(results, true, "Success", pageOptionsDto, count);
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }

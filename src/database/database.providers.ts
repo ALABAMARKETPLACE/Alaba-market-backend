@@ -59,6 +59,7 @@ import { DriverOrder } from "../DELIVERY_COMPANY/driver_order.entity";
 import { PaymentSplit } from "../PAYMENT_SPLITS/payment-split.entity";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 import { UserCheckout } from "../PAYSTACK_PAYMENT/user-checkout.entity";
+import { PaystackWebhookEvent } from "../PAYSTACK_PAYMENT/paystack-webhook-event.entity";
 export const databaseProviders = [
   {
     provide: "SEQUELIZE",
@@ -124,6 +125,7 @@ export const databaseProviders = [
         PaymentSplit,
         GuestCheckout,
         UserCheckout,
+        PaystackWebhookEvent,
       ]);
       // WARNING: force: true will drop all tables and recreate them!
       // Only use in development. Comment out after first run.

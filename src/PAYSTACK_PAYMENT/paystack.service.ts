@@ -12,6 +12,7 @@ import { InjectModel } from "@nestjs/sequelize";
 import { catchError, lastValueFrom, map } from "rxjs";
 import * as crypto from "crypto";
 import { Op, Transaction } from "sequelize";
+import { UniqueConstraintError } from "sequelize";
 
 import {
   PaystackInitializeDto,
@@ -39,6 +40,7 @@ import { PaystackGuestInitializeDto } from "./dto/paystack-guest-initialize.dto"
 import { PaystackUserInitializeDto } from "./dto/paystack-user-initialize.dto";
 import { GuestCheckout } from "./guest-checkout.entity";
 import { UserCheckout } from "./user-checkout.entity";
+import { PaystackWebhookEvent } from "./paystack-webhook-event.entity";
 import { GuestOrderService } from "../ORDER/guest-order.service";
 import { CreateGuestOrderDto } from "../ORDER/dto/create-guest-order.dto";
 import { OrderPlaceService } from "../ORDER/order.place";
@@ -57,6 +59,7 @@ import {
 } from "../shared/helpers/paystack-subaccount.helper";
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import computeSplit from "../shared/helpers/computeSplit";
+import { getErrorMessage } from "../shared/helpers/errormessage";
 
 @Injectable()
 export class PaystackService {
@@ -75,6 +78,9 @@ export class PaystackService {
 
     @InjectModel(UserCheckout)
     private readonly userCheckoutRepository: typeof UserCheckout,
+
+    @InjectModel(PaystackWebhookEvent)
+    private readonly webhookEventRepository: typeof PaystackWebhookEvent,
 
     @InjectModel(User)
     private readonly userRepository: typeof User,
@@ -626,6 +632,7 @@ export class PaystackService {
         userId,
         initData.order_payload,
       );
+    await this.assertBudPaySplitProfiles(preparedCheckout.store_ids);
     const reference = initData.reference || this.generateReference();
     const storeForSplit = await this.getEligibleSingleStoreForSplit(
       preparedCheckout.store_ids,
@@ -832,7 +839,15 @@ export class PaystackService {
 
       // Subaccount is invalid/deactivated — fall back to company account
       this.logger.warn(
-        `Subaccount ${resolvedSubaccount.code} rejected by Paystack ("${paystackMsg}") — falling back to company account for store ${initData.store_id}`,
+        {
+          event: "split_subaccount_rejected",
+          gateway: "paystack",
+          storeId: initData.store_id,
+          orderId: initData.order_id,
+          paymentReference: splitPayload.reference,
+          reason: paystackMsg,
+        },
+        "Paystack subaccount rejected; falling back to company account",
       );
 
       const fallbackPayload = {
@@ -1010,6 +1025,109 @@ export class PaystackService {
     });
   }
 
+  private buildWebhookEventKey(webhookData: PaystackWebhookDto): string {
+    const event = String(webhookData?.event || "unknown").trim() || "unknown";
+    const reference = String(webhookData?.data?.reference || "").trim();
+    const transactionId =
+      webhookData?.data?.id == null ? "" : String(webhookData.data.id).trim();
+    const identifier = reference || transactionId || crypto
+      .createHash("sha256")
+      .update(JSON.stringify(webhookData?.data || {}))
+      .digest("hex");
+
+    return `${event}:${identifier}`;
+  }
+
+  private async reserveWebhookEvent(
+    webhookData: PaystackWebhookDto,
+  ): Promise<{
+    eventLog: PaystackWebhookEvent | null;
+    shouldProcess: boolean;
+    message?: string;
+  }> {
+    const eventKey = this.buildWebhookEventKey(webhookData);
+    const reference = webhookData?.data?.reference || null;
+    const paystackTransactionId =
+      webhookData?.data?.id == null ? null : String(webhookData.data.id);
+
+    try {
+      const eventLog = await this.webhookEventRepository.create({
+        event_key: eventKey,
+        event: webhookData.event,
+        reference,
+        paystack_transaction_id: paystackTransactionId,
+        status: "processing",
+        attempts: 1,
+        payload: webhookData,
+        error: null,
+        processed_at: null,
+      } as any);
+
+      return { eventLog, shouldProcess: true };
+    } catch (error) {
+      if (!(error instanceof UniqueConstraintError)) {
+        throw error;
+      }
+
+      const existing = await this.webhookEventRepository.findOne({
+        where: { event_key: eventKey },
+      });
+
+      if (!existing) {
+        throw error;
+      }
+
+      if (existing.status === "completed") {
+        return {
+          eventLog: existing,
+          shouldProcess: false,
+          message: "Duplicate webhook ignored",
+        };
+      }
+
+      if (existing.status === "processing") {
+        return {
+          eventLog: existing,
+          shouldProcess: false,
+          message: "Webhook already processing",
+        };
+      }
+
+      await existing.update({
+        status: "processing",
+        attempts: Number(existing.attempts || 0) + 1,
+        payload: webhookData,
+        error: null,
+      } as any);
+
+      return { eventLog: existing, shouldProcess: true };
+    }
+  }
+
+  private async markWebhookEventCompleted(
+    eventLog: PaystackWebhookEvent | null,
+  ): Promise<void> {
+    if (!eventLog) return;
+
+    await eventLog.update({
+      status: "completed",
+      error: null,
+      processed_at: new Date(),
+    } as any);
+  }
+
+  private async markWebhookEventFailed(
+    eventLog: PaystackWebhookEvent | null,
+    error: unknown,
+  ): Promise<void> {
+    if (!eventLog) return;
+
+    await eventLog.update({
+      status: "failed",
+      error: getErrorMessage(error),
+    } as any);
+  }
+
   /* ----------------------------------
      WEBHOOK ENTRY
   ---------------------------------- */
@@ -1019,24 +1137,81 @@ export class PaystackService {
     rawPayload: string,
   ): Promise<{ status: string; message: string }> {
     if (!this.verifyWebhookSignature(rawPayload, signature)) {
+      this.logger.warn(
+        {
+          event: "webhook_signature_invalid",
+          gateway: "paystack",
+          paymentReference: webhookData.data?.reference,
+        },
+        "Paystack webhook signature validation failed",
+      );
       throw new HttpException(
         "Invalid webhook signature",
         HttpStatus.UNAUTHORIZED,
       );
     }
 
-    if (webhookData.event === "charge.success") {
-      await this.handleSuccessfulPayment(webhookData.data);
+    const reservation = await this.reserveWebhookEvent(webhookData);
+    if (!reservation.shouldProcess) {
+      this.logger.log(
+        {
+          event: webhookData.event,
+          gateway: "paystack",
+          paymentReference: webhookData.data?.reference,
+          webhookStatus: "duplicate",
+        },
+        reservation.message || "Paystack webhook ignored",
+      );
+
+      return {
+        status: "ok",
+        message: reservation.message || "Duplicate webhook ignored",
+      };
     }
 
-    if (webhookData.event === "charge.failed") {
-      await this.handleFailedPayment(webhookData.data);
+    try {
+      if (webhookData.event === "charge.success") {
+        await this.finalizePaymentTransaction(
+          webhookData.data,
+          "success",
+          "paystack",
+        );
+      }
+
+      if (webhookData.event === "charge.failed") {
+        await this.finalizePaymentTransaction(
+          webhookData.data,
+          "failed",
+          "paystack",
+        );
+      }
+
+      await this.markWebhookEventCompleted(reservation.eventLog);
+    } catch (error) {
+      await this.markWebhookEventFailed(reservation.eventLog, error);
+      this.logger.error(
+        {
+          event: webhookData.event,
+          gateway: "paystack",
+          paymentReference: webhookData.data?.reference,
+          paymentStatus: webhookData.data?.status,
+          amount: webhookData.data?.amount,
+          err: error,
+        },
+        "Paystack webhook processing failed",
+      );
+      throw error;
     }
 
     this.logger.log(
-      `Processed Paystack webhook event "${webhookData.event}" for ${
-        webhookData.data?.reference ?? "unknown-reference"
-      }`,
+      {
+        event: webhookData.event,
+        gateway: "paystack",
+        paymentReference: webhookData.data?.reference,
+        paymentStatus: webhookData.data?.status,
+        amount: webhookData.data?.amount,
+      },
+      "Paystack webhook processed",
     );
 
     return {
@@ -1049,14 +1224,14 @@ export class PaystackService {
      SUCCESS HANDLER
   ---------------------------------- */
   private async handleSuccessfulPayment(paymentData: any): Promise<void> {
-    await this.handlePaymentWebhookEvent(paymentData, "success");
+    await this.finalizePaymentTransaction(paymentData, "success", "paystack");
   }
 
   /* ----------------------------------
      FAILED HANDLER
   ---------------------------------- */
   private async handleFailedPayment(paymentData: any): Promise<void> {
-    await this.handlePaymentWebhookEvent(paymentData, "failed");
+    await this.finalizePaymentTransaction(paymentData, "failed", "paystack");
   }
 
   /* ----------------------------------------------------
@@ -2124,15 +2299,22 @@ export class PaystackService {
     return null;
   }
 
-  private async handlePaymentWebhookEvent(
+  async finalizePaymentTransaction(
     paymentData: any,
     paymentStatus: "success" | "failed",
+    provider: "paystack" | "budpay" = "paystack",
   ): Promise<void> {
     const reference = paymentData?.reference;
 
     if (!reference) {
       this.logger.warn(
-        "Received Paystack webhook without a transaction reference",
+        {
+          event: "webhook_reference_missing",
+          gateway: provider,
+          paymentStatus,
+          amount: paymentData?.amount,
+        },
+        "payment webhook received without reference",
       );
       return;
     }
@@ -2158,7 +2340,14 @@ export class PaystackService {
 
       if (orders.length === 0) {
         this.logger.warn(
-          `No order/payment record found for Paystack reference ${reference}`,
+          {
+            event: "webhook_order_not_found",
+            gateway: provider,
+            paymentReference: reference,
+            paymentStatus,
+            amount: paymentData?.amount,
+          },
+          "no order or payment record found for webhook",
         );
         return;
       }
@@ -2169,6 +2358,7 @@ export class PaystackService {
           reference,
           paymentData,
           t,
+          provider,
         );
 
         if (payment.status === "success" && paymentStatus === "success") {
@@ -2201,15 +2391,28 @@ export class PaystackService {
         await this.createOrderStatusIfNeeded(
           order.id,
           nextOrderStatus || order.status,
-          this.getOrderStatusRemark(paymentStatus),
+          this.getOrderStatusRemark(paymentStatus, provider),
           t,
         );
       }
     });
 
-    await this.paymentSplitService.syncPaymentStatusFromWebhook(
-      reference,
+    if (provider === "paystack") {
+      await this.paymentSplitService.syncPaymentStatusFromWebhook(
+        reference,
+        paymentData,
+      );
+    }
+  }
+
+  private async handlePaymentWebhookEvent(
+    paymentData: any,
+    paymentStatus: "success" | "failed",
+  ): Promise<void> {
+    await this.finalizePaymentTransaction(
       paymentData,
+      paymentStatus,
+      "paystack",
     );
   }
 
@@ -2290,11 +2493,13 @@ export class PaystackService {
     reference: string,
     paymentData: any,
     transaction: Transaction,
+    provider: "paystack" | "budpay",
   ): Promise<OrderPayments> {
     const settlementMetadata = await this.buildSettlementAuditMetadata(
       order,
       paymentData,
       transaction,
+      provider,
     );
     const existingPayment = await OrderPayments.findOne({
       where: { orderId: order.id },
@@ -2344,6 +2549,7 @@ export class PaystackService {
     order: Order,
     paymentData: any,
     transaction: Transaction,
+    provider: "paystack" | "budpay",
   ): Promise<{
     collection_mode: string;
     paystack_account_used: string;
@@ -2351,6 +2557,16 @@ export class PaystackService {
     manual_settlement_reason: string | null;
   }> {
     const metadata = paymentData?.metadata || {};
+    if (provider === "budpay") {
+      return {
+        collection_mode:
+          metadata.collection_mode || "company_account_no_subaccount",
+        paystack_account_used: null,
+        requires_manual_settlement: true,
+        manual_settlement_reason:
+          "Funds were collected through BudPay without a Paystack subaccount split, so seller settlement requires the configured non-Paystack settlement flow.",
+      };
+    }
     const store = await this.storeRepository.findByPk(order.storeId, {
       transaction,
     });
@@ -2405,10 +2621,14 @@ export class PaystackService {
     return "failed";
   }
 
-  private getOrderStatusRemark(paymentStatus: "success" | "failed"): string {
+  private getOrderStatusRemark(
+    paymentStatus: "success" | "failed",
+    provider: "paystack" | "budpay",
+  ): string {
+    const providerName = provider === "budpay" ? "BudPay" : "Paystack";
     return paymentStatus === "success"
-      ? "Payment confirmed via Paystack webhook."
-      : "Payment failed via Paystack webhook.";
+      ? `Payment confirmed via ${providerName} webhook.`
+      : `Payment failed via ${providerName} webhook.`;
   }
 
   private async createOrderStatusIfNeeded(
@@ -2838,6 +3058,7 @@ export class PaystackService {
   private buildGuestOrderPayload(
     payload: CreateGuestOrderDto,
     reference: string,
+    provider: "paystack" | "budpay" = "paystack",
   ): CreateGuestOrderDto {
     return {
       ...payload,
@@ -2847,6 +3068,7 @@ export class PaystackService {
         payment_reference: reference,
         transaction_reference:
           payload.payment?.transaction_reference || reference,
+        payment_method: provider,
         payment_status: "success",
       },
     };
@@ -2855,24 +3077,33 @@ export class PaystackService {
   private buildAuthenticatedOrderPayload(
     payload: CreateOrderDto,
     reference: string,
+    provider: "paystack" | "budpay" = "paystack",
   ): CreateOrderDto {
     return {
       ...payload,
       payment: {
         ...(payload.payment || ({} as CreateOrderDto["payment"])),
         ref: reference,
-        type: payload?.payment?.type || PaymentTypeEnum.Paystack,
+        type:
+          provider === "budpay"
+            ? PaymentTypeEnum.BudPay
+            : payload?.payment?.type || PaymentTypeEnum.Paystack,
       },
     };
   }
 
-  private async persistGuestCheckoutInitialization(
+  async persistGuestCheckoutInitialization(
     reference: string,
     guestData: PaystackGuestInitializeDto,
     amountInKobo: number,
+    provider: "paystack" | "budpay" = "paystack",
   ) {
     const payload = guestData.order_payload
-      ? this.buildGuestOrderPayload(guestData.order_payload, reference)
+      ? this.buildGuestOrderPayload(
+          guestData.order_payload,
+          reference,
+          provider,
+        )
       : null;
 
     await this.guestCheckoutRepository.create({
@@ -2885,7 +3116,7 @@ export class PaystackService {
     } as any);
   }
 
-  private async persistUserCheckoutInitialization(
+  async persistUserCheckoutInitialization(
     reference: string,
     user: User,
     initData: PaystackUserInitializeDto,
@@ -2899,6 +3130,7 @@ export class PaystackService {
         discount: number;
       }>;
     },
+    provider: "paystack" | "budpay" = "paystack",
   ) {
     await this.userCheckoutRepository.create({
       reference,
@@ -2909,6 +3141,7 @@ export class PaystackService {
         order_payload: this.buildAuthenticatedOrderPayload(
           initData.order_payload,
           reference,
+          provider,
         ),
         verified_delivery: preparedCheckout.verified,
         store_ids: preparedCheckout.store_ids,
@@ -2926,17 +3159,55 @@ export class PaystackService {
     guestData: PaystackGuestInitializeDto,
   ): Promise<any> {
     try {
+      // The client's amount/delivery_charge/unit_price fields are never trusted for
+      // what we actually charge — recompute from the DB and the signed delivery
+      // token so a tampered checkout payload can't buy real goods for pennies.
+      const deliveryToken = guestData.order_payload?.delivery?.delivery_token;
+      if (!deliveryToken) {
+        throw new BadRequestException(
+          "Delivery charge token is required. Please recalculate delivery.",
+        );
+      }
+
+      let verifiedDelivery: any;
+      try {
+        verifiedDelivery = await this.jwtService.verifyAsync(deliveryToken);
+      } catch {
+        throw new BadRequestException(
+          "Invalid or expired delivery token. Please recalculate delivery.",
+        );
+      }
+
+      if (!verifiedDelivery?.data || verifiedDelivery.data.isGuest !== true) {
+        throw new BadRequestException("Invalid guest delivery token.");
+      }
+
+      const subtotalNaira =
+        await this.guestOrderService.calculateGuestCartSubtotalNaira(
+          guestData.cart_items,
+        );
+      const deliveryNaira = Number(verifiedDelivery.data.amount || 0);
+      const taxNaira = Number(verifiedDelivery.data.tax || 0);
+      const discountNaira = Number(verifiedDelivery.data.discount || 0);
+      const totalAmount = Math.round(
+        Math.max(subtotalNaira + deliveryNaira + taxNaira - discountNaira, 0) *
+          100,
+      );
+
       this.logger.log(
-        `Initializing guest payment for ${guestData.guest_info.email}`,
+        {
+          event: "guest_payment_initialization_started",
+          gateway: "paystack",
+          storeIds: guestData.cart_items.map((item) => item.store_id),
+          amount: totalAmount,
+        },
+        "guest payment initialization started",
       );
 
       // Generate unique reference for guest payment
       const reference = `guest_${Date.now()}_${Math.random()
         .toString(36)
         .substring(7)}`;
-
-      // Calculate total amount (cart total + delivery)
-      const totalAmount = guestData.amount + guestData.delivery_charge;
 
       // Extract store IDs for split payment (if multi-seller)
       const storeIds = [
@@ -2946,6 +3217,7 @@ export class PaystackService {
             .filter((value) => value != null),
         ),
       ];
+      await this.assertBudPaySplitProfiles(storeIds);
       const isMultiSeller = storeIds.length > 1;
       const storeForSplit = await this.getEligibleSingleStoreForSplit(storeIds);
       const resolvedStoreSubaccount = storeForSplit
@@ -3077,7 +3349,17 @@ export class PaystackService {
         totalAmount,
       );
 
-      this.logger.log(`Guest payment initialized: ${reference}`); // ✅ FIXED: Added opening parenthesis
+      this.logger.log(
+        {
+          event: "guest_payment_initialized",
+          gateway: "paystack",
+          paymentReference: reference,
+          paymentStatus: "pending",
+          amount: totalAmount,
+          storeIds,
+        },
+        "guest payment initialized",
+      );
 
       return {
         status: true,
@@ -3091,7 +3373,14 @@ export class PaystackService {
       };
     } catch (error) {
       this.logger.error(
-        `Guest payment initialization failed: ${(error as any).message}`,
+        {
+          event: "guest_payment_initialization_failed",
+          gateway: "paystack",
+          clientReportedAmount: guestData.amount + guestData.delivery_charge,
+          storeIds: guestData.cart_items?.map((item) => item.store_id),
+          err: error,
+        },
+        "guest payment initialization failed",
       );
 
       // ✅ Better error handling
@@ -3125,6 +3414,39 @@ export class PaystackService {
     return this.canUseAutomaticSplit(store);
   }
 
+  private async assertBudPaySplitProfiles(storeIds: number[]): Promise<void> {
+    if ((process.env.SPLIT_PROVIDER || "paystack").toLowerCase() !== "budpay") {
+      return;
+    }
+
+    const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
+      (storeId) => Number.isFinite(storeId) && storeId > 0,
+    );
+    const stores = await Promise.all(
+      uniqueStoreIds.map((storeId) => this.storeRepository.findByPk(storeId)),
+    );
+    const missingStoreIds = stores.flatMap((store, index) =>
+      !store ||
+      (!store.budpay_customer_id &&
+        !store.budpay_subaccount_id &&
+        !store.budpay_virtual_account_id &&
+        !store.budpay_account_number)
+        ? [store?.id || uniqueStoreIds[index]]
+        : [],
+    );
+
+    if (
+      missingStoreIds.length > 0 &&
+      process.env.BUDPAY_ALLOW_COMPANY_FALLBACK !== "true"
+    ) {
+      throw new BadRequestException(
+        `BudPay seller payout profile is missing for store(s): ${missingStoreIds.join(
+          ", ",
+        )}`,
+      );
+    }
+  }
+
   private async getEligibleSingleStoreForSplit(
     storeIds?: number[],
   ): Promise<Store | null> {
@@ -3141,6 +3463,10 @@ export class PaystackService {
   }
 
   private canUseAutomaticSplit(store?: Store | null): boolean {
+    if ((process.env.SPLIT_PROVIDER || "paystack").toLowerCase() !== "paystack") {
+      return false;
+    }
+
     return Boolean(
       store &&
         store.subaccount_status === "active" &&
@@ -3166,6 +3492,10 @@ export class PaystackService {
     }>;
     paystackAccount: PaystackAccountType;
   } | null> {
+    if ((process.env.SPLIT_PROVIDER || "paystack").toLowerCase() !== "paystack") {
+      return null;
+    }
+
     const uniqueStoreIds = [...new Set((storeIds || []).map(Number))].filter(
       (storeId) => Number.isFinite(storeId) && storeId > 0,
     );
@@ -3249,6 +3579,10 @@ export class PaystackService {
     }>;
     paystackAccount: PaystackAccountType;
   } | null> {
+    if ((process.env.SPLIT_PROVIDER || "paystack").toLowerCase() !== "paystack") {
+      return null;
+    }
+
     const uniqueStoreIds = [...new Set((preparedCheckout.store_ids || []).map(Number))].filter(
       (storeId) => Number.isFinite(storeId) && storeId > 0,
     );

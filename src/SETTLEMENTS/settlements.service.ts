@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -16,6 +17,8 @@ import { Settlements } from "./settlements.entity";
 import { Store } from "../STORE/store.entity";
 import { UserBankAccount } from "../USER_BANK_ACCOUNTS/user_bank_accounts.entity";
 import { Role } from "../shared/enum/role.enum";
+
+const appLog = createStructuredLogger("settlements_service");
 @Injectable()
 export class SettlementsService {
   constructor(
@@ -67,7 +70,7 @@ export class SettlementsService {
 
       return new DataResponseDto(rows, true, "Success", pageOptions, count);
     } catch (err) {
-      console.error("[SettlementsService.findAll] Error:", err);
+      appLog.error("[SettlementsService.findAll] Error:", err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -143,9 +146,9 @@ export class SettlementsService {
       const { rows, count } = result;
       return new DataResponseDto(rows, true, "Success", pageOptions, count);
     } catch (err) {
-      console.log("err-->>");
-      console.log(err);
-      console.log("err-->>");
+      appLog.info("err-->>");
+      appLog.info(err);
+      appLog.info("err-->>");
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }

@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Injectable,
   Inject,
@@ -17,6 +18,8 @@ import { CartDataResponseDto } from "./dto/cart.dto";
 import { InjectModel } from "@nestjs/sequelize";
 // cspell:ignore productvariant
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
+
+const appLog = createStructuredLogger("cart_services");
 
 @Injectable()
 export class CartServices {
@@ -65,7 +68,14 @@ export class CartServices {
         ],
       });
 
-      console.log({ existingCartItems });
+      appLog.debug(
+        {
+          event: "cart_items_loaded",
+          userId,
+          itemCount: existingCartItems.length,
+        },
+        "existing cart items loaded",
+      );
 
       // If there are existing items, check the store
       if (existingCartItems && existingCartItems.length > 0) {
@@ -107,7 +117,7 @@ export class CartServices {
 
       // Proceed with normal cart creation regardless of store check
       const { cart, created }: any = await this.cartRepo.create(userId, data);
-      console.log("userId, data", { userId, data });
+      appLog.info("userId, data", { userId, data });
       const message = created
         ? warningMessage
           ? warningMessage
@@ -125,7 +135,7 @@ export class CartServices {
         warningMessage ? true : false // isDifferentStore field
       );
     } catch (err) {
-      console.log("error", err);
+      appLog.info("error", err);
       if (err instanceof HttpException) throw err;
 
       throw new InternalServerErrorException(getErrorMessage(err));

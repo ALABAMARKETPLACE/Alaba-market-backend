@@ -1,6 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import {
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -13,6 +14,25 @@ import {
 ========================= */
 
 export class PaystackInitializeDto {
+  @ApiProperty({
+    description:
+      "Optional payment provider selector. Missing values remain Paystack for backward compatibility.",
+    enum: ["paystack", "budpay"],
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(["paystack", "budpay"])
+  payment_provider?: "paystack" | "budpay";
+
+  @ApiProperty({
+    description: "Alias for payment_provider.",
+    enum: ["paystack", "budpay"],
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(["paystack", "budpay"])
+  payment_channel?: "paystack" | "budpay";
+
   @ApiProperty({ description: "Customer email address" })
   @IsEmail()
   @IsNotEmpty()

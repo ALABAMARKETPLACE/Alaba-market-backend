@@ -11,10 +11,12 @@ import { StoreModule } from "../STORE/store.module";
 import { PaymentSplitModule } from "../PAYMENT_SPLITS/payment-split.module";
 import { GuestCheckout } from "./guest-checkout.entity";
 import { UserCheckout } from "./user-checkout.entity";
+import { PaystackWebhookEvent } from "./paystack-webhook-event.entity";
 import { OrderModule } from "../ORDER/order.module";
 import { User } from "../USERS/user.entity";
 import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
 import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
+import { BudPayModule } from "../BUDPAY_PAYMENT/budpay.module";
 
 @Module({
   imports: [
@@ -29,6 +31,7 @@ import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
       Store,
       GuestCheckout,
       UserCheckout,
+      PaystackWebhookEvent,
       User,
       PaymentLog,
     ]),
@@ -40,6 +43,7 @@ import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
     forwardRef(() => PaymentSplitModule),
     forwardRef(() => OrderModule),
     PaystackReconciliationModule,
+    forwardRef(() => BudPayModule),
   ],
   controllers: [PaystackController],
   providers: [PaystackService, PaystackAccountConfigService],

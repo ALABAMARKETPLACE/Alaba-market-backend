@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   Inject,
@@ -10,6 +11,8 @@ import { CreateProductVariantDto } from "./dto/createProductVariant.dto";
 import { Products } from "../PRODUCTS/products.entity";
 import { Transaction } from "sequelize";
 import { getErrorMessage } from "../shared/helpers/errormessage";
+
+const appLog = createStructuredLogger("productvariant_service");
 
 @Injectable()
 export class ProductVariantService {
@@ -57,7 +60,7 @@ export class ProductVariantService {
         }
         return { newVariants, totalUnits };
       } catch (err) {
-        console.log(err)
+        appLog.info(err)
         throw new Error("Failed to Add Variants,@@" + getErrorMessage(err));
       }
     }

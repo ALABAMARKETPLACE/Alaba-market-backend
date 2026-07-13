@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   HttpStatus,
@@ -23,6 +24,8 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { QuerySellerDto } from "./dto/querySeller.dto";
 import { NotificationsService } from "../NOTIFICATIONS/notification.service";
 import { Op } from "sequelize";
+
+const appLog = createStructuredLogger("individualseller_service");
 
 @Injectable()
 export class IndividualSellerService {
@@ -123,7 +126,7 @@ export class IndividualSellerService {
         this.mailService.sellerEmails(approvalMail);
         // Send simple approval notification (individual flow has no plan)
         try {
-          console.log(
+          appLog.info(
             "[IndividualSellerService.updateStatus] Creating approval notification",
             {
               sellerId: updated?.id,
@@ -136,14 +139,14 @@ export class IndividualSellerService {
             updated?.id,
             (updated as any)?.userId || (updated as any)?.id
           );
-          console.log(
+          appLog.info(
             "[IndividualSellerService.updateStatus] Notification created",
             {
               notificationId: (notif as any)?.id,
             }
           );
         } catch (e) {
-          console.error(
+          appLog.error(
             "[IndividualSellerService.updateStatus] Notification error",
             e
           );

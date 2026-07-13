@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   Inject,
@@ -11,6 +12,8 @@ import { CreateUserBankAccountDto } from "./dto/create_user_bank_accounts.dto";
 import { User } from "../USERS/user.entity";
 import { where } from "sequelize";
 import { UpdateUserBankAccountDto } from "./dto/update_user_bank_accounts.dto";
+
+const appLog = createStructuredLogger("user_bank_accounts_service");
 
 @Injectable()
 export class UserBankAccountService {
@@ -59,7 +62,7 @@ export class UserBankAccountService {
       });
       return new DataResponseDto(accounts, true, "Successfully retrieved");
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }
@@ -79,7 +82,7 @@ export class UserBankAccountService {
         "Successfully retrieved bank account"
       );
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }

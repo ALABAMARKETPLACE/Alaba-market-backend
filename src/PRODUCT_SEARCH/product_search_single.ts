@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Inject,
   Injectable,
@@ -12,6 +13,8 @@ import { ProductAttributes } from "./attributes";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 import { BoostRequest } from "../BOOST_REQUESTS/boost-request.entity";
+
+const appLog = createStructuredLogger("product_search_single");
 @Injectable()
 export class ProductSearchServiceSingle extends ProductAttributes {
   constructor(
@@ -73,7 +76,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
 
       return boostMap;
     } catch (err) {
-      console.error("Error fetching boosted products:", err);
+      appLog.error("Error fetching boosted products:", err);
       return new Map();
     }
   }
@@ -257,7 +260,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         totalCount
       );
     } catch (err) {
-      console.error("fetchProductsSingle error:", err);
+      appLog.error("fetchProductsSingle error:", err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }

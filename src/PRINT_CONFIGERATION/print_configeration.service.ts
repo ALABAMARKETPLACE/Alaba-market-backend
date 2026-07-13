@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   Inject,
@@ -14,6 +15,8 @@ import { PrintPriceDto } from "./dto/print_configeration.dto";
 import { PageOptionsGetConfiguraitionDto } from "./dto/getPrintConfiguration.dto";
 import { Op,Sequelize } from "sequelize";
 
+const appLog = createStructuredLogger("print_configeration_service");
+
 @Injectable()
 export class PrintConfigerationService {
   constructor(
@@ -24,7 +27,7 @@ export class PrintConfigerationService {
   async findAll(pageOptions: PageOptionsGetConfiguraitionDto) {
     try {
       const { search, filter, order, limit, offset } = pageOptions;
-      console.log("paramns", search, filter, order, limit, offset);
+      appLog.info("paramns", search, filter, order, limit, offset);
       
       const queryOptions: any = {
         attributes: {
@@ -36,7 +39,7 @@ export class PrintConfigerationService {
         queryOptions.offset = offset;
       }
       
-      console.log('queryOptions', queryOptions);
+      appLog.info('queryOptions', queryOptions);
       queryOptions.order = [['id', order]]; 
       
       if (search && search.trim() !== '') {
@@ -48,7 +51,7 @@ export class PrintConfigerationService {
           ]
         };
       }
-      console.log('queryOptions', queryOptions?.where);
+      appLog.info('queryOptions', queryOptions?.where);
       
       if (filter && filter.trim() !== '') {
         const [filterKey, filterValue] = filter.split(':');
@@ -59,7 +62,7 @@ export class PrintConfigerationService {
           };
         }
       }
-      console.log('queryOptions', queryOptions);
+      appLog.info('queryOptions', queryOptions);
       
       const data = await this.printConfigerationRepository.findAll(queryOptions);
       
@@ -79,7 +82,7 @@ export class PrintConfigerationService {
       
       return new DataResponseDto(response, true, "All configurations fetched");
     } catch (err) {
-      console.log('error', err);
+      appLog.info('error', err);
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }

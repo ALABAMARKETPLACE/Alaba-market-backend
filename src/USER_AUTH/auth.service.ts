@@ -1,5 +1,7 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   ConflictException,
+  HttpStatus,
   HttpException,
   Inject,
   Injectable,
@@ -7,6 +9,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
+import { Cache } from "cache-manager";
 import { compare } from "bcrypt";
 import * as crypto from "crypto";
 import axios from "axios";
@@ -45,6 +48,8 @@ import {
   resolveActiveRole,
 } from "../shared/helpers/user-role.helper";
 
+const appLog = createStructuredLogger("auth_service");
+
 type VerifyTokenPurpose =
   | "email_verification"
   | "password_reset"
@@ -70,6 +75,9 @@ type SocialLoginUser = {
 
 @Injectable()
 export class AuthService {
+  private readonly cacheManager?: Cache;
+  private readonly adminAuditLogRepository?: typeof AdminAuditLog;
+
   constructor(
     private mailService: MailService,
     @Inject("CreateToken")
@@ -206,7 +214,7 @@ export class AuthService {
         ip_address: meta.ipAddress,
       } as any);
     } catch (err) {
-      console.log("Failed to write password activity log", err?.message || err);
+      appLog.info("Failed to write password activity log", err?.message || err);
     }
   }
 
@@ -285,7 +293,7 @@ export class AuthService {
       // COMMENTED: Firebase OTP verification disabled
       // let userD = null;
       // if (body?.idToken && body.idToken.toLowerCase().includes("session")) {
-      //   console.log("Contains session");
+      //   appLog.info("Contains session");
       // } else {
       //   userD = await this.firebaseService.verifyIdToken(body.idToken);
       // }
@@ -297,24 +305,19 @@ export class AuthService {
       // Direct signup without Firebase token verification
       const phone = body?.phone;
 
-      console.log({ body });
-
       const exist = await this.authRepo.checkUserExist(body?.email, phone);
-      console.log({exist})
       if (exist) throw new ConflictException("User Already Exist.");
       const user = await this.authRepo.createNewUser(body, phone);
-      console.log({user})
       if (!user)
         throw new InternalServerErrorException("Failed to Create Account..");
       const [refresh, fid] = await this.tokenService.createToken(user._id);
       const token = await this.createToken(user, fid);
       let Mail = await SignupHtml(user, token);
-      console.log({Mail})
       this.mailService.AuthMail(Mail);
       const message = "Account created successfully.";
       return new DataResponseDto(user, true, message, token, refresh, true);
     } catch (err) {
-      console.log(err)
+      appLog.info(err)
       let message = `signup Faild. Please try again, ${getErrorMessage(err)}`;
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(message);
@@ -323,46 +326,32 @@ export class AuthService {
 
   async emailLogin(body: login_Request) {
     try {
-      console.log("=== AUTH SERVICE EMAIL LOGIN ===");
-      console.log("Login body received:", JSON.stringify(body, null, 2));
-
       const { email, password, fcmtoken, seller_fcmtoken } = body;
-      console.log("Extracted email:", email);
-      console.log("Password provided:", password ? "YES" : "NO");
 
       const user = await this.authRepo.findUserbyEmail(email);
-      console.log("User found:", user ? "YES" : "NO");
-      if (user) {
-        console.log("User ID:", user._id);
-        console.log("User status:", user.status);
-        console.log("Has password:", user?.password ? "YES" : "NO");
-      }
 
       this.assertUserCanAuthenticate(user, `No User found for ${email}`);
       if (!user?.password)
         throw new UnauthorizedException("No Password Found. use Google Login.");
 
-      console.log("Comparing passwords...");
       const isMatch = await compare(password, user?.password ?? "");
-      console.log("Password match:", isMatch);
 
       if (!isMatch) throw new UnauthorizedException("Incorrect Password..");
 
       await this.alignUserRoleAndType(user);
-      console.log("Password verified, creating tokens...");
       await this.authRepo.saveFcm(fcmtoken, user?._id);
       if (seller_fcmtoken)
         await this.authRepo.saveSellerFcm(seller_fcmtoken, user.store_id);
       const [refresh, fid] = await this.tokenService.createToken(user._id);
       const token = await this.createToken(user, fid);
       let message = "Login Successfull";
-      console.log("Login successful, returning response");
+      appLog.info(
+        { event: "login_succeeded", userId: user._id, storeId: user.store_id },
+        "user login succeeded",
+      );
       return new DataResponseDto(user, true, message, token, refresh);
     } catch (err) {
-      console.log("=== LOGIN ERROR ===");
-      console.log("Error type:", err.constructor.name);
-      console.log("Error message:", err.message);
-      console.log("Error stack:", err.stack);
+      appLog.warn({ event: "login_failed", err }, "user login failed");
 
       if (err instanceof HttpException) throw err;
       throw new UnauthorizedException(getErrorMessage(err));

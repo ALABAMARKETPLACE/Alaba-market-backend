@@ -24,20 +24,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = exception.getResponse();
     }
 
-    // LOG FULL ERROR WITH STACK TRACE
     this.logger.error({
+      event: "http_exception",
+      requestId: request.id,
       method: request.method,
-      url: request.url,
+      path: String(request.url || "").split("?")[0],
       status,
       message,
       stack: exception instanceof Error ? exception.stack : null,
-      user: request.user || null,
+      userId: request.user?.id,
+      storeId: request.user?.storeId,
     });
 
     response.status(status).json({
       statusCode: status,
       message,
       path: request.url,
+      requestId: request.id,
       timestamp: new Date().toISOString(),
     });
   }

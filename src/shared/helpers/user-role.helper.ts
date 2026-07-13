@@ -23,6 +23,10 @@ export function normalizeRole(role?: unknown): Role | null {
     return Role.Admin;
   }
 
+  if (value === Role.SuperAdmin) {
+    return Role.SuperAdmin;
+  }
+
   return null;
 }
 
@@ -73,6 +77,10 @@ export function resolveActiveRole(
     return requestedActiveRole;
   }
 
+  if (normalizedRoles.includes(Role.SuperAdmin)) {
+    return Role.SuperAdmin;
+  }
+
   if (normalizedRoles.includes(Role.Admin)) {
     return Role.Admin;
   }
@@ -89,6 +97,10 @@ export function deriveUserType(roles: unknown, fallbackRole?: unknown): string {
 
   if (normalizedRoles.includes(Role.Seller)) {
     return Role.Seller;
+  }
+
+  if (normalizedRoles.includes(Role.SuperAdmin)) {
+    return Role.SuperAdmin;
   }
 
   if (normalizedRoles.length === 1 && normalizedRoles.includes(Role.Admin)) {

@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Inject,
   Injectable,
@@ -19,6 +20,8 @@ import { FeaturedProductsService } from "../FEATURED_PRODUCTS/featured-products.
 import { BoostedCategoryDto } from "./dto/boosted-category.dto";
 import { ProductSearchServiceSingle } from "./product_search_single";
 import { ProductSearchSingleDto } from "./dto/productSearchSingle.dto";
+
+const appLog = createStructuredLogger("product_service_main");
 
 @Injectable()
 export class ProductServiceMain extends ProductAttributes {
@@ -61,9 +64,9 @@ export class ProductServiceMain extends ProductAttributes {
         throw err;
       }
 
-      console.log({err})
+      appLog.info({err})
 
-      console.error("[fetchOneProductBySlug] Unexpected error:", err?.message || err);
+      appLog.error("[fetchOneProductBySlug] Unexpected error:", err?.message || err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }
