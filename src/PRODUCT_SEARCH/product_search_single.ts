@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Inject,
   Injectable,
@@ -12,6 +13,8 @@ import { ProductAttributes } from "./attributes";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
 import { BoostRequest } from "../BOOST_REQUESTS/boost-request.entity";
+
+const appLog = createStructuredLogger("product_search_single");
 @Injectable()
 export class ProductSearchServiceSingle extends ProductAttributes {
   constructor(
@@ -29,19 +32,11 @@ export class ProductSearchServiceSingle extends ProductAttributes {
   > {
     try {
       const activeBoosts = await BoostRequest.findAll({
-        attributes: ["product_ids", "boost_priority", "approved_at", "days", "status"],
+        attributes: ["product_ids", "boost_priority", "approved_at"],
         order: [
           ["boost_priority", "ASC"],
           ["approved_at", "ASC"],
         ],
-      });
-      const paidBoostedProducts = await Products.findAll({
-        attributes: ["_id", "boost_score", "boosted_until"],
-        where: {
-          status: true,
-          is_boosted: true,
-          boosted_until: { [Op.gt]: new Date() },
-        },
       });
 
       const boostMap = new Map<
@@ -49,26 +44,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         { priority: number; approvedAt: Date }
       >();
 
-      paidBoostedProducts.forEach((product: any) => {
-        boostMap.set(Number(product._id), {
-          priority: -Number(product.boost_score || 0),
-          approvedAt: product.boosted_until || new Date(),
-        });
-      });
-
       activeBoosts.forEach((boost) => {
-        if (boost.status !== "approved" || !boost.approved_at) {
-          return;
-        }
-
-        const approvedDate = new Date(boost.approved_at);
-        const endDate = new Date(approvedDate);
-        endDate.setDate(endDate.getDate() + Number((boost as any).days || 0));
-
-        if (approvedDate > new Date() || endDate <= new Date()) {
-          return;
-        }
-
         const priority =
           typeof (boost as any).boost_priority === "number"
             ? (boost as any).boost_priority
@@ -100,7 +76,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
 
       return boostMap;
     } catch (err) {
-      console.error("Error fetching boosted products:", err);
+      appLog.error("Error fetching boosted products:", err);
       return new Map();
     }
   }
@@ -284,7 +260,7 @@ export class ProductSearchServiceSingle extends ProductAttributes {
         totalCount
       );
     } catch (err) {
-      console.error("fetchProductsSingle error:", err);
+      appLog.error("fetchProductsSingle error:", err);
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }

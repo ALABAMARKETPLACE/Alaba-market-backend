@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 // order/guest-order.service.ts
 
 import {
@@ -12,7 +13,7 @@ import {
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/sequelize";
 import { JwtService } from "@nestjs/jwt";
-import { Op, Transaction, WhereOptions } from "sequelize";
+import { Op, Transaction, WhereOptions, literal } from "sequelize";
 
 import { CreateGuestOrderDto } from "./dto/create-guest-order.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -34,6 +35,9 @@ import { PageOptionsGetOrdersDto } from "./dto/getOrders.dto";
 import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 import { UpdateOrderStatus } from "./dto/updateOrderStatus.dto";
 import { Role } from "../shared/enum/role.enum";
+import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+
+const appLog = createStructuredLogger("guest_order_service");
 
 type GuestOrderCreationOptions = {
   skipPaymentVerification?: boolean;
@@ -51,10 +55,124 @@ export class GuestOrderService {
     private readonly guestCheckoutRepository: typeof GuestCheckout,
     @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
+    @Inject(forwardRef(() => BudPayService))
+    private readonly budPayService: BudPayService,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
     private readonly jwtService: JwtService,
   ) {}
+
+  private normalizeOrderQuantity(
+    item: { quantity?: unknown },
+    productId: number
+  ): number {
+    const quantity = Number(item?.quantity);
+
+    if (
+      Number.isNaN(quantity) ||
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      throw new BadRequestException(
+        `Invalid quantity for product ${productId} in order request`
+      );
+    }
+
+    return quantity;
+  }
+
+  private async loadStockProduct(productId: number, transaction: Transaction) {
+    const product = await Products.findOne({
+      where: { _id: productId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!product) {
+      throw new NotFoundException(`Product ${productId} not found`);
+    }
+
+    return product;
+  }
+
+  private async loadStockVariant(variantId: number, transaction: Transaction) {
+    const variant = await ProductVariant.findOne({
+      where: { id: variantId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!variant) {
+      throw new NotFoundException(`Variant ${variantId} not found`);
+    }
+
+    return variant;
+  }
+
+  /**
+   * Recomputes the true cart subtotal (Naira) from product/variant records in
+   * the database. Never trusts client-supplied unit_price/total_price — those
+   * are only ever used for display. Called both before charging (Paystack
+   * guest initialize) and again as the payment-amount gate before an order is
+   * created, so a tampered client payload can't buy real goods for less than
+   * their real price.
+   */
+  async calculateGuestCartSubtotalNaira(
+    cartItems: Array<{
+      product_id?: number;
+      productId?: number;
+      variant_id?: number | null;
+      variantId?: number | null;
+      quantity: number;
+    }>,
+  ): Promise<number> {
+    if (!Array.isArray(cartItems) || cartItems.length === 0) {
+      throw new BadRequestException("No products selected");
+    }
+
+    let subtotal = 0;
+
+    for (const item of cartItems) {
+      const productId = Number(item.product_id ?? item.productId);
+      const variantId = item.variant_id ?? item.variantId ?? null;
+      const quantity = this.normalizeOrderQuantity(item, productId);
+
+      if (!Number.isFinite(productId) || productId <= 0) {
+        throw new BadRequestException("Invalid product in cart");
+      }
+
+      const product = await Products.findOne({ where: { _id: productId } });
+      if (!product) {
+        throw new NotFoundException(`Product ${productId} not found`);
+      }
+      if (product.status === false) {
+        throw new ServiceUnavailableException(
+          `Product "${product.name}" is not available`,
+        );
+      }
+
+      let unitPrice = Number(product.retail_rate || 0);
+
+      if (variantId) {
+        const variant = await ProductVariant.findOne({
+          where: { id: Number(variantId) },
+        });
+        if (!variant) {
+          throw new NotFoundException(`Variant ${variantId} not found`);
+        }
+        if (Number(variant.productId) !== productId) {
+          throw new ServiceUnavailableException(
+            "Variant does not belong to the selected product",
+          );
+        }
+        unitPrice = Number(variant.price || 0);
+      }
+
+      subtotal += unitPrice * quantity;
+    }
+
+    return subtotal;
+  }
 
   private getOrphanedGuestCheckoutDisplayStatus(checkout: any): string {
     const checkoutStatus = String(checkout?.status || "").toLowerCase();
@@ -89,10 +207,17 @@ export class GuestOrderService {
     options: GuestOrderCreationOptions = {},
   ) {
     try {
-      console.log("=== GUEST ORDER CREATION STARTED ===");
-      console.log("Guest Email:", data.guest_info.email);
-      console.log("Cart Items:", data.cart_items.length);
-      console.log("Payment Reference:", data.payment.payment_reference);
+      appLog.info(
+        {
+          event: "guest_order_creation_started",
+          paymentReference: data.payment.payment_reference,
+          itemCount: data.cart_items.length,
+          gateway: data.payment.payment_reference?.startsWith("budpay_")
+            ? "budpay"
+            : "paystack",
+        },
+        "guest order creation started",
+      );
 
       const existingOrders = await this.orderRepository.findAll({
         where: { payment_reference: data.payment.payment_reference },
@@ -111,8 +236,14 @@ export class GuestOrderService {
       const storeIds = new Set(data.cart_items.map((item) => item.store_id));
       const isMultiSeller = storeIds.size > 1;
 
-      console.log(
-        `📦 Multi-seller: ${isMultiSeller} (${storeIds.size} stores)`,
+      appLog.info(
+        {
+          event: "guest_order_grouping",
+          paymentReference: data.payment.payment_reference,
+          storeCount: storeIds.size,
+          isMultiSeller,
+        },
+        "guest order stores resolved",
       );
 
       const result = await this.orderRepository.sequelize!.transaction(
@@ -125,7 +256,7 @@ export class GuestOrderService {
           // ✅ Step 2: Verify payment with Paystack (CRITICAL)
           if (data.payment.payment_reference) {
             const expectedAmountInKobo =
-              this.getExpectedGuestPaymentAmountInKobo(data, verified);
+              await this.getExpectedGuestPaymentAmountInKobo(data, verified);
 
             if (options.skipPaymentVerification) {
               this.assertVerifiedPaymentData(
@@ -249,8 +380,16 @@ export class GuestOrderService {
         );
       }
 
-      console.log("=== GUEST ORDER CREATED SUCCESSFULLY ===");
-      console.log("Total Orders:", result.length);
+      appLog.info(
+        {
+          event: "guest_order_creation_succeeded",
+          paymentReference: data.payment.payment_reference,
+          orderIds: result.map((entry) => entry.newOrder?.id).filter(Boolean),
+          orderCount: result.length,
+          storeCount: storeIds.size,
+        },
+        "guest order creation succeeded",
+      );
 
       // Format response
       const formattedOrders = this.formatOrderSummary(
@@ -263,9 +402,17 @@ export class GuestOrderService {
         `Created ${result.length} order(s) for ${storeIds.size} seller(s)`,
       );
     } catch (err) {
-      console.error("=== GUEST ORDER CREATION FAILED ===");
-      console.error("Error:", (err as any).message);
-      console.error("Stack:", (err as any).stack);
+      appLog.error(
+        {
+          event: "guest_order_creation_failed",
+          paymentReference: data.payment?.payment_reference,
+          gateway: data.payment?.payment_reference?.startsWith("budpay_")
+            ? "budpay"
+            : "paystack",
+          err,
+        },
+        "guest order creation failed",
+      );
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(
@@ -743,10 +890,10 @@ export class GuestOrderService {
     pageOptions: PageOptionsGetOrdersDto,
   ): Promise<DataResponseDto> {
     try {
-      console.log("=== FETCHING ALL GUEST ORDERS ===");
+      appLog.info("=== FETCHING ALL GUEST ORDERS ===");
 
       const whereClause: any = this.buildGuestOrderWhereClause();
-      console.log("Where Clause:", JSON.stringify(whereClause, null, 2));
+      appLog.info("Where Clause:", JSON.stringify(whereClause, null, 2));
 
       if (pageOptions.status) {
         whereClause.status = pageOptions.status;
@@ -835,8 +982,8 @@ export class GuestOrderService {
         combinedRecords.length,
       );
     } catch (err) {
-      console.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
-      console.error("Error:", (err as any).message);
+      appLog.error("=== FAILED TO FETCH ALL GUEST ORDERS ===");
+      appLog.error("Error:", (err as any).message);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve guest orders");
@@ -880,9 +1027,13 @@ export class GuestOrderService {
 
     const paymentReference =
       rawPayload?.payment?.payment_reference || checkout.reference;
-    const paystackResponse: any = await this.paystackService.verifyPayment({
-      reference: paymentReference,
-    });
+    const paystackResponse: any = paymentReference.startsWith("budpay_")
+      ? await this.budPayService.verifyPayment({
+          reference: paymentReference,
+        })
+      : await this.paystackService.verifyPayment({
+          reference: paymentReference,
+        });
 
     const payload: CreateGuestOrderDto = {
       ...rawPayload,
@@ -1000,9 +1151,13 @@ export class GuestOrderService {
         rawPayload?.payment?.payment_reference || checkout.reference;
 
       try {
-        const paystackResponse: any = await this.paystackService.verifyPayment({
-          reference: paymentReference,
-        });
+        const paystackResponse: any = paymentReference.startsWith("budpay_")
+          ? await this.budPayService.verifyPayment({
+              reference: paymentReference,
+            })
+          : await this.paystackService.verifyPayment({
+              reference: paymentReference,
+            });
 
         const payload: CreateGuestOrderDto = {
           ...rawPayload,
@@ -1077,7 +1232,7 @@ export class GuestOrderService {
     pageOptions: PageOptionsGetOrdersDto,
   ): Promise<DataResponseDto> {
     try {
-      console.log("=== FETCHING STORE GUEST ORDERS ===");
+      appLog.info("=== FETCHING STORE GUEST ORDERS ===");
 
       const whereClause: any = this.buildGuestOrderWhereClause({ storeId });
 
@@ -1201,8 +1356,8 @@ export class GuestOrderService {
         count,
       );
     } catch (err) {
-      console.error("=== FAILED TO FETCH STORE GUEST ORDERS ===");
-      console.error("Error:", (err as any).message);
+      appLog.error("=== FAILED TO FETCH STORE GUEST ORDERS ===");
+      appLog.error("Error:", (err as any).message);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(
@@ -1218,9 +1373,6 @@ export class GuestOrderService {
     pageOptions: PageOptionsGetOrdersDto,
   ): Promise<DataResponseDto> {
     try {
-      console.log("=== FETCHING GUEST ORDERS ===");
-      console.log("Guest Email:", data.email);
-
       // Build where clause
       const whereClause: any = this.buildGuestOrderWhereClause({}, data.email);
 
@@ -1369,8 +1521,8 @@ export class GuestOrderService {
         count,
       );
     } catch (err) {
-      console.error("=== FAILED TO FETCH GUEST ORDERS ===");
-      console.error("Error:", (err as any).message);
+      appLog.error("=== FAILED TO FETCH GUEST ORDERS ===");
+      appLog.error("Error:", (err as any).message);
 
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException("Failed to retrieve orders");
@@ -1454,7 +1606,7 @@ export class GuestOrderService {
           // Post-commit side effects (email)
           transaction.afterCommit(async () => {
             try {
-              console.log(
+              appLog.info(
                 "📧 Sending guest order status update email for order #" +
                   order.order_id,
               );
@@ -1561,11 +1713,9 @@ export class GuestOrderService {
               email.to = guestUser.email;
 
               await this.mailService.sellerEmails(email);
-
-              console.log("✅ Status update email sent to:", guestUser.email);
             } catch (err) {
               // Never crash the app after commit
-              console.error(
+              appLog.error(
                 "Failed to send guest order status update email:",
                 err,
               );
@@ -1612,8 +1762,6 @@ export class GuestOrderService {
     options: GuestOrderCreationOptions = {},
   ) {
     try {
-      console.log("🔍 [basicCheck] Starting validation...");
-
       // 1. Validate cart
       if (!Array.isArray(data.cart_items) || data.cart_items.length === 0) {
         throw new BadRequestException("No products selected");
@@ -1643,7 +1791,6 @@ export class GuestOrderService {
       }
 
       // 5. Decode delivery token
-      console.log("🔍 [basicCheck] Verifying delivery token...");
       let verified: any = options.verifiedDeliveryData;
 
       if (!verified) {
@@ -1683,10 +1830,12 @@ export class GuestOrderService {
         }
       }
 
-      console.log("✅ [basicCheck] Validation passed!");
       return verified;
     } catch (err) {
-      console.error("❌ [basicCheck] Error:", (err as any).message);
+      appLog.warn(
+        { event: "guest_order_basic_check_failed", err },
+        "guest order delivery token validation failed",
+      );
       if (err instanceof HttpException) {
         throw err;
       }
@@ -1704,11 +1853,26 @@ export class GuestOrderService {
     guestEmail: string,
   ): Promise<void> {
     try {
-      console.log("🔍 Verifying payment:", paymentReference);
+      const gateway = paymentReference.startsWith("budpay_")
+        ? "budpay"
+        : "paystack";
+      appLog.info(
+        {
+          event: "payment_verification_started",
+          paymentReference,
+          gateway,
+          amount: expectedAmountInKobo,
+        },
+        "guest payment verification started",
+      );
 
-      const paystackResponse: any = await this.paystackService.verifyPayment({
-        reference: paymentReference,
-      });
+      const paystackResponse: any = gateway === "budpay"
+        ? await this.budPayService.verifyPayment({
+            reference: paymentReference,
+          })
+        : await this.paystackService.verifyPayment({
+            reference: paymentReference,
+          });
       this.assertVerifiedPaymentData(
         paystackResponse.data,
         paymentReference,
@@ -1716,9 +1880,29 @@ export class GuestOrderService {
         guestEmail,
       );
 
-      console.log("✅ Payment verified successfully");
+      appLog.info(
+        {
+          event: "payment_verification_succeeded",
+          paymentReference,
+          gateway,
+          paymentStatus: paystackResponse.data?.status,
+          amount: paystackResponse.data?.amount,
+        },
+        "guest payment verified",
+      );
     } catch (err) {
-      console.error("❌ Payment verification failed:", (err as any).message);
+      appLog.error(
+        {
+          event: "payment_verification_failed",
+          paymentReference,
+          gateway: paymentReference.startsWith("budpay_")
+            ? "budpay"
+            : "paystack",
+          amount: expectedAmountInKobo,
+          err,
+        },
+        "guest payment verification failed",
+      );
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(
         "Payment verification failed. Please try again.",
@@ -1751,10 +1935,17 @@ export class GuestOrderService {
 
     const amountInKobo = Number(paymentData.amount);
     if (expectedAmountInKobo != null && amountInKobo !== expectedAmountInKobo) {
-      console.warn(
-        `⚠️  Amount mismatch: Expected ${expectedAmountInKobo / 100}, got ${
-          amountInKobo / 100
-        }`,
+      appLog.warn(
+        {
+          event: "payment_amount_mismatch",
+          paymentReference,
+          expectedAmount: expectedAmountInKobo,
+          amount: amountInKobo,
+          gateway: paymentReference.startsWith("budpay_")
+            ? "budpay"
+            : "paystack",
+        },
+        "verified payment amount does not match order total",
       );
       throw new BadRequestException(
         "Payment amount does not match order total.",
@@ -1883,59 +2074,35 @@ export class GuestOrderService {
         });
       }
 
-      console.log(`📦 Grouped into ${grouped.size} store(s)`);
+      appLog.info(`📦 Grouped into ${grouped.size} store(s)`);
       return Array.from(grouped.values());
     } catch (err) {
       throw err;
     }
   }
 
-  private getExpectedGuestPaymentAmountInKobo(
+  /**
+   * The amount the guest must actually have paid on Paystack, recomputed
+   * entirely from the database (product/variant prices) and the
+   * cryptographically verified delivery token — never from the client's
+   * order_summary/cart_items prices. This is the last gate before an order
+   * is created; if it trusted client-supplied prices, a tampered checkout
+   * payload could pay pennies for real goods since createItems() always
+   * writes the real product price onto the order regardless of what was paid.
+   */
+  private async getExpectedGuestPaymentAmountInKobo(
     data: CreateGuestOrderDto,
     verified: any,
-  ): number | null {
-    const orderSummaryTotal = Number(data.order_summary?.total);
-    if (Number.isFinite(orderSummaryTotal) && orderSummaryTotal > 0) {
-      return Math.round(orderSummaryTotal * 100);
-    }
-
-    const canCalculateSubtotal = data.cart_items.every((item) => {
-      const hasTotalPrice =
-        Number.isFinite(Number(item.total_price)) &&
-        Number(item.total_price) >= 0;
-      const hasUnitPrice =
-        Number.isFinite(Number(item.unit_price)) &&
-        Number.isFinite(Number(item.quantity));
-
-      return hasTotalPrice || hasUnitPrice;
-    });
-
-    if (!canCalculateSubtotal) {
-      return null;
-    }
-
-    const subtotal = data.cart_items.reduce((sum, item) => {
-      const itemTotal = Number(item.total_price);
-      if (Number.isFinite(itemTotal) && itemTotal >= 0) {
-        return sum + itemTotal;
-      }
-
-      const unitPrice = Number(item.unit_price);
-      const quantity = Number(item.quantity);
-      if (Number.isFinite(unitPrice) && Number.isFinite(quantity)) {
-        return sum + unitPrice * quantity;
-      }
-
-      return sum;
-    }, 0);
-
-    const tax = Number(verified?.data?.tax ?? data.order_summary?.tax ?? 0);
-    const discount = this.getDiscountAmount(
-      verified?.data?.discount ?? data.order_summary?.discount,
+  ): Promise<number> {
+    const subtotal = await this.calculateGuestCartSubtotalNaira(
+      data.cart_items,
     );
-    const total = subtotal + tax - discount;
+    const deliveryCharge = Number(verified?.data?.amount ?? 0);
+    const tax = Number(verified?.data?.tax ?? 0);
+    const discount = this.getDiscountAmount(verified?.data?.discount);
+    const total = subtotal + deliveryCharge + tax - discount;
 
-    return total > 0 ? Math.round(total * 100) : null;
+    return Math.round(Math.max(total, 0) * 100);
   }
 
   private getDiscountAmount(discount: unknown): number {
@@ -2121,12 +2288,27 @@ export class GuestOrderService {
         { transaction },
       );
 
-      console.log(
-        `✅ Created order #${newOrder.order_id} for store ${storeGroup.storeId}`,
+      appLog.info(
+        {
+          event: "guest_order_record_created",
+          orderId: newOrder.id,
+          orderPublicId: newOrder.order_id,
+          storeId: storeGroup.storeId,
+          paymentReference,
+        },
+        "guest order record created",
       );
       return newOrder;
     } catch (err) {
-      console.error("❌ Failed to create order:", err);
+      appLog.error(
+        {
+          event: "guest_order_record_failed",
+          storeId: storeGroup.storeId,
+          paymentReference,
+          err,
+        },
+        "failed to create guest order record",
+      );
       throw err;
     }
   }
@@ -2144,10 +2326,11 @@ export class GuestOrderService {
 
     try {
       for (const item of storeGroup.products) {
-        const product = await Products.findOne({
-          where: { _id: item.productId },
-          transaction: t,
-        });
+        const orderedQuantity = this.normalizeOrderQuantity(
+          item,
+          item.productId
+        );
+        const product = await this.loadStockProduct(item.productId, t);
 
         if (!product) {
           throw new NotFoundException(`Product ${item.productId} not found`);
@@ -2159,16 +2342,29 @@ export class GuestOrderService {
           );
         }
 
-        if (product.unit === 0 || product.unit < item.quantity) {
+        if (product.unit < orderedQuantity) {
           throw new ServiceUnavailableException(
             `Product "${product.name}" is out of stock`,
           );
         }
 
-        await product.decrement("unit", {
-          by: Number(item.quantity),
-          transaction: t,
-        });
+        const [updatedProductRows] = await Products.update(
+          { unit: literal(`unit - ${orderedQuantity}`) },
+          {
+            where: {
+              _id: product._id,
+              unit: {
+                [Op.gte]: orderedQuantity,
+              },
+            },
+            transaction: t,
+          }
+        );
+        if (updatedProductRows === 0) {
+          throw new ServiceUnavailableException(
+            `Product "${product.name}" is out of stock`,
+          );
+        }
 
         await product.increment("orderCount", { by: 1, transaction: t });
 
@@ -2177,7 +2373,7 @@ export class GuestOrderService {
             orderId,
             productId: item.productId,
             variantId: item.variantId,
-            quantity: item.quantity,
+            quantity: orderedQuantity,
             price: product.retail_rate,
             totalPrice: 0,
             image: product.image,
@@ -2189,10 +2385,7 @@ export class GuestOrderService {
         );
 
         if (item.variantId) {
-          const variant = await ProductVariant.findOne({
-            where: { id: item.variantId },
-            transaction: t,
-          });
+          const variant = await this.loadStockVariant(item.variantId, t);
 
           if (!variant) {
             throw new NotFoundException(`Variant ${item.variantId} not found`);
@@ -2202,7 +2395,7 @@ export class GuestOrderService {
             throw new ServiceUnavailableException("Variant mismatch");
           }
 
-          if (variant.units === 0 || variant.units < item.quantity) {
+          if (variant.units < orderedQuantity) {
             throw new ServiceUnavailableException(
               `Variant "${item.variantName}" is out of stock`,
             );
@@ -2214,10 +2407,23 @@ export class GuestOrderService {
           newItem.barcode = variant.barcode;
           newItem.combination = variant.combination;
 
-          await variant.decrement("units", {
-            by: Number(item.quantity),
-            transaction: t,
-          });
+          const [updatedVariantRows] = await ProductVariant.update(
+            { units: literal(`units - ${orderedQuantity}`) },
+            {
+              where: {
+                id: variant.id,
+                units: {
+                  [Op.gte]: orderedQuantity,
+                },
+              },
+              transaction: t,
+            }
+          );
+          if (updatedVariantRows === 0) {
+            throw new ServiceUnavailableException(
+              `Variant "${item.variantName}" is out of stock`,
+            );
+          }
         }
 
         newItem.totalPrice = newItem.price * newItem.quantity;
@@ -2228,7 +2434,7 @@ export class GuestOrderService {
         orderItems.push(newItem);
       }
 
-      console.log(`✅ Created ${orderItems.length} order items`);
+      appLog.info(`✅ Created ${orderItems.length} order items`);
       return [totalQuantity, totalAmount, orderItems];
     } catch (err) {
       throw err;
@@ -2282,7 +2488,7 @@ export class GuestOrderService {
     guestAddressObject: any,
   ) {
     try {
-      console.log("📧 Sending notifications...");
+      appLog.info("📧 Sending notifications...");
 
       await store.increment("order_count", { by: 1 });
 
@@ -2316,10 +2522,8 @@ export class GuestOrderService {
           title: "New Order Received",
         });
       }
-
-      console.log("✅ Notifications sent");
     } catch (err) {
-      console.error("Failed to send notifications:", err);
+      appLog.error("Failed to send notifications:", err);
     }
   }
 
@@ -2380,9 +2584,9 @@ export class GuestOrderService {
       userMail.to = recipientEmail;
       await this.mailService.sellerEmails(userMail);
 
-      console.log("📧 Confirmation sent to:", recipientEmail);
+      appLog.info("📧 Confirmation sent to:", recipientEmail);
     } catch (err) {
-      console.error("Failed to send confirmation:", err);
+      appLog.error("Failed to send confirmation:", err);
     }
   }
 
@@ -2405,9 +2609,9 @@ export class GuestOrderService {
       const storeMail = await ToSellerOrderPlaced(emailData);
       await this.mailService.sellerEmails(storeMail);
 
-      console.log("📧 Seller notification sent");
+      appLog.info("📧 Seller notification sent");
     } catch (err) {
-      console.error("Failed to send seller notification:", err);
+      appLog.error("Failed to send seller notification:", err);
     }
   }
 }

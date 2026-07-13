@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Injectable,
   Inject,
@@ -24,6 +25,8 @@ import { MailService } from "../MAILS/Mails.services";
 import { SettingsService } from "../SETTINGS/settings.service";
 import { ToAdminBoostRequestCreate } from "../MAILS/templates/boost-requests/toAdmin_boostRequestCreate";
 import { ToAdminBoostRequestUpdate } from "../MAILS/templates/boost-requests/toAdmin_boostRequestUpdate";
+
+const appLog = createStructuredLogger("boost_request_service");
 
 @Injectable()
 export class BoostRequestService {
@@ -432,7 +435,7 @@ export class BoostRequestService {
         }
       } catch (emailErr) {
         // Log error but don't fail the request
-        console.error("Error sending boost request creation email:", emailErr);
+        appLog.error("Error sending boost request creation email:", emailErr);
       }
 
       const data = new BoostRequestDto(created);
@@ -622,7 +625,7 @@ export class BoostRequestService {
         }
       } catch (emailErr) {
         // Log error but don't fail the request
-        console.error("Error sending boost request update email:", emailErr);
+        appLog.error("Error sending boost request update email:", emailErr);
       }
 
       const data = new BoostRequestDto(updated);

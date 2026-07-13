@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Injectable,
   HttpException,
@@ -17,6 +18,8 @@ import { PaystackAccountConfigService } from "../PAYSTACK_PAYMENT/paystack-accou
 import { UpdateSubaccountPercentageDto } from "./dto/update-subaccount-percentage.dto";
 import { UnmatchedRemoteSubaccountsQueryDto } from "./dto/unmatched-remote-subaccounts.dto";
 import { ResolveUnmatchedRemoteSubaccountsDto } from "./dto/resolve-unmatched-remote-subaccounts.dto";
+
+const appLog = createStructuredLogger("paystack_subaccount_service");
 
 interface RemoteNewAccountSubaccount {
   id?: number | null;
@@ -1066,7 +1069,7 @@ export class PaystackSubaccountService {
     //   throw new InternalServerErrorException(getErrorMessage(err));
     // }
       catch (error) {
-      console.error("ERROR in getPendingSubaccounts:", error);
+      appLog.error("ERROR in getPendingSubaccounts:", error);
       throw error; // rethrow so Nest handles it
     }
   }

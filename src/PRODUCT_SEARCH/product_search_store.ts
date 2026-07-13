@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Inject,
   Injectable,
@@ -14,6 +15,8 @@ import { SubCategory } from "../SUB_CATEGORY/sub_category.entity";
 import { ProductSearchByCategory, ProductSearchItemByCategory } from "./dto/product_search_getall.dto";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
 import { Settings } from "../SETTINGS/settings.entity";
+
+const appLog = createStructuredLogger("product_search_store");
 @Injectable()
 export class ProductSearchStoreService extends ProductAttributes {
   constructor(
@@ -101,7 +104,7 @@ export class ProductSearchStoreService extends ProductAttributes {
 
   async fetchProductByCategory(pageOptions: ProductSearchItemByCategory) {
     try {
-      console.log("pageOptions", pageOptions);
+      appLog.info("pageOptions", pageOptions);
       const {
         page,
         take,
@@ -204,7 +207,7 @@ export class ProductSearchStoreService extends ProductAttributes {
       // });
       return new DataResponseDto(rows, true, "Successful", pageOptions, count);
     } catch (err) {
-      console.log('this is the error',err)
+      appLog.info('this is the error',err)
       throw new InternalServerErrorException(getErrorMessage(err));
     }
   }

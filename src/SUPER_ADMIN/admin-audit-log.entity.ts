@@ -1,39 +1,32 @@
 import {
   AutoIncrement,
   Column,
+  CreatedAt,
   DataType,
-  Index,
   Model,
   PrimaryKey,
   Table,
 } from "sequelize-typescript";
 
-@Table({
-  tableName: "ADMIN_AUDIT_LOGS",
-  timestamps: false,
-})
+@Table({ tableName: "ADMIN_AUDIT_LOGS", updatedAt: false })
 export class AdminAuditLog extends Model<AdminAuditLog> {
   @PrimaryKey
   @AutoIncrement
   @Column(DataType.BIGINT)
   id: number;
 
-  @Index
-  @Column({ type: DataType.INTEGER, allowNull: false })
+  @Column({ type: DataType.BIGINT, allowNull: false })
   actor_id: number;
 
   @Column({ type: DataType.STRING, allowNull: false })
   actor_role: string;
 
-  @Index
-  @Column({ type: DataType.INTEGER, allowNull: true })
+  @Column({ type: DataType.BIGINT, allowNull: true })
   target_user_id: number | null;
 
-  @Index
   @Column({ type: DataType.STRING, allowNull: false })
   action: string;
 
-  @Index
   @Column({ type: DataType.STRING, allowNull: false })
   module: string;
 
@@ -46,11 +39,7 @@ export class AdminAuditLog extends Model<AdminAuditLog> {
   @Column({ type: DataType.STRING, allowNull: true })
   ip_address: string | null;
 
-  @Index
-  @Column({
-    type: DataType.DATE,
-    allowNull: false,
-    defaultValue: DataType.NOW,
-  })
+  @CreatedAt
+  @Column(DataType.DATE)
   created_at: Date;
 }

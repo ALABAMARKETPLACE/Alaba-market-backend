@@ -15,6 +15,7 @@ import { Cache } from "cache-manager";
 import { CACHE_MANAGER } from "@nestjs/cache-manager";
 import { User } from "../../USERS/user.entity";
 import { normalizeRoles, resolveActiveRole } from "../helpers/user-role.helper";
+import { AppLogger } from "../logger/app-logger.service";
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -22,6 +23,7 @@ export class AuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly reflector: Reflector,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+    private readonly appLogger: AppLogger,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -55,6 +57,11 @@ export class AuthGuard implements CanActivate {
           roles: decodedRoles,
           fid: decoded?.data?.fid ?? null,
         };
+        this.appLogger.assign({
+          userId: request.user.id,
+          storeId: request.user.storeId,
+          role: request.user.role,
+        });
       }
       return true;
     }
@@ -103,6 +110,11 @@ export class AuthGuard implements CanActivate {
         roles,
         fid: payload?.data?.fid ?? null,
       };
+      this.appLogger.assign({
+        userId: request.user.id,
+        storeId: request.user.storeId,
+        role: request.user.role,
+      });
 
       /**
        * SESSION BLACKLIST CHECK
@@ -129,10 +141,6 @@ export class AuthGuard implements CanActivate {
         }
 
         const userRoles = normalizeRoles(request.user.roles, request.user.role);
-        if (userRoles.includes(Role.SuperAdmin)) {
-          return true;
-        }
-
         const hasRole = requiredRoles.some(
           (role) =>
             role.toLowerCase() === request.user.role.toLowerCase() ||
@@ -181,8 +189,33 @@ export class AuthGuard implements CanActivate {
    * EXTRACT BEARER TOKEN
    */
   private extractTokenFromHeader(request: any): string | undefined {
-    const [type, token] = request.headers?.authorization?.split(" ") ?? [];
+    const headerToken = this.normalizeBearerToken(
+      request?.headers?.authorization,
+    );
 
-    return type === "Bearer" ? token : undefined;
+    if (headerToken) {
+      return headerToken;
+    }
+
+    return this.normalizeBearerToken(
+      request?.headers?.["x-access-token"],
+    );
+  }
+
+  private normalizeBearerToken(value: unknown): string | undefined {
+    if (!value) return;
+
+    const token = String(value).trim();
+    const [type, rawToken] = token.split(/\s+/);
+
+    if (!rawToken) {
+      return token;
+    }
+
+    if ((type || "").toLowerCase() === "bearer") {
+      return rawToken;
+    }
+
+    return;
   }
 }

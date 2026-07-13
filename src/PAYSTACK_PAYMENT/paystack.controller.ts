@@ -2,11 +2,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  forwardRef,
   Get,
   Headers,
   HttpCode,
   HttpStatus,
   Post,
+  Inject,
+  Logger,
   Query,
   RawBodyRequest,
   Req,
@@ -48,13 +51,34 @@ import { Role } from "../shared/enum/role.enum";
 import { ReconcilePaystackTransactionsDto } from "./dto/reconcile-paystack-transactions.dto";
 import { DiagnosePaystackTransactionDto } from "./dto/diagnose-paystack-transaction.dto";
 import { ManualSettlementAuditDto } from "./dto/manual-settlement-audit.dto";
+import { SkipThrottle, Throttle } from "@nestjs/throttler";
+import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
 export class PaystackController {
-  constructor(private readonly paystackService: PaystackService) {}
+  private readonly logger = new Logger(PaystackController.name);
+
+  constructor(
+    private readonly paystackService: PaystackService,
+    @Inject(forwardRef(() => BudPayService))
+    private readonly budPayService: BudPayService,
+  ) {}
+
+  private useBudPay(data: {
+    payment_provider?: string;
+    payment_channel?: string;
+  }): boolean {
+    return (
+      data.payment_provider ||
+      data.payment_channel ||
+      process.env.PAYMENT_PROVIDER ||
+      "paystack"
+    ).toLowerCase() === "budpay";
+  }
 
   @Post("initialize")
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
@@ -70,10 +94,14 @@ export class PaystackController {
   async initializePayment(
     @Body() initData: PaystackInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
+    if (this.useBudPay(initData)) {
+      return await this.budPayService.initializePayment(initData);
+    }
     return await this.paystackService.initializePayment(initData);
   }
 
   @Post("initialize-checkout")
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
@@ -91,6 +119,21 @@ export class PaystackController {
     @UserId() userId: number,
     @Body() initData: PaystackUserInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
+    this.logger.log(
+      {
+        event: "checkout_initialization_requested",
+        gateway: this.useBudPay(initData) ? "budpay" : "paystack",
+        userId,
+        storeIds: initData.order_payload?.cart?.map((item) => item.storeId),
+      },
+      "authenticated checkout initialization requested",
+    );
+    if (this.useBudPay(initData)) {
+      return await this.budPayService.initializeAuthenticatedCheckout(
+        userId,
+        initData,
+      );
+    }
     return await this.paystackService.initializeAuthenticatedCheckout(
       userId,
       initData,
@@ -100,6 +143,7 @@ export class PaystackController {
   // GUEST USER INITIALIZATION STARTS HERE
 
   @Post("initialize-guest")
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Public() // ✅ No authentication required
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -113,6 +157,18 @@ export class PaystackController {
   async initializeGuestPayment(
     @Body() guestData: PaystackGuestInitializeDto,
   ): Promise<any> {
+    this.logger.log(
+      {
+        event: "guest_checkout_initialization_requested",
+        gateway: this.useBudPay(guestData) ? "budpay" : "paystack",
+        storeIds: guestData.cart_items?.map((item) => item.store_id),
+        amount: guestData.amount + guestData.delivery_charge,
+      },
+      "guest checkout initialization requested",
+    );
+    if (this.useBudPay(guestData)) {
+      return await this.budPayService.initializeGuestPayment(guestData);
+    }
     return await this.paystackService.initializeGuestPayment(guestData);
   }
 
@@ -234,6 +290,7 @@ export class PaystackController {
   }
 
   @Post("webhook")
+  @SkipThrottle()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: "Handle Paystack webhook events" })
   @ApiOkResponse({
@@ -247,6 +304,16 @@ export class PaystackController {
   ): Promise<PaystackWebhookResponseDto> {
     // Get raw body for signature verification
     const rawBody = req.rawBody?.toString("utf8") || JSON.stringify(webhookData);
+    this.logger.log(
+      {
+        event: webhookData.event,
+        gateway: "paystack",
+        paymentReference: webhookData.data?.reference,
+        paymentStatus: webhookData.data?.status,
+        amount: webhookData.data?.amount,
+      },
+      "Paystack webhook received",
+    );
 
     return await this.paystackService.processWebhook(
       webhookData,

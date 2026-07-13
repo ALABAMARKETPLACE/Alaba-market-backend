@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import { Injectable, InternalServerErrorException } from "@nestjs/common";
 import { Op, Sequelize } from "sequelize";
 import { DataResponseDto } from "../shared/dto/data-response-dto";
@@ -5,6 +6,8 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { Store } from "../STORE/store.entity";
 import { ProductAttributes } from "./attributes";
 import { TopSellingStoresDto } from "./dto/top_stores.dto";
+
+const appLog = createStructuredLogger("product_search_topstore");
 @Injectable()
 export class TopStoreService extends ProductAttributes {
   async getTopStores(
@@ -22,7 +25,7 @@ export class TopStoreService extends ProductAttributes {
       //     longitude,
       //     radius
       //   );
-      //   console.log("defaultStoreId===>",defaultStoreId);
+      //   appLog.info("defaultStoreId===>",defaultStoreId);
       // }
       //==============================================================================default
 

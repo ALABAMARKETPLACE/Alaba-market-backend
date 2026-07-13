@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -15,7 +16,6 @@ import { ProductImageService } from "../PRODUCT_IMAGE/productimage.service";
 import { ProductVariantService } from "../PRODUCT_VARIANTS/productvariant.service";
 import { ProductImage } from "../PRODUCT_IMAGE/productimage.entity";
 import { ProductsByStoreDto } from "./dto/productsByStore.dto";
-import { PublicProductsQueryDto } from "./dto/public-products-query.dto";
 import { Op, Transaction } from "sequelize";
 import { Sequelize } from "sequelize-typescript";
 import { UpdateProductsDto } from "./dto/updateProduct.dto";
@@ -35,6 +35,8 @@ import { Role } from "../shared/enum/role.enum";
 import { OrderItems } from '../ORDER_ITEMS/order_items.entity';
 import { OfferProducts } from "../OFFER_PRODUCTS/offer_products.entity";
 import { SubstituteProducts } from "../ORDER_SUBSTITUTION/substitute.products.entity";
+
+const appLog = createStructuredLogger("products_services");
 
 const pVariantAttributes = [
   "image",
@@ -73,18 +75,20 @@ export class ProductsService {
     }: ProductsPayloadDto
   ) {
     try {
-      // Debug: Log what we receive
-      console.log("=== DEBUG CREATE PRODUCT ===");
-      console.log("information:", JSON.stringify(information, null, 2));
-      console.log("product_weight value:", information?.product_weight);
-      console.log("product_weight type:", typeof information?.product_weight);
+      appLog.info(
+        {
+          event: "product_creation_started",
+          storeId,
+          productWeight: information?.product_weight,
+          imageCount: images?.length,
+          variantCount: variants?.length,
+        },
+        "product creation started",
+      );
 
       const response = await this.ProductsRepository.sequelize.transaction(
         async (transaction: Transaction) => {
 
-          console.log("Cover image received:", coverImage);
-          console.log("coverImage.url:", coverImage?.url);
-          
           if (!coverImage?.url) {
             throw new BadRequestException("Cover image not found.");
           }
@@ -119,22 +123,20 @@ export class ProductsService {
             product_weight: information?.product_weight,
           };
 
-          // Debug: Log what we're sending to DB
-          console.log("newP.product_weight:", information?.product_weight);
-          console.error("newP object:", JSON.stringify(newP, null, 2));
-
           //adding new product
           const product = await this.ProductsRepository.create(newP, {
             transaction: transaction,
           });
 
-          // Debug: Log what was saved
-          console.error("Saved product weight:", product.product_weight);
-          console.error(
-            "Saved product full:",
-            JSON.stringify(product.toJSON(), null, 2)
+          appLog.info(
+            {
+              event: "product_record_created",
+              storeId,
+              productId: product._id,
+              productWeight: product.product_weight,
+            },
+            "product record created",
           );
-          console.error("=== END DEBUG ===");
           //adding product images
           const image = await this.productsImageService.create(
             product,
@@ -249,130 +251,6 @@ export class ProductsService {
         result,
         true,
         "Product Status Updated successfully"
-      );
-    } catch (err) {
-      if (err instanceof HttpException) throw err;
-      throw new InternalServerErrorException(getErrorMessage(err));
-    }
-  }
-
-  async findPublicProducts(
-    pageOptionsDto: PublicProductsQueryDto
-  ): Promise<DataResponseDto> {
-    try {
-      const page = Math.max(1, Number(pageOptionsDto?.page ?? 1));
-      const take = Math.min(100, Math.max(1, Number(pageOptionsDto?.take ?? 20)));
-      const normalizedPageOptions = {
-        ...pageOptionsDto,
-        page,
-        take,
-        get offset() {
-          return (page - 1) * take;
-        },
-        get limit() {
-          return take;
-        },
-      };
-      const where: any = {
-        status: true,
-        unit: {[Op.gt]: 0},
-      };
-      const search = String(pageOptionsDto?.search ?? "").trim();
-      const categoryId = pageOptionsDto?.categoryId;
-      const subCategoryId =
-        pageOptionsDto?.subCategoryId ?? pageOptionsDto?.subCategory;
-
-      if (search) {
-        where[Op.or] = [
-          {name: {[Op.iLike]: `%${search}%`}},
-          {title: {[Op.iLike]: `%${search}%`}},
-          {description: {[Op.iLike]: `%${search}%`}},
-          {brand: {[Op.iLike]: `%${search}%`}},
-          {"$storeDetails.store_name$": {[Op.iLike]: `%${search}%`}},
-        ];
-      }
-      if (categoryId !== undefined) {
-        where.category = categoryId;
-      }
-      if (subCategoryId !== undefined) {
-        where.subCategory = subCategoryId;
-      }
-      if (pageOptionsDto?.storeId !== undefined) {
-        where.store_id = pageOptionsDto.storeId;
-      }
-      if (pageOptionsDto?.brandId) {
-        where.brand = pageOptionsDto.brandId;
-      }
-      if (
-        pageOptionsDto?.minPrice !== undefined ||
-        pageOptionsDto?.maxPrice !== undefined
-      ) {
-        where.retail_rate = {
-          ...(pageOptionsDto?.minPrice !== undefined && {
-            [Op.gte]: pageOptionsDto.minPrice,
-          }),
-          ...(pageOptionsDto?.maxPrice !== undefined && {
-            [Op.lte]: pageOptionsDto.maxPrice,
-          }),
-        };
-      }
-
-      const sort = pageOptionsDto?.sort ?? "newest";
-      const order: any[] =
-        sort === "price_low"
-          ? [["retail_rate", "ASC"], ["createdAt", "DESC"], ["_id", "DESC"]]
-          : sort === "price_high"
-          ? [["retail_rate", "DESC"], ["createdAt", "DESC"], ["_id", "DESC"]]
-          : sort === "random"
-          ? [Sequelize.literal("RANDOM()"), ["createdAt", "DESC"], ["_id", "DESC"]]
-          : [["createdAt", "DESC"], ["_id", "DESC"]];
-
-      const {rows, count} = await this.ProductsRepository.findAndCountAll({
-        where,
-        include: [
-          {
-            model: Store,
-            required: true,
-            where: {status: "approved"},
-            attributes: [
-              "id",
-              "store_name",
-              "logo_upload",
-              "slug",
-              "cover_image",
-              "averageRating",
-              "ratings",
-              "order_count",
-              "delivery_period_minutes",
-              "business_types",
-            ],
-          },
-          {
-            model: ProductVariant,
-            required: false,
-            attributes: pVariantAttributes,
-          },
-          {
-            model: ProductImage,
-            required: false,
-            attributes: pImageAttributes,
-          },
-        ],
-        attributes: {
-          exclude: ["purchase_rate", "bar_code", "sku", "orderCount", "updatedAt"],
-        },
-        limit: normalizedPageOptions.limit,
-        offset: normalizedPageOptions.offset,
-        order,
-        distinct: true,
-      });
-
-      return new DataResponseDto(
-        rows,
-        true,
-        "Products fetched successfully",
-        normalizedPageOptions as any,
-        count
       );
     } catch (err) {
       if (err instanceof HttpException) throw err;

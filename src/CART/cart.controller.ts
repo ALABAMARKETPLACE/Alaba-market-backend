@@ -10,6 +10,7 @@ import {
   Put,
   HttpCode,
   Query,
+  Header,
   UsePipes,
   ValidationPipe,
 } from "@nestjs/common";
@@ -39,6 +40,9 @@ export class CartController {
   @Get("all")
   @ApiOkResponse({ type: [CartDto] })
   @ApiBearerAuth()
+  @Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  @Header("Pragma", "no-cache")
+  @Header("Expires", "0")
   @HttpCode(200)
   findCartByUserID(@UserId() userId: number): Promise<DataResponseDto> {
     return this.cartService.findByUserId(userId);
@@ -57,7 +61,6 @@ export class CartController {
   ): Promise<CartDataResponseDto> {
     return this.cartService.create(userId, createCart);
   }
-  
 
   //update the quantity of items in cart increase or decrease by 1
   @UseGuards(AuthGuard)
@@ -82,6 +85,20 @@ export class CartController {
     return this.cartService.clearCart(userId);
   }
 
+  //to remove one item from cart by product UUID/internal product id
+  @UseGuards(AuthGuard)
+  @Delete("product/:productId")
+  @ApiOkResponse({ type: CartTable })
+  @ApiParam({ name: "productId", required: true })
+  @ApiBearerAuth()
+  deleteByProduct(
+    @UserId() userId: number,
+    @Param("productId") productId: string,
+    @Query("variantId") variantId?: string
+  ): Promise<DataResponseDto> {
+    return this.cartService.deleteByProduct(userId, productId, variantId);
+  }
+
   //to remove one item from cart
   @UseGuards(AuthGuard)
   @Delete(":id")
@@ -90,8 +107,9 @@ export class CartController {
   @ApiBearerAuth()
   delete(
     @UserId() userId: number,
-    @Param("id", new ParseIntPipe()) id: number
+    @Param("id") id: string,
+    @Query("variantId") variantId?: string
   ): Promise<DataResponseDto> {
-    return this.cartService.delete(userId, id);
+    return this.cartService.delete(userId, id, variantId);
   }
 }

@@ -1,5 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import {
+  IsIn,
   IsNotEmpty,
   IsObject,
   IsOptional,
@@ -10,6 +11,25 @@ import { Type } from "class-transformer";
 import { CreateOrderDto } from "../../ORDER/dto/createOrder.dto";
 
 export class PaystackUserInitializeDto {
+  @ApiProperty({
+    description:
+      "Optional payment provider selector. Missing values remain Paystack for backward compatibility.",
+    enum: ["paystack", "budpay"],
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(["paystack", "budpay"])
+  payment_provider?: "paystack" | "budpay";
+
+  @ApiProperty({
+    description: "Alias for payment_provider.",
+    enum: ["paystack", "budpay"],
+    required: false,
+  })
+  @IsOptional()
+  @IsIn(["paystack", "budpay"])
+  payment_channel?: "paystack" | "budpay";
+
   @ApiProperty({
     description:
       "Full logged-in order payload. The backend validates it, initializes Paystack, and the webhook creates the real orders.",

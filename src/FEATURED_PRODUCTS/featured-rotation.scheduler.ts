@@ -1,6 +1,9 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import { Injectable } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { FeaturedProductsService } from "./featured-products.service";
+
+const appLog = createStructuredLogger("featured_rotation_scheduler");
 
 const SCHEDULER_BATCH_SIZE = 5;
 const SCHEDULER_ROTATION_MINUTES = 5;
@@ -16,7 +19,7 @@ export class FeaturedRotationScheduler {
   @Cron(CronExpression.EVERY_MINUTE)
   async handleRotationTick(): Promise<void> {
     const timestamp = new Date().toISOString();
-    // console.log(
+    // appLog.info(
     //   "[FeaturedRotationScheduler] Tick",
     //   JSON.stringify({ timestamp })
     // );
@@ -34,7 +37,7 @@ export class FeaturedRotationScheduler {
         );
 
         if (result.rotated) {
-          // console.log(
+          // appLog.info(
           //   "[FeaturedRotationScheduler] Rotated",
           //   JSON.stringify({
           //     position,
@@ -49,12 +52,14 @@ export class FeaturedRotationScheduler {
           // );
         }
       } catch (error) {
-        console.error(
-          "[FeaturedRotationScheduler] Rotation error",
-          JSON.stringify({
+        appLog.error(
+          {
+            event: "featured_rotation_error",
             position,
-            message: error?.message ?? error,
-          })
+            err: error instanceof Error ? error : undefined,
+            errorMessage: error instanceof Error ? error.message : String(error),
+          },
+          "[FeaturedRotationScheduler] Rotation error",
         );
       }
     }

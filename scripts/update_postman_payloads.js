@@ -12,6 +12,7 @@ const collectionVariables = [
   { key: "baseUrl", value: "http://localhost:8000", type: "string" },
   { key: "authToken", value: "", type: "string" },
   { key: "refreshToken", value: "", type: "string" },
+  { key: "password", value: "Options123#", type: "string" },
   { key: "userId", value: "1", type: "number" },
   { key: "managedUserId", value: "1", type: "number" },
   { key: "userEmail", value: DEFAULT_EMAIL, type: "string" },
@@ -20,9 +21,26 @@ const collectionVariables = [
   { key: "orderId", value: "1", type: "number" },
   { key: "productId", value: "1", type: "number" },
   { key: "variantId", value: "1", type: "number" },
+  { key: "cartItemId", value: "1", type: "number" },
   { key: "addressId", value: "1", type: "number" },
   { key: "deliveryToken", value: "", type: "string" },
+  { key: "deliveryTokenAddressId", value: "", type: "number" },
+  { key: "deliveryCharge", value: "0", type: "number" },
+  { key: "deliveryDiscount", value: "0", type: "number" },
+  {
+    key: "callbackUrl",
+    value: "http://localhost:3000/payment/callback",
+    type: "string",
+  },
   { key: "paymentReference", value: "", type: "string" },
+  { key: "paymentProvider", value: "paystack", type: "string" },
+  { key: "paystackAccessCode", value: "", type: "string" },
+  { key: "budpayAccessCode", value: "", type: "string" },
+  { key: "budpayCustomerId", value: "", type: "string" },
+  { key: "budpayVirtualAccountId", value: "", type: "string" },
+  { key: "budpayAccountNumber", value: "", type: "string" },
+  { key: "budpayImportStatus", value: "", type: "string" },
+  { key: "budpayWebhookSignature", value: "", type: "string" },
   { key: "boosterPlanId", value: "1", type: "number" },
   { key: "boosterConfigId", value: "1", type: "number" },
   { key: "boosterReference", value: "", type: "string" },
@@ -47,6 +65,15 @@ const collectionVariables = [
   { key: "subCategoryId", value: "1", type: "number" },
   { key: "storeSlug", value: "", type: "string" },
   { key: "productPid", value: "", type: "string" },
+  { key: "productName", value: "Sample product", type: "string" },
+  {
+    key: "productImage",
+    value: "https://example.com/product.jpg",
+    type: "string",
+  },
+  { key: "productPrice", value: "5000", type: "number" },
+  { key: "productWeight", value: "1", type: "number" },
+  { key: "orderQuantity", value: "1", type: "number" },
   { key: "phone", value: "2348012345678", type: "string" },
   { key: "slug", value: "", type: "string" },
   { key: "token", value: "", type: "string" },
@@ -85,8 +112,6 @@ const controllerGroupOverrides = {
   userhistory: "USERHISTORY",
   subscription_plans: "SUBSCRIPTION PLANS",
   boost_requests: "BOOST REQUESTS",
-  seller_booster: "SELLER BOOSTER",
-  super_admin: "SUPER ADMIN",
   featured_products: "FEATURED PRODUCTS",
   paystack_subaccounts: "PAYSTACK SUBACCOUNTS",
   subtitution_token: "SUBTITUTION TOKEN",
@@ -335,13 +360,13 @@ function sampleForResource(resource) {
     return { storeId: 123, productId: 456, days: 7, amount: 5000 };
   }
   if (resource.includes("auth") || resource.includes("login")) {
-    return { email: DEFAULT_EMAIL, password: "P@ssw0rd" };
+    return { email: DEFAULT_EMAIL, password: "Options123#" };
   }
   if (resource.includes("user") || resource.includes("users")) {
     return {
       name: "Jane Customer",
       email: DEFAULT_EMAIL,
-      password: "P@ssw0rd",
+      password: "Options123#",
       phone: "+2348012345678",
     };
   }
@@ -355,127 +380,314 @@ function sampleForResource(resource) {
     };
   }
   if (resource.includes("order")) {
-    return {
-      userId: 1,
-      items: [{ productId: 1, quantity: 2 }],
-      shippingAddressId: 1,
-      paymentMethod: "card",
-    };
+    return sampleForRequest("POST", ["order"]);
   }
   if (resource.includes("wishlist")) return { userId: 1, productId: 123 };
   if (resource.includes("cart")) {
     return { userId: 1, items: [{ productId: 1, quantity: 1 }] };
   }
-  return { example: "replace_with_actual_payload" };
+  return {};
 }
 
 function sampleForRequest(method, pathSegments = []) {
   const normalizedMethod = String(method || "").toUpperCase();
   const normalizedPath = (pathSegments || []).join("/");
 
-  if (
-    normalizedMethod === "POST" &&
-    normalizedPath === "seller/booster/initialize"
-  ) {
+  if (normalizedMethod === "POST" && normalizedPath === "auth/login") {
     return {
-      tier: "{{boosterTier}}",
-      product_ids: [1, 2, 3],
-      duration_days: 30,
-      callback_url: "http://localhost:3000/seller/booster/callback",
+      email: "{{userEmail}}",
+      password: "{{password}}",
     };
   }
 
-  if (
-    normalizedMethod === "POST" &&
-    normalizedPath === "seller/booster/verify"
-  ) {
+  if (normalizedMethod === "POST" && normalizedPath === "new-address") {
     return {
-      reference: "{{boosterReference}}",
+      address_type: "home",
+      full_address: "12 Test Street, Ikeja, Lagos",
+      pincode: "100001",
+      phone_no: "08000000000",
+      country_id: "{{countryId}}",
+      state_id: "{{stateId}}",
     };
   }
 
-  if (
-    normalizedMethod === "PUT" &&
-    normalizedPath === "seller/booster/products"
-  ) {
+  if (normalizedMethod === "POST" && normalizedPath === "cart") {
     return {
-      product_ids: [4, 5, 6],
+      productId: "{{productId}}",
+      variantId: "{{variantId}}",
+      quantity: "{{orderQuantity}}",
     };
   }
 
-  if (
-    normalizedMethod === "POST" &&
-    normalizedPath === "seller/booster/cancel"
-  ) {
+  if (normalizedMethod === "PUT" && normalizedPath === "cart/{{id}}") {
     return {};
   }
 
   if (
     normalizedMethod === "POST" &&
-    normalizedPath === "super-admin/booster-plan-configs"
+    normalizedPath === "calculate_delivery"
   ) {
     return {
-      name: "basic",
-      display_name: "Basic",
-      description: "Boost up to 5 selected active products.",
-      product_limit: 5,
-      boost_score: 30,
-      duration_days: 30,
-      price: 500000,
+      cart: [
+        {
+          id: "{{cartItemId}}",
+          userId: "{{userId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          quantity: "{{orderQuantity}}",
+          image: "{{productImage}}",
+          totalPrice: "{{productPrice}}",
+          buyPrice: "{{productPrice}}",
+          name: "{{productName}}",
+          productDetails: {
+            image: "{{productImage}}",
+            name: "{{productName}}",
+            price: "{{productPrice}}",
+          },
+          storeDetails: {},
+        },
+      ],
+      address: {
+        id: "{{addressId}}",
+        userId: "{{userId}}",
+        flat: "12",
+        fullAddress: "12 Test Street, Ikeja, Lagos",
+        pin_code: "100001",
+        state: "Lagos",
+        city: "Ikeja",
+        street: "Test Street",
+        alt_phone: "08000000000",
+        code: "NG",
+        geo_location: "",
+        type: "home",
+        lat: null,
+        long: null,
+      },
+      total: "{{productPrice}}",
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/new"
+  ) {
+    return {
+      cart: [
+        {
+          weight: "{{productWeight}}",
+          quantity: "{{orderQuantity}}",
+        },
+      ],
+      address: {
+        id: "{{addressId}}",
+        country_id: "{{countryId}}",
+        state_id: "{{stateId}}",
+      },
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/public"
+  ) {
+    return {
+      cart: [
+        {
+          id: "{{productId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          name: "{{productName}}",
+          quantity: "{{orderQuantity}}",
+          weight: "{{productWeight}}",
+          totalPrice: "{{productPrice}}",
+        },
+      ],
+      address: {
+        id: "guest_{{userId}}",
+        full_name: "Guest Buyer",
+        phone_no: "08000000000",
+        full_address: "12 Test Street, Ikeja, Lagos",
+        country_id: "{{countryId}}",
+        state_id: "{{stateId}}",
+        country: "Nigeria",
+        state: "Lagos",
+        is_guest: true,
+      },
+      total: "{{productPrice}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "order") {
+    return {
+      cart: [
+        {
+          id: "{{cartItemId}}",
+          productId: "{{productId}}",
+          variantId: "{{variantId}}",
+          storeId: "{{storeId}}",
+          quantity: "{{orderQuantity}}",
+        },
+      ],
+      payment: {
+        type: "paystack",
+        callback_url: "{{callbackUrl}}",
+      },
+      address: {
+        id: "{{addressId}}",
+      },
+      charges: {
+        token: "{{deliveryToken}}",
+      },
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    ["paystack/initialize-checkout", "budpay/initialize-checkout"].includes(
+      normalizedPath,
+    )
+  ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : "{{paymentProvider}}";
+    const orderPayload = sampleForRequest("POST", ["order"]);
+    orderPayload.payment.type = provider;
+    return {
+      payment_provider: provider,
+      order_payload: orderPayload,
+      callback_url: "{{callbackUrl}}",
+    };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    ["paystack/verify", "budpay/verify"].includes(normalizedPath)
+  ) {
+    return {
+      reference: "{{paymentReference}}",
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "budpay/initialize") {
+    return {
+      payment_provider: "budpay",
+      email: "{{userEmail}}",
+      amount: 500000,
       currency: "NGN",
-      is_active: true,
-      is_unlimited: false,
-    };
-  }
-
-  if (
-    normalizedMethod === "PATCH" &&
-    normalizedPath === "super-admin/booster-plan-configs/{{boosterConfigId}}"
-  ) {
-    return {
-      product_limit: 8,
-      boost_score: 35,
-      duration_days: 30,
-      price: 600000,
-      is_active: true,
-      is_unlimited: false,
-    };
-  }
-
-  if (
-    normalizedMethod === "PATCH" &&
-    normalizedPath === "super-admin/users/{{managedUserId}}/role"
-  ) {
-    return {
-      role: "{{managedRole}}",
-    };
-  }
-
-  if (
-    normalizedMethod === "PATCH" &&
-    normalizedPath === "super-admin/users/{{managedUserId}}/status"
-  ) {
-    return {
-      is_active: true,
+      callback_url: "{{callbackUrl}}",
+      reference: "",
+      metadata: {
+        source: "postman",
+      },
     };
   }
 
   if (
     normalizedMethod === "POST" &&
-    normalizedPath === "admin/auth/forgot-password"
+    ["paystack/initialize-guest", "budpay/initialize-guest"].includes(
+      normalizedPath,
+    )
   ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : "{{paymentProvider}}";
     return {
-      email: "{{adminEmail}}",
+      payment_provider: provider,
+      guest_info: {
+        email: "{{guestEmail}}",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        {
+          product_id: "{{productId}}",
+          store_id: "{{storeId}}",
+          quantity: 1,
+          unit_price: 500000,
+        },
+      ],
+      amount: 500000,
+      delivery_charge: 0,
+      currency: "NGN",
+      callback_url: "{{callbackUrl}}",
+      order_payload: {
+        guest_info: {
+          email: "{{guestEmail}}",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        delivery_address: {
+          id: "guest_address_001",
+          full_name: "Guest Buyer",
+          phone_no: "08000000000",
+          full_address: "12 Test Street, Ikeja, Lagos",
+          city: "Ikeja",
+          state: "Lagos",
+          state_id: "{{stateId}}",
+          country: "Nigeria",
+          country_id: "{{countryId}}",
+        },
+        cart_items: [
+          {
+            product_id: "{{productId}}",
+            store_id: "{{storeId}}",
+            product_name: "{{productName}}",
+            quantity: 1,
+            unit_price: 500000,
+            total_price: 500000,
+          },
+        ],
+        payment: {
+          payment_method: provider,
+          payment_status: "pending",
+        },
+        delivery: {
+          delivery_token: "{{deliveryToken}}",
+        },
+        order_summary: {
+          subtotal: 5000,
+          delivery_fee: 0,
+          discount: 0,
+          tax: 0,
+          total: 5000,
+        },
+      },
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "budpay/webhook") {
+    return {
+      notify: "transaction",
+      notifyType: "successful",
+      data: {
+        reference: "{{paymentReference}}",
+        status: "success",
+        amount: "500000",
+        currency: "NGN",
+        customer: {
+          email: "{{guestEmail}}",
+        },
+        metadata: {
+          payment_provider: "budpay",
+        },
+      },
     };
   }
 
   if (
     normalizedMethod === "POST" &&
-    normalizedPath === "admin/auth/reset-password"
+    normalizedPath === "budpay/admin/import-paystack-subaccounts"
   ) {
     return {
-      token: "{{adminResetToken}}",
-      newPassword: "{{adminNewPassword}}",
+      dryRun: true,
+      limit: 25,
+      storeId: "{{storeId}}",
+      retryFailed: false,
+      force: false,
     };
   }
 
@@ -502,6 +714,81 @@ function sampleForRequest(method, pathSegments = []) {
   }
 
   return sampleForResource(pathSegments[0]);
+}
+
+function rawBodyForRequest(method, pathSegments = []) {
+  const normalizedMethod = String(method || "").toUpperCase();
+  const normalizedPath = pathSegments.join("/");
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery"
+  ) {
+    return [
+      "{",
+      '  "cart": [',
+      "    {",
+      '      "id": {{cartItemId}},',
+      '      "userId": {{userId}},',
+      '      "productId": {{productId}},',
+      '      "variantId": {{variantId}},',
+      '      "storeId": {{storeId}},',
+      '      "quantity": {{orderQuantity}},',
+      '      "image": "{{productImage}}",',
+      '      "totalPrice": {{productPrice}},',
+      '      "buyPrice": {{productPrice}},',
+      '      "name": "{{productName}}",',
+      '      "productDetails": {',
+      '        "image": "{{productImage}}",',
+      '        "name": "{{productName}}",',
+      '        "price": {{productPrice}}',
+      "      },",
+      '      "storeDetails": {}',
+      "    }",
+      "  ],",
+      '  "address": {',
+      '    "id": {{addressId}},',
+      '    "userId": {{userId}},',
+      '    "flat": "12",',
+      '    "fullAddress": "12 Test Street, Ikeja, Lagos",',
+      '    "pin_code": "100001",',
+      '    "state": "Lagos",',
+      '    "city": "Ikeja",',
+      '    "street": "Test Street",',
+      '    "alt_phone": "08000000000",',
+      '    "code": "NG",',
+      '    "geo_location": "",',
+      '    "type": "home",',
+      '    "lat": null,',
+      '    "long": null',
+      "  },",
+      '  "total": {{productPrice}}',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "calculate_delivery/new"
+  ) {
+    return [
+      "{",
+      '  "cart": [',
+      "    {",
+      '      "weight": {{productWeight}},',
+      '      "quantity": {{orderQuantity}}',
+      "    }",
+      "  ],",
+      '  "address": {',
+      '    "id": {{addressId}},',
+      '    "country_id": {{countryId}},',
+      '    "state_id": {{stateId}}',
+      "  }",
+      "}",
+    ].join("\n");
+  }
+
+  return JSON.stringify(sampleForRequest(method, pathSegments), null, 2);
 }
 
 function ensureJsonHeader(headers) {
@@ -537,7 +824,10 @@ function processItem(item, summary) {
 
   const pathSegments =
     Array.isArray(req.url?.path) && req.url.path.length > 0 ? req.url.path : [];
-  const sample = sampleForRequest(method, pathSegments.length ? pathSegments : [resource]);
+  const sample = sampleForRequest(
+    method,
+    pathSegments.length ? pathSegments : [resource],
+  );
   const hasBody =
     req.body &&
     ((req.body.raw && req.body.raw.trim() !== "") ||
@@ -545,13 +835,148 @@ function processItem(item, summary) {
 
   const shouldReplaceGenericBody =
     typeof req.body?.raw === "string" &&
-    ["{}", "{\n}"].includes(req.body.raw.trim());
+    (["{}", "{\n}"].includes(req.body.raw.trim()) ||
+      req.body.raw.includes("replace_with_actual_payload") ||
+      req.body.raw.includes('"shippingAddressId"') ||
+      req.body.raw.includes('"paymentMethod"'));
+  const shouldReplaceDeliveryBody =
+    method === "POST" &&
+    pathSegments.join("/") === "calculate_delivery/new" &&
+    typeof req.body?.raw === "string" &&
+    (req.body.raw.includes('"productDetails"') ||
+      req.body.raw.includes('"weight": "{{productWeight}}"'));
+  const shouldReplaceLegacyDeliveryBody =
+    method === "POST" &&
+    pathSegments.join("/") === "calculate_delivery" &&
+    typeof req.body?.raw === "string" &&
+    req.body.raw.includes('"id": "{{cartItemId}}"');
+  const shouldRefreshPaymentProviderBody =
+    method === "POST" &&
+    [
+      "paystack/initialize-checkout",
+      "paystack/initialize-guest",
+      "budpay/initialize",
+      "budpay/initialize-checkout",
+      "budpay/initialize-guest",
+      "budpay/verify",
+      "budpay/webhook",
+      "budpay/admin/import-paystack-subaccounts",
+    ].includes(pathSegments.join("/"));
 
-  if (!hasBody || shouldReplaceGenericBody) {
-    req.body = { mode: "raw", raw: JSON.stringify(sample, null, 2) };
+  if (
+    !hasBody ||
+    shouldReplaceGenericBody ||
+    shouldReplaceDeliveryBody ||
+    shouldReplaceLegacyDeliveryBody ||
+    shouldRefreshPaymentProviderBody
+  ) {
+    req.body = { mode: "raw", raw: rawBodyForRequest(method, pathSegments) };
     req.header = ensureJsonHeader(req.header);
     summary.updatedBodies += 1;
   }
+}
+
+function configureBudPayRequests(collection) {
+  const descriptions = {
+    "POST budpay/initialize":
+      "Initialize a direct BudPay Standard transaction. Amount is in kobo.",
+    "POST budpay/initialize-checkout":
+      "Authenticated BudPay checkout using the same order_payload contract as Paystack.",
+    "POST budpay/initialize-guest":
+      "Guest BudPay checkout using the same request contract as Paystack.",
+    "POST budpay/verify":
+      "Verify a BudPay reference and validate stored checkout amount/email.",
+    "GET budpay/verify":
+      "Verify a BudPay reference using a query parameter.",
+    "POST budpay/webhook":
+      "BudPay webhook example. Production webhooks are server-verified against BudPay before order finalization.",
+    "GET budpay/public-key":
+      "Return the configured BudPay public key when frontend use requires it.",
+    "POST budpay/admin/import-paystack-subaccounts":
+      "Admin-only seller payout-profile import. Start with dryRun=true. force=true may replace stored BudPay identifiers.",
+    "GET budpay/admin/import-paystack-subaccounts/preview":
+      "Admin-only read-only preview. Shows ready, missing-data, and already-imported stores without mutation.",
+    "GET budpay/admin/import-paystack-subaccounts/status":
+      "Admin-only BudPay seller payout-profile import status.",
+  };
+
+  walkRequests(collection.item, (item) => {
+    const request = item?.request;
+    const segments = Array.isArray(request?.url?.path) ? request.url.path : [];
+    if (segments[0] !== "budpay") {
+      return;
+    }
+
+    const method = String(request.method || "GET").toUpperCase();
+    const route = segments.join("/");
+    const key = `${method} ${route}`;
+    request.description = descriptions[key] || request.description;
+
+    const isPublic =
+      route === "budpay/webhook" ||
+      route === "budpay/public-key" ||
+      route === "budpay/initialize-guest";
+    request.header = (request.header || []).filter(
+      (header) =>
+        !isPublic || String(header.key || "").toLowerCase() !== "authorization",
+    );
+
+    if (route === "budpay/webhook") {
+      request.header = ensureJsonHeader(request.header);
+      request.header = request.header.filter(
+        (header) =>
+          String(header.key || "").toLowerCase() !== "x-budpay-signature",
+      );
+      request.header.push({
+        key: "x-budpay-signature",
+        value: "{{budpayWebhookSignature}}",
+        disabled: true,
+        description:
+          "Enable only when BUDPAY_WEBHOOK_SECRET/signature validation is configured.",
+      });
+    }
+
+    if (method === "GET" && route === "budpay/verify") {
+      request.url.raw = "{{baseUrl}}/budpay/verify?reference={{paymentReference}}";
+      request.url.query = [
+        { key: "reference", value: "{{paymentReference}}" },
+      ];
+    }
+
+    if (
+      method === "GET" &&
+      route === "budpay/admin/import-paystack-subaccounts/preview"
+    ) {
+      request.url.raw =
+        "{{baseUrl}}/budpay/admin/import-paystack-subaccounts/preview?limit=100&storeId=";
+      request.url.query = [
+        { key: "limit", value: "100" },
+        {
+          key: "storeId",
+          value: "{{storeId}}",
+          disabled: true,
+          description: "Enable for a targeted store preview.",
+        },
+      ];
+    }
+
+    if (
+      method === "GET" &&
+      route === "budpay/admin/import-paystack-subaccounts/status"
+    ) {
+      request.url.raw =
+        "{{baseUrl}}/budpay/admin/import-paystack-subaccounts/status?limit=100&storeId=";
+      request.url.query = [
+        { key: "limit", value: "100" },
+        {
+          key: "storeId",
+          value: "{{storeId}}",
+          disabled: true,
+          description: "Enable for one store.",
+        },
+      ];
+    }
+  });
 }
 
 function upsertCollectionVariables(collection) {
@@ -719,11 +1144,7 @@ function buildGeneratedRequest(route) {
   if (["POST", "PUT", "PATCH"].includes(route.method)) {
     request.body = {
       mode: "raw",
-      raw: JSON.stringify(
-        sampleForRequest(route.method, route.pathSegments),
-        null,
-        2,
-      ),
+      raw: rawBodyForRequest(route.method, route.pathSegments),
       options: { raw: { language: "json" } },
     };
   }
@@ -773,7 +1194,9 @@ function syncControllerRoutes(collection) {
   const existingRequests = new Set(
     flattenRequests(collection.item).map((item) =>
       normalizeCollectionKey(
-        `${String(item.request.method || "GET").toUpperCase()} ${item.request.url.raw}`,
+        `${String(item.request.method || "GET").toUpperCase()} ${
+          item.request.url.raw
+        }`,
       ),
     ),
   );
@@ -813,7 +1236,9 @@ function pruneUnknownRequests(items, knownRoutes) {
     const raw = String(item?.request?.url?.raw || "");
     const regex = toRouteRegex(raw);
     const isKnown = knownRoutes.some(
-      (route) => route.method === method && route.regex.test(raw.replace("{{baseUrl}}", "").split("?")[0]),
+      (route) =>
+        route.method === method &&
+        route.regex.test(raw.replace("{{baseUrl}}", "").split("?")[0]),
     );
 
     if (isKnown) {
@@ -829,6 +1254,24 @@ function upsertTestScript(item, scriptLines) {
   const existing = item.event.find((entry) => entry.listen === "test");
   const script = {
     listen: "test",
+    script: {
+      type: "text/javascript",
+      exec: scriptLines,
+    },
+  };
+
+  if (existing) {
+    existing.script = script.script;
+  } else {
+    item.event.push(script);
+  }
+}
+
+function upsertPreRequestScript(item, scriptLines) {
+  item.event = Array.isArray(item.event) ? item.event : [];
+  const existing = item.event.find((entry) => entry.listen === "prerequest");
+  const script = {
+    listen: "prerequest",
     script: {
       type: "text/javascript",
       exec: scriptLines,
@@ -865,16 +1308,16 @@ function buildContextualScript(pathSegments = [], requestName = "") {
   const isUserLike = resource === "user" || resource === "users";
   const isStoreLike = resource === "coorporate_store";
   const isProductLike = resource === "products";
+  const isCartLike = resource === "cart";
+  const isCalculateDeliveryLike = resource === "calculate_delivery";
   const isOrderLike = resource === "order";
-  const isAddressLike = resource === "address";
+  const isAddressLike = resource === "address" || resource === "new-address";
   const isPaystackLike = resource === "paystack";
+  const isBudPayLike = resource === "budpay";
   const isCategoryLike = resource === "category";
   const isSubCategoryLike = resource === "sub_category";
   const isProductSearchLike = resource === "product_search";
   const isEnquiryLike = resource === "enquiry";
-  const isSellerBoosterLike =
-    resource === "seller" && pathSegments[1] === "booster";
-  const isSuperAdminLike = resource === "super-admin";
   const isPaystackReconcile =
     isPaystackLike && requestLabel.includes("transactions/reconcile");
   const isPaystackReconciliation =
@@ -889,6 +1332,23 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     "      if (pm.environment) {",
     "        pm.environment.set(key, normalized);",
     "      }",
+    "    }",
+    "  };",
+    "  const unsetVar = (key) => {",
+    "    pm.collectionVariables.unset(key);",
+    "    if (pm.environment) {",
+    "      pm.environment.unset(key);",
+    "    }",
+    "  };",
+    "  const decodeJwtPayload = (token) => {",
+    "    try {",
+    "      if (!token || String(token).split('.').length < 2) return null;",
+    "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+    "      while (payload.length % 4) payload += '=';",
+    "      return JSON.parse(atob(payload));",
+    "    } catch (error) {",
+    "      console.log('Unable to decode JWT payload', error);",
+    "      return null;",
     "    }",
     "  };",
     "  const data = json?.data ?? json;",
@@ -936,6 +1396,9 @@ function buildContextualScript(pathSegments = [], requestName = "") {
       "  setIf('productId', product?._id || product?.id || product?.productId || data?._id || data?.id);",
       "  setIf('productPid', product?.pid || product?._id || product?.id);",
       "  setIf('storeId', product?.store_id || product?.storeId || store?.id || data?.store_id || data?.storeId);",
+      "  setIf('productName', product?.name || product?.title || data?.name || data?.title);",
+      "  setIf('productPrice', product?.price || product?.retail_rate || product?.retailRate || data?.price || data?.retail_rate);",
+      "  setIf('productWeight', product?.product_weight || product?.productWeight || product?.weight || data?.product_weight || data?.productWeight || data?.weight);",
       "  setIf('storeSlug', store?.slug || first?.slug || data?.slug);",
       "  setIf('categoryId', product?.category || product?.categoryId || category?.id || category?._id || data?.category || data?.categoryId);",
       "  setIf('subCategoryId', product?.subCategory || product?.subCategoryId || subCategory?.id || subCategory?._id || data?.subCategory || data?.subCategoryId);",
@@ -943,9 +1406,64 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     );
   }
 
+  if (isCartLike) {
+    script.push(
+      "  const cartRoot = data?.cart || data?.item || data;",
+      "  const cartRows = Array.isArray(cartRoot?.rows) ? cartRoot.rows : [];",
+      "  const cartResults = Array.isArray(cartRoot?.results) ? cartRoot.results : [];",
+      "  const cartNested = Array.isArray(cartRoot?.data) ? cartRoot.data : [];",
+      "  const cartList = Array.isArray(cartRoot) ? cartRoot : (cartRows.length ? cartRows : (cartResults.length ? cartResults : cartNested));",
+      "  const cartItem = cartList[0] || cartRoot || first || {};",
+      "  const cartProduct = cartItem?.product || cartItem?.productDetails || product || {};",
+      "  const cartStore = cartItem?.store || cartItem?.storeDetails || store || {};",
+      "  const cartVariant = cartItem?.variant || cartItem?.variantDetails || firstVariant || {};",
+      "  const cartQuantity = cartItem?.quantity || cartItem?.qty || pm.collectionVariables.get('orderQuantity') || 1;",
+      "  const cartPrice = cartItem?.price || cartItem?.buyPrice || cartItem?.unit_price || cartItem?.unitPrice || cartProduct?.price || cartProduct?.retail_rate || (cartItem?.totalPrice && cartQuantity ? Number(cartItem.totalPrice) / Number(cartQuantity) : undefined);",
+      "  const cartWeight = cartItem?.productWeight || cartItem?.product_weight || cartItem?.weight || cartProduct?.product_weight || cartProduct?.productWeight || cartProduct?.weight || pm.collectionVariables.get('productWeight') || 1;",
+      "  setIf('cartItemId', cartItem?.id || cartItem?._id || cartItem?.cartId || cartItem?.cart_id);",
+      "  setIf('productId', cartItem?.productId || cartItem?.product_id || cartProduct?._id || cartProduct?.id || cartProduct?.productId);",
+      "  setIf('productPid', cartItem?.pid || cartProduct?.pid);",
+      "  setIf('variantId', cartItem?.variantId ?? cartItem?.variant_id ?? cartVariant?.id ?? cartVariant?._id ?? 'null');",
+      "  setIf('storeId', cartItem?.storeId || cartItem?.store_id || cartProduct?.store_id || cartProduct?.storeId || cartStore?.id || cartStore?._id);",
+      "  setIf('orderQuantity', cartQuantity);",
+      "  setIf('productPrice', cartPrice);",
+      "  setIf('productName', cartItem?.name || cartProduct?.name || cartProduct?.title);",
+      "  setIf('productImage', cartItem?.image || cartProduct?.image || cartVariant?.image);",
+      "  setIf('productWeight', cartWeight);",
+    );
+  }
+
   if (isAddressLike) {
     script.push(
-      "  setIf('addressId', address?.id || address?._id || data?.id || data?.addressId);",
+      "  const addressRoot = data?.address || data;",
+      "  const addressRows = Array.isArray(addressRoot?.rows) ? addressRoot.rows : [];",
+      "  const addressResults = Array.isArray(addressRoot?.results) ? addressRoot.results : [];",
+      "  const addressNested = Array.isArray(addressRoot?.data) ? addressRoot.data : [];",
+      "  const addressList = Array.isArray(addressRoot) ? addressRoot : (addressRows.length ? addressRows : (addressResults.length ? addressResults : addressNested));",
+      "  const selectedAddress = addressList[0] || addressRoot || address || {};",
+      "  const previousAddressId = pm.collectionVariables.get('addressId') || (pm.environment && pm.environment.get('addressId'));",
+      "  const nextAddressId = selectedAddress?.id || selectedAddress?._id || selectedAddress?.addressId || data?.id || data?.addressId;",
+      "  if (nextAddressId && previousAddressId && String(nextAddressId) !== String(previousAddressId)) {",
+      "    unsetVar('deliveryToken');",
+      "    unsetVar('deliveryTokenAddressId');",
+      "    unsetVar('deliveryCharge');",
+      "    unsetVar('deliveryDiscount');",
+      "  }",
+      "  setIf('addressId', selectedAddress?.id || selectedAddress?._id || selectedAddress?.addressId || data?.id || data?.addressId);",
+      "  setIf('countryId', selectedAddress?.country_id || selectedAddress?.countryId || data?.country_id || data?.countryId);",
+      "  setIf('stateId', selectedAddress?.state_id || selectedAddress?.stateId || data?.state_id || data?.stateId);",
+    );
+  }
+
+  if (isCalculateDeliveryLike) {
+    script.push(
+      "  const deliveryToken = json?.token || data?.token;",
+      "  const deliveryTokenPayload = decodeJwtPayload(deliveryToken);",
+      "  setIf('deliveryToken', deliveryToken);",
+      "  setIf('deliveryTokenAddressId', deliveryTokenPayload?.data?.addressId || pm.collectionVariables.get('addressId'));",
+      "  setIf('deliveryCharge', data?.amount || data?.delivery_charge || data?.deliveryCharge);",
+      "  setIf('deliveryDiscount', data?.discount);",
+      "  setIf('productWeight', data?.totalWeight || data?.total_weight || pm.collectionVariables.get('productWeight'));",
     );
   }
 
@@ -954,8 +1472,10 @@ function buildContextualScript(pathSegments = [], requestName = "") {
       "  const orderCandidate = order || first;",
       "  setIf('orderId', orderCandidate?.id || data?.id);",
       "  setIf('orderPublicId', orderCandidate?.order_id || data?.order_id);",
-      "  setIf('paymentReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
-      "  setIf('reconcileReference', payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('paymentReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('reconcileReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+      "  setIf('paystackAuthUrl', data?.authorization_url || data?.authorizationUrl || payment?.authorization_url);",
+      "  setIf('paystackAccessCode', data?.access_code || data?.accessCode || payment?.access_code);",
       "  setIf('guestEmail', orderCandidate?.guest_email || data?.email);",
       "  setIf('storeId', orderCandidate?.storeId || store?.id || data?.storeId);",
     );
@@ -984,28 +1504,18 @@ function buildContextualScript(pathSegments = [], requestName = "") {
     }
   }
 
-  if (isSellerBoosterLike) {
+  if (isBudPayLike) {
     script.push(
-      "  const boosterPlan = data?.booster_plan || data?.active_plan || first?.booster_plan || first?.active_plan || data;",
-      "  const boosterPayment = data?.payment?.data || data?.payment || {};",
-      "  const boosterReference = boosterPlan?.paystack_reference || boosterPayment?.reference || data?.reference;",
-      "  setIf('boosterPlanId', boosterPlan?.id || data?.booster_plan_id);",
-      "  setIf('boosterReference', boosterReference);",
-      "  setIf('paymentReference', boosterReference);",
-      "  setIf('paystackAuthUrl', boosterPayment?.authorization_url || data?.authorization_url);",
-      "  setIf('paystackAmountKobo', boosterPlan?.amount || boosterPayment?.amount);",
-      "  setIf('boosterTier', boosterPlan?.tier || data?.tier);",
-    );
-  }
-
-  if (isSuperAdminLike) {
-    script.push(
-      "  const config = data?.booster_plan_config || data?.config || first || data;",
-      "  const userTarget = data?.user || first || data;",
-      "  setIf('boosterConfigId', config?.id);",
-      "  setIf('managedUserId', userTarget?.id || userTarget?._id);",
-      "  setIf('managedRole', userTarget?.active_role || userTarget?.role);",
-      "  setIf('managedStatus', userTarget?.is_active ?? userTarget?.status);",
+      "  const budpayReference = data?.reference || json?.reference || payment?.ref;",
+      "  const importResult = results[0] || (Array.isArray(data?.stores) ? data.stores[0] : null) || first;",
+      "  setIf('paymentReference', budpayReference);",
+      "  setIf('reconcileReference', budpayReference);",
+      "  setIf('budpayAccessCode', data?.access_code || json?.access_code);",
+      "  setIf('budpayCustomerId', importResult?.budpay?.customer_id || importResult?.budpay_customer_id || data?.customer?.id);",
+      "  setIf('budpayVirtualAccountId', importResult?.budpay?.virtual_account_id || importResult?.budpay_virtual_account_id);",
+      "  setIf('budpayAccountNumber', importResult?.budpay?.account_number || importResult?.budpay_account_number);",
+      "  setIf('budpayImportStatus', importResult?.result || importResult?.status || data?.status || json?.status);",
+      "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
     );
   }
 
@@ -1074,6 +1584,43 @@ function buildContextualScript(pathSegments = [], requestName = "") {
 
   script.push(...closingJsonGuardLines());
   return script;
+}
+
+function buildOrderPreRequestScript() {
+  return [
+    "const addressId = pm.variables.get('addressId');",
+    "const deliveryToken = pm.variables.get('deliveryToken');",
+    "let tokenAddressId = pm.variables.get('deliveryTokenAddressId');",
+    "",
+    "const decodeJwtPayload = (token) => {",
+    "  try {",
+    "    if (!token || String(token).split('.').length < 2) return null;",
+    "    let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+    "    while (payload.length % 4) payload += '=';",
+    "    return JSON.parse(atob(payload));",
+    "  } catch (error) {",
+    "    console.log('Unable to decode delivery token', error);",
+    "    return null;",
+    "  }",
+    "};",
+    "",
+    "if (!deliveryToken) {",
+    "  throw new Error('Missing deliveryToken. Run POST /calculate_delivery/new after selecting address and cart, then retry /order.');",
+    "}",
+    "",
+    "if (!tokenAddressId) {",
+    "  const decoded = decodeJwtPayload(deliveryToken);",
+    "  tokenAddressId = decoded?.data?.addressId;",
+    "  if (tokenAddressId !== undefined && tokenAddressId !== null) {",
+    "    pm.collectionVariables.set('deliveryTokenAddressId', String(tokenAddressId));",
+    "    if (pm.environment) pm.environment.set('deliveryTokenAddressId', String(tokenAddressId));",
+    "  }",
+    "}",
+    "",
+    "if (addressId && tokenAddressId && String(addressId) !== String(tokenAddressId)) {",
+    "  throw new Error(`Stale deliveryToken: token addressId=${tokenAddressId}, order addressId=${addressId}. Run POST /calculate_delivery/new again, then retry /order.`);",
+    "}",
+  ];
 }
 
 function walkRequests(items, callback, trail = []) {
@@ -1159,7 +1706,9 @@ function ensurePaystackManualSettlementAuditRequest(collection) {
     : [];
 
   const legacyPaystackGroup =
-    paymentsGroup.name === "PAYSTACK" ? null : findGroup(collection, "PAYSTACK");
+    paymentsGroup.name === "PAYSTACK"
+      ? null
+      : findGroup(collection, "PAYSTACK");
   if (legacyPaystackGroup && Array.isArray(legacyPaystackGroup.item)) {
     legacyPaystackGroup.item = legacyPaystackGroup.item.filter(
       (entry) => entry?.name !== "GET /paystack/manual-settlement/audit",
@@ -1917,7 +2466,9 @@ function ensureSuperAdminRequests(collection) {
     { key: "Content-Type", value: "application/json" },
     { key: "Authorization", value: "Bearer {{authToken}}" },
   ];
-  const authOnlyHeaders = [{ key: "Authorization", value: "Bearer {{authToken}}" }];
+  const authOnlyHeaders = [
+    { key: "Authorization", value: "Bearer {{authToken}}" },
+  ];
 
   upsertRequest(group, {
     name: "GET /super-admin/booster-plan-configs",
@@ -2109,6 +2660,36 @@ function applyScripts(collection) {
       : [];
 
     upsertTestScript(item, buildContextualScript(pathSegments, item.name));
+
+    const method = String(item?.request?.method || "").toUpperCase();
+    if (method === "POST" && pathSegments.join("/") === "order") {
+      upsertPreRequestScript(item, buildOrderPreRequestScript());
+    }
+  });
+}
+
+function removePlaceholderBodies(collection) {
+  walkRequests(collection.item, (item) => {
+    const request = item?.request;
+    const raw = request?.body?.raw;
+    if (
+      typeof raw !== "string" ||
+      !raw.includes("Update this body with the endpoint-specific DTO fields")
+    ) {
+      return;
+    }
+
+    const method = String(request.method || "").toUpperCase();
+    const pathSegments = Array.isArray(request.url?.path)
+      ? request.url.path
+      : [];
+
+    request.body = {
+      mode: "raw",
+      raw: rawBodyForRequest(method, pathSegments),
+      options: { raw: { language: "json" } },
+    };
+    request.header = ensureJsonHeader(request.header);
   });
 }
 
@@ -2128,6 +2709,7 @@ function updateCollectionFile(filePath) {
   upsertCollectionVariables(collection);
   normalizeExistingRequestUrls(collection);
   syncControllerRoutes(collection);
+  configureBudPayRequests(collection);
   ensurePaystackReconcileRequest(collection);
   ensurePaystackManualSettlementAuditRequest(collection);
   ensurePaystackSubaccountPercentageUpdateRequest(collection);
@@ -2135,16 +2717,23 @@ function updateCollectionFile(filePath) {
   ensurePaystackUnmatchedRemoteRequest(collection);
   ensurePaystackResolveUnmatchedRequest(collection);
   ensurePaystackReconciliationRequests(collection);
-  ensureAdminAuthRequests(collection);
   ensureUserManagementRoleRequests(collection);
   ensureGuestOrderRequests(collection);
   ensureSellerBoosterRequests(collection);
   ensureSuperAdminRequests(collection);
-  collection.item = pruneUnknownRequests(collection.item, extractControllerRoutes());
+  collection.item = pruneUnknownRequests(
+    collection.item,
+    extractControllerRoutes(),
+  );
+  if (Array.isArray(collection.item)) {
+    collection.item.forEach((item) => processItem(item, summary));
+  }
+  configureBudPayRequests(collection);
   walkRequests(collection.item, (item) => {
     normalizeEmailsInRequest(item.request);
   });
   applyScripts(collection);
+  removePlaceholderBodies(collection);
 
   fs.writeFileSync(filePath, JSON.stringify(collection, null, 2), "utf8");
   console.log("Updated Postman collection:", filePath);

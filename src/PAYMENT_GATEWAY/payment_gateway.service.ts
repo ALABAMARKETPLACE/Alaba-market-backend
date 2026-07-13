@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   Injectable,
@@ -11,6 +12,8 @@ import { CreateOrderType } from "./dto/createOrder.dto";
 import { GetOrderDetails } from "./dto/getOrderDetails.dto";
 import { CreateRefundDto } from "./dto/refund.dto";
 import { getErrorMessage } from "../shared/helpers/errormessage";
+
+const appLog = createStructuredLogger("payment_gateway_service");
 
 @Injectable()
 export class PaymentGateWayService {
@@ -32,13 +35,28 @@ export class PaymentGateWayService {
         .pipe(
           map((resp) => resp.data),
           catchError((e) => {
-            console.log("err = = = = >1 ", e);
+            appLog.error(
+              {
+                event: "gateway_token_request_failed",
+                gateway: "network-international",
+                statusCode: e.response?.status,
+                err: e,
+              },
+              "gateway token request failed",
+            );
             throw new HttpException(e.response.data, e.response.status);
           })
         );
       return response;
     } catch (err) {
-      console.log("err = = = => 2", err);
+      appLog.error(
+        {
+          event: "gateway_token_creation_failed",
+          gateway: "network-international",
+          err,
+        },
+        "gateway token creation failed",
+      );
       return;
     }
   }
@@ -54,7 +72,14 @@ export class PaymentGateWayService {
 
       return tokenResponse.access_token;
     } catch (error) {
-      console.error("Error getting access token:", error);
+      appLog.error(
+        {
+          event: "gateway_access_token_failed",
+          gateway: "network-international",
+          err: error,
+        },
+        "gateway access token failed",
+      );
       throw new HttpException("Authentication failed", 500);
     }
   }
@@ -89,13 +114,28 @@ export class PaymentGateWayService {
         .pipe(
           map((resp) => resp.data),
           catchError((e) => {
-            console.log("err = = = => 2", e);
+            appLog.error(
+              {
+                event: "gateway_order_creation_failed",
+                gateway: "network-international",
+                statusCode: e.response?.status,
+                err: e,
+              },
+              "gateway order creation failed",
+            );
             throw new HttpException(e.response.data, e.response.status);
           })
         );
       return response;
     } catch (err) {
-      console.log("err = = = => 2", err);
+      appLog.error(
+        {
+          event: "gateway_order_creation_failed",
+          gateway: "network-international",
+          err,
+        },
+        "gateway order creation failed",
+      );
       return new DataResponseDto({}, false, "something went wrong.");
     }
   }
@@ -166,7 +206,18 @@ export class PaymentGateWayService {
         .pipe(
           map((resp) => resp.data),
           catchError((e) => {
-            console.log("Refund error:", e.response?.data || e.message);
+            appLog.error(
+              {
+                event: "gateway_refund_failed",
+                gateway: "network-international",
+                transactionReference: refundData.orderRef,
+                paymentReference: refundData.paymentRef,
+                amount: refundData.amount,
+                statusCode: e.response?.status,
+                err: e,
+              },
+              "gateway refund failed",
+            );
             throw new HttpException(
               e.response?.data || "Refund request failed",
               e.response?.status || 500
@@ -191,7 +242,17 @@ export class PaymentGateWayService {
 
       return new DataResponseDto(result, true, "Refund processed successfully");
     } catch (err) {
-      console.error("Process refund error:", err);
+      appLog.error(
+        {
+          event: "gateway_refund_processing_failed",
+          gateway: "network-international",
+          transactionReference: data.orderRef,
+          paymentReference: data.paymentRef,
+          amount: data.amount,
+          err,
+        },
+        "gateway refund processing failed",
+      );
       return new DataResponseDto(
         {},
         false,

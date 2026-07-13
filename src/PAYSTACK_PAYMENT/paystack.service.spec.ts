@@ -6,6 +6,7 @@ import { OrderPayments } from "../ORDER_PAYMENTS/order_payments.entity";
 import { Order } from "../ORDER/order.entity";
 import { OrderStatus } from "../ORDER_STATUS/order_status.entity";
 import { OrderLog } from "../ORDER_LOG/orderlog.entity";
+import { UniqueConstraintError } from "sequelize";
 
 describe("PaystackService", () => {
   afterEach(() => {
@@ -83,6 +84,14 @@ describe("PaystackService", () => {
       create: jest.fn(async () => null as any),
     };
 
+    const webhookEventRepository = {
+      create: jest.fn(async (payload: any) => ({
+        ...payload,
+        update: jest.fn(async (updates: any) => Object.assign(payload, updates)),
+      })),
+      findOne: jest.fn(async () => null as any),
+    };
+
     const userRepository = {
       findByPk: jest.fn(async () => ({
         _id: 4625,
@@ -112,17 +121,13 @@ describe("PaystackService", () => {
       })),
     };
 
-    const sellerBoosterService = {
-      activateFromWebhook: jest.fn(async () => true),
-      markPaymentFailed: jest.fn(async () => undefined),
-    };
-
     const service = new PaystackService(
       httpService as any,
       paystackAccountConfigService as any,
       storeRepository as any,
       guestCheckoutRepository as any,
       userCheckoutRepository as any,
+      webhookEventRepository as any,
       userRepository as any,
       paymentLogRepository as any,
       paymentSplitService as any,
@@ -131,7 +136,6 @@ describe("PaystackService", () => {
       } as any,
       guestOrderService as any,
       orderPlaceService as any,
-      sellerBoosterService as any,
     );
 
     return {
@@ -142,11 +146,11 @@ describe("PaystackService", () => {
       paymentSplitService,
       guestCheckoutRepository,
       userCheckoutRepository,
+      webhookEventRepository,
       userRepository,
       paymentLogRepository,
       guestOrderService,
       orderPlaceService,
-      sellerBoosterService,
     };
   };
 
@@ -759,7 +763,7 @@ describe("PaystackService", () => {
   });
 
   it("updates order payment and order status on successful webhook events", async () => {
-    const { service, paymentSplitService } = createService();
+    const { service, paymentSplitService, webhookEventRepository } = createService();
     process.env.NODE_ENV = "development";
     process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
 
@@ -850,6 +854,54 @@ describe("PaystackService", () => {
       "ps_ref_123",
       webhook.data,
     );
+    const eventLog: any = await webhookEventRepository.create.mock.results[0].value;
+    expect(eventLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "completed",
+        error: null,
+        processed_at: expect.any(Date),
+      }),
+    );
+  });
+
+  it("does not reprocess completed duplicate webhook events", async () => {
+    const { service, webhookEventRepository, paymentSplitService } = createService();
+    process.env.NODE_ENV = "development";
+    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
+
+    const existingEvent = {
+      status: "completed",
+      update: jest.fn(),
+    };
+    webhookEventRepository.create.mockRejectedValue(
+      new UniqueConstraintError({ errors: [] }),
+    );
+    webhookEventRepository.findOne.mockResolvedValue(existingEvent);
+    const paymentLookupSpy = jest.spyOn(OrderPayments, "findOne");
+
+    const webhook = {
+      event: "charge.success",
+      data: {
+        id: 12345,
+        reference: "ps_ref_duplicate",
+      },
+    };
+    const rawPayload = JSON.stringify(webhook);
+    const signature = crypto
+      .createHmac("sha512", process.env.PAYSTACK_TEST_SECRET_KEY as string)
+      .update(rawPayload)
+      .digest("hex");
+
+    await expect(
+      service.processWebhook(webhook as any, signature, rawPayload),
+    ).resolves.toEqual({
+      status: "ok",
+      message: "Duplicate webhook ignored",
+    });
+
+    expect(paymentLookupSpy).not.toHaveBeenCalled();
+    expect(paymentSplitService.syncPaymentStatusFromWebhook).not.toHaveBeenCalled();
+    expect(existingEvent.update).not.toHaveBeenCalled();
   });
 
   it("reconciles all orders sharing one Paystack reference", async () => {
@@ -946,40 +998,6 @@ describe("PaystackService", () => {
 
     expect(service.getPublicKey()).toBe("pk_test_123456");
     expect(paystackAccountConfigService.getPublicKey).toHaveBeenCalled();
-  });
-
-  it("routes seller booster webhooks to booster activation without order sync", async () => {
-    const { service, sellerBoosterService, paymentSplitService } = createService();
-    process.env.PAYSTACK_TEST_SECRET_KEY = "sk_test_123456";
-
-    const webhook = {
-      event: "charge.success",
-      data: {
-        reference: "seller_booster_ref",
-        status: "success",
-        amount: 500000,
-        metadata: {
-          checkout_type: "seller_booster",
-          booster_plan_id: 99,
-          store_id: 7,
-          seller_id: 42,
-          tier: "basic",
-          product_ids: [1, 2],
-        },
-      },
-    };
-    const rawPayload = JSON.stringify(webhook);
-    const signature = crypto
-      .createHmac("sha512", process.env.PAYSTACK_TEST_SECRET_KEY)
-      .update(rawPayload)
-      .digest("hex");
-
-    await service.processWebhook(webhook as any, signature, rawPayload);
-
-    expect(sellerBoosterService.activateFromWebhook).toHaveBeenCalledWith(
-      webhook.data,
-    );
-    expect(paymentSplitService.syncPaymentStatusFromWebhook).not.toHaveBeenCalled();
   });
 
   it("previews missing Paystack transactions without mutating local records", async () => {

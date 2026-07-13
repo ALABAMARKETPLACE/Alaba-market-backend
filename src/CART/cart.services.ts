@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   Injectable,
   Inject,
@@ -15,14 +16,17 @@ import { CartRepository } from "./cart.repository";
 import { Products } from "../PRODUCTS/products.entity";
 import { CartDataResponseDto } from "./dto/cart.dto";
 import { InjectModel } from "@nestjs/sequelize";
+// cspell:ignore productvariant
 import { ProductVariant } from "../PRODUCT_VARIANTS/productvariant.entity";
+
+const appLog = createStructuredLogger("cart_services");
 
 @Injectable()
 export class CartServices {
   constructor(
     private readonly cartRepo: CartRepository,
     @InjectModel(CartTable)
-    private readonly cartRepository: typeof CartTable,
+    private readonly cartRepository: typeof CartTable
   ) {}
 
   async findByUserId(id: number) {
@@ -64,7 +68,14 @@ export class CartServices {
         ],
       });
 
-      console.log({ existingCartItems });
+      appLog.debug(
+        {
+          event: "cart_items_loaded",
+          userId,
+          itemCount: existingCartItems.length,
+        },
+        "existing cart items loaded",
+      );
 
       // If there are existing items, check the store
       if (existingCartItems && existingCartItems.length > 0) {
@@ -73,15 +84,18 @@ export class CartServices {
           ...new Set(
             existingCartItems
               .map((item) => item.productDetails?.store_id)
-              .filter((storeId): storeId is number => storeId != null),
+              .filter((storeId): storeId is number => storeId != null)
           ),
         ];
 
         // Get the product details for the new item being added
+        const rawProductId = String(data.productId || "").trim();
+        const numericProductId = Number(rawProductId);
         const newProduct = await Products.findOne({
-          where: {
-            pid: data.productId,
-          },
+          where:
+            rawProductId && Number.isFinite(numericProductId)
+              ? { _id: numericProductId }
+              : { pid: rawProductId },
           attributes: ["store_id"],
         });
 
@@ -103,7 +117,7 @@ export class CartServices {
 
       // Proceed with normal cart creation regardless of store check
       const { cart, created }: any = await this.cartRepo.create(userId, data);
-      console.log("userId, data", { userId, data });
+      appLog.info("userId, data", { userId, data });
       const message = created
         ? warningMessage
           ? warningMessage
@@ -118,10 +132,10 @@ export class CartServices {
         true,
         message,
         warningMessage ? "DIFFERENT_STORE_WARNING" : undefined,
-        warningMessage ? true : false, // isDifferentStore field
+        warningMessage ? true : false // isDifferentStore field
       );
     } catch (err) {
-      console.log("error", err);
+      appLog.info("error", err);
       if (err instanceof HttpException) throw err;
 
       throw new InternalServerErrorException(getErrorMessage(err));
@@ -131,7 +145,12 @@ export class CartServices {
   async update(userId: number, id: number, action: string) {
     const where = { id, userId };
     try {
-      const result = await this.cartRepository.sequelize.transaction(
+      const sequelize = this.cartRepository.sequelize;
+      if (!sequelize) {
+        throw new InternalServerErrorException("Database connection unavailable");
+      }
+
+      const result = await sequelize.transaction(
         async (transaction: Transaction) => {
           let message = "";
           if (action == "add") {
@@ -164,7 +183,7 @@ export class CartServices {
             const availableUnits = Number(
               currentCartItem.variantId
                 ? currentCartItem.variantDetails?.units
-                : currentCartItem.productDetails?.unit,
+                : currentCartItem.productDetails?.unit
             );
 
             if (
@@ -179,7 +198,7 @@ export class CartServices {
             const { count, data }: any = await this.cartRepo.updateCart(
               where,
               1,
-              transaction,
+              transaction
             );
             if (count == 0) throw new NotFoundException();
             message = `You have Changed the quantity to ${data?.[0]?.quantity}`;
@@ -187,7 +206,7 @@ export class CartServices {
             const { count, data }: any = await this.cartRepo.updateCart(
               where,
               -1,
-              transaction,
+              transaction
             );
             if (count == 0) throw new NotFoundException();
             message = `You have Changed the quantity to ${data?.[0]?.quantity}`;
@@ -198,7 +217,7 @@ export class CartServices {
             }
           }
           return message;
-        },
+        }
       );
       return new DataResponseDto({}, true, result);
     } catch (err) {
@@ -207,12 +226,81 @@ export class CartServices {
     }
   }
 
-  async delete(userId: number, id: number) {
+  async delete(userId: number, id: string, variantId?: string) {
+    const idInput = String(id || "").trim();
+    const numericId =
+      idInput && Number.isSafeInteger(Number(idInput)) ? Number(idInput) : null;
+
     try {
-      const deleted = await this.cartRepo.deleteCart(userId, id);
-      const message = "Successfully Removed item from cart";
-      return new DataResponseDto({}, true, message);
+      if (idInput) {
+        const deleted = await this.cartRepo.deleteCartByAnyId(userId, idInput);
+        if (deleted > 0) {
+          return new DataResponseDto(
+            {},
+            true,
+            "Successfully Removed item from cart",
+          );
+        }
+
+        if (numericId !== null) {
+          const deletedByNumeric = await this.cartRepo.deleteCart(userId, numericId);
+          if (deletedByNumeric > 0) {
+            return new DataResponseDto(
+              {},
+              true,
+              "Successfully Removed item from cart",
+            );
+          }
+        }
+      }
+
+      const deletedByProduct = await this.cartRepo.deleteCartByProduct(
+        userId,
+        idInput,
+        variantId,
+      );
+
+      if (deletedByProduct > 0) {
+        return new DataResponseDto({}, true, "Successfully Removed item from cart");
+      }
+
+      return new DataResponseDto(
+        {},
+        true,
+        "Item not found in cart. Nothing to remove.",
+      );
     } catch (err) {
+      if (err instanceof HttpException) {
+        if (err instanceof NotFoundException) {
+          return new DataResponseDto(
+            {},
+            true,
+            "Item not found in cart. Nothing to remove.",
+          );
+        }
+        throw err;
+      }
+
+      throw new InternalServerErrorException(getErrorMessage(err));
+    }
+  }
+
+  async deleteByProduct(userId: number, productId: string, variantId?: string) {
+    try {
+      await this.cartRepo.deleteCartByProduct(userId, productId, variantId);
+      return new DataResponseDto(
+        {},
+        true,
+        "Successfully Removed item from cart"
+      );
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        return new DataResponseDto(
+          {},
+          true,
+          "Item not found in cart. Nothing to remove.",
+        );
+      }
       if (err instanceof HttpException) throw err;
       throw new InternalServerErrorException(getErrorMessage(err));
     }

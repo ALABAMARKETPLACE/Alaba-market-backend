@@ -262,6 +262,42 @@ export class Store extends Model<Store> {
   @Column({ type: DataType.STRING(50), allowNull: true })
   primary_contact_phone: string;
 
+  // BudPay seller payout profile / dedicated virtual account fields.
+  // BudPay does not currently document Paystack-style split subaccounts.
+  @Column({ type: DataType.BIGINT, allowNull: true })
+  budpay_subaccount_id: number;
+
+  @Column({ type: DataType.STRING, allowNull: true })
+  budpay_subaccount_code: string;
+
+  @Column({ type: DataType.BIGINT, allowNull: true })
+  budpay_customer_id: number;
+
+  @Column({ type: DataType.BIGINT, allowNull: true })
+  budpay_virtual_account_id: number;
+
+  @Column({ type: DataType.STRING(50), allowNull: true })
+  budpay_account_number: string;
+
+  @Column({ type: DataType.STRING, allowNull: true })
+  budpay_bank_name: string;
+
+  @Column({
+    type: DataType.STRING(20),
+    allowNull: false,
+    defaultValue: "pending",
+  })
+  budpay_import_status: string;
+
+  @Column({ type: DataType.TEXT, allowNull: true })
+  budpay_import_error: string;
+
+  @Column({ type: DataType.DATE, allowNull: true })
+  budpay_imported_at: Date;
+
+  @Column({ type: DataType.JSONB, allowNull: true })
+  budpay_raw_response: any;
+
   @Column({ 
     type: DataType.STRING(50), 
     defaultValue: "auto",

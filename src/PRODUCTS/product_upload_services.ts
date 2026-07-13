@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   BadRequestException,
   HttpException,
@@ -11,6 +12,8 @@ import { getErrorMessage } from "../shared/helpers/errormessage";
 import { UploadProductsDto } from "./dto/upload_products.dto";
 import generateRandomString from "../shared/helpers/generateRandom";
 import AWS from "aws-sdk";
+
+const appLog = createStructuredLogger("product_upload_services");
 const readXlsxFile = require("read-excel-file/node");
 const sharp = require("sharp");
 
@@ -124,7 +127,7 @@ export class ProductUploadService {
       const data = await this.s3.upload(params).promise();
       return data;
     } catch (err) {
-      console.log(err);
+      appLog.info(err);
     }
   }
   extractFileName(originalName: string) {

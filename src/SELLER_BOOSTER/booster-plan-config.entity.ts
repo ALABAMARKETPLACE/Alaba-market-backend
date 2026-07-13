@@ -1,37 +1,21 @@
 import {
   AutoIncrement,
-  BelongsTo,
   Column,
   DataType,
-  ForeignKey,
-  Index,
   Model,
   PrimaryKey,
   Table,
-  Unique,
 } from "sequelize-typescript";
-import { User } from "../USERS/user.entity";
-import { SellerBoosterTier } from "./seller-booster.constants";
 
-@Table({
-  tableName: "BOOSTER_PLAN_CONFIGS",
-  timestamps: true,
-  createdAt: "created_at",
-  updatedAt: "updated_at",
-})
+@Table({ tableName: "BOOSTER_PLAN_CONFIGS" })
 export class BoosterPlanConfig extends Model<BoosterPlanConfig> {
   @PrimaryKey
   @AutoIncrement
   @Column(DataType.BIGINT)
   id: number;
 
-  @Index
-  @Unique
-  @Column({
-    type: DataType.ENUM("basic", "gold", "premium"),
-    allowNull: false,
-  })
-  name: SellerBoosterTier;
+  @Column({ type: DataType.STRING, allowNull: false, unique: true })
+  name: string;
 
   @Column({ type: DataType.STRING, allowNull: false })
   display_name: string;
@@ -45,33 +29,24 @@ export class BoosterPlanConfig extends Model<BoosterPlanConfig> {
   @Column({ type: DataType.INTEGER, allowNull: false, defaultValue: 0 })
   boost_score: number;
 
-  @Column({ type: DataType.INTEGER, allowNull: false, defaultValue: 30 })
+  @Column({ type: DataType.INTEGER, allowNull: false })
   duration_days: number;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
+  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
   price: number;
 
   @Column({ type: DataType.STRING, allowNull: false, defaultValue: "NGN" })
   currency: string;
 
-  @Index
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: true })
   is_active: boolean;
 
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: false })
   is_unlimited: boolean;
 
-  @ForeignKey(() => User)
-  @Column({ type: DataType.INTEGER, allowNull: true })
+  @Column({ type: DataType.BIGINT, allowNull: true })
   created_by: number | null;
 
-  @ForeignKey(() => User)
-  @Column({ type: DataType.INTEGER, allowNull: true })
+  @Column({ type: DataType.BIGINT, allowNull: true })
   updated_by: number | null;
-
-  @BelongsTo(() => User, { foreignKey: "created_by", constraints: false })
-  creator: User;
-
-  @BelongsTo(() => User, { foreignKey: "updated_by", constraints: false })
-  updater: User;
 }

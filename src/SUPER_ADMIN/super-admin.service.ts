@@ -317,8 +317,8 @@ export class SuperAdminService {
   }
 
   private normalizeAssignableRole(role: Role): Role {
-    if (role === Role.User || role === Role.Customer) {
-      return Role.Customer;
+    if (role === Role.User) {
+      return Role.User;
     }
 
     if ([Role.Seller, Role.Admin, Role.SuperAdmin].includes(role)) {
@@ -360,7 +360,7 @@ export class SuperAdminService {
       role: Role.User,
       roles: [Role.User, Role.Customer],
       active_role: Role.User,
-      type: Role.Customer,
+      type: Role.User,
     };
   }
 

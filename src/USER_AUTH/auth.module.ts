@@ -9,18 +9,11 @@ import { UserProviders } from "../USERS/user.provider";
 import { TokenManagementModule } from "../TOKEN_MANAGEMENT/module";
 import { AuthRepository } from "./auth.repository";
 import { BcryptProvider } from "../shared/providers/bcrypt.provider";
-import { AdminAuditLog } from "../SUPER_ADMIN/admin-audit-log.entity";
 @Global()
 @Module({
   imports: [UserModule, EmailModule, RolesConfigModule, TokenManagementModule],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    ...UserProviders,
-    AuthRepository,
-    ...BcryptProvider,
-    { provide: "AdminAuditLogRepository", useValue: AdminAuditLog },
-  ],
+  providers: [AuthService, ...UserProviders, AuthRepository, ...BcryptProvider],
   exports: [AuthService],
 })
 export class AuthModule {}

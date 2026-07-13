@@ -1,3 +1,4 @@
+import { createStructuredLogger } from "../shared/logger/structured-logger";
 import {
   HttpException,
   Injectable,
@@ -9,6 +10,8 @@ import sharp from "sharp";
 // import { createCanvas } from "canvas";
 // import { pdfToPng } from "pdf-to-png-converter";
 import { PDFDocument } from "pdf-lib";
+
+const appLog = createStructuredLogger("img_compress_service");
 
 @Injectable()
 export class ImgcompressService {
@@ -24,16 +27,14 @@ export class ImgcompressService {
 
   async imgCompressAndUpload(file: Express.Multer.File): Promise<any> {
     try {
-      // ✅ Add debug logging
-      console.log("[imgCompressAndUpload] Starting compression...");
-      console.log("File:", file?.originalname, file?.mimetype, file?.size);
-      console.log("AWS Config:", {
-        bucket: process.env.BUCKET_NAME,
-        region: process.env.REGION,
-        directory: process.env.DIRECTORY,
-        hasAccessKey: !!process.env.ACCESSKEYID,
-        hasSecretKey: !!process.env.SECRETKEYID,
-      });
+      appLog.info(
+        {
+          event: "image_compression_started",
+          mimeType: file?.mimetype,
+          sizeBytes: file?.size,
+        },
+        "image compression started",
+      );
 
       const outputSharp = sharp(file.buffer);
       if (file.mimetype == "image/png") {
@@ -42,9 +43,7 @@ export class ImgcompressService {
         outputSharp.webp({ quality: 80 });
       }
 
-      console.log("   Compressing image...");
       const resizedImg = await outputSharp.toBuffer();
-      console.log("   Compressed size:", resizedImg.length);
 
       const dirName = process.env.DIRECTORY;
       const params = {
@@ -54,14 +53,21 @@ export class ImgcompressService {
         ContentType: "image/jpeg",
       };
 
-      console.log("   Uploading to S3:", params.Key);
       const data = await this.s3.upload(params).promise();
-      console.log("Upload successful:", data.Location);
+      appLog.info(
+        {
+          event: "image_upload_succeeded",
+          mimeType: file?.mimetype,
+          originalSizeBytes: file?.size,
+          compressedSizeBytes: resizedImg.length,
+        },
+        "image upload succeeded",
+      );
 
       return data;
     } catch (err) {
       // ✅ LOG THE ACTUAL ERROR
-      console.error("[imgCompressAndUpload] Error details:", {
+      appLog.error("[imgCompressAndUpload] Error details:", {
         message: err.message,
         code: err.code,
         statusCode: err.statusCode,
@@ -90,13 +96,13 @@ export class ImgcompressService {
         ContentType: file.mimetype,
       };
 
-      console.log("🔍 [uploadToS3] Uploading:", params.Key);
+      appLog.info("🔍 [uploadToS3] Uploading:", params.Key);
       const data = await this.s3.upload(params).promise();
-      console.log("✅ [uploadToS3] Success:", data.Location);
+      appLog.info("✅ [uploadToS3] Success:", data.Location);
 
       return data.Location;
     } catch (error) {
-      console.error("[uploadToS3] Error:", error);
+      appLog.error("[uploadToS3] Error:", error);
       throw new InternalServerErrorException(
         error.message || "Failed to upload to S3",
       );
@@ -142,8 +148,14 @@ export class ImgcompressService {
 
       const uploadPromises = files.map(async (file) => {
         try {
-          console.log("file", file);
-          console.log("this is file type", file?.mimetype);
+          appLog.debug(
+            {
+              event: "media_upload_started",
+              mimeType: file?.mimetype,
+              sizeBytes: file?.size,
+            },
+            "media upload started",
+          );
           const timestamp = Date.now();
 
           if (file.mimetype === "application/pdf") {
@@ -271,7 +283,7 @@ export class ImgcompressService {
           : "No files were uploaded successfully",
       };
     } catch (error) {
-      console.error("Error processing files:", error);
+      appLog.error("Error processing files:", error);
       throw error;
     }
   }
@@ -285,7 +297,7 @@ export class ImgcompressService {
       };
       const deleted = await this.s3
         .deleteObject(params, (error, data) => {
-          console.log(error);
+          appLog.info(error);
         })
         .promise();
       return deleted;
