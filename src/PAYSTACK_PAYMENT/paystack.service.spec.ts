@@ -107,6 +107,10 @@ describe("PaystackService", () => {
       createGuestOrder: jest.fn(async () => ({
         data: [],
       })),
+      // Naira subtotal recomputed from product/variant records. Defaults to
+      // 1500 to match the 150000-kobo amounts most guest-checkout fixtures
+      // in this file use; override per test when a different total matters.
+      calculateGuestCartSubtotalNaira: jest.fn(async () => 1500),
     };
 
     const orderPlaceService = {
@@ -133,6 +137,11 @@ describe("PaystackService", () => {
       paymentSplitService as any,
       {
         decode: jest.fn(),
+        // Naira delivery charge from the verified token. Defaults to 50 to
+        // match the 5000-kobo delivery_charge most fixtures here use.
+        verifyAsync: jest.fn(async () => ({
+          data: { amount: 50, tax: 0, discount: 0, isGuest: true },
+        })),
       } as any,
       guestOrderService as any,
       orderPlaceService as any,

@@ -60,6 +60,14 @@ describe("BudPayService", () => {
       persistGuestCheckoutInitialization: jest.fn(async () => undefined),
       finalizePaymentTransaction: jest.fn(async () => undefined),
     };
+    const guestOrderService = {
+      calculateGuestCartSubtotalNaira: jest.fn(async () => 1200),
+    };
+    const jwtService = {
+      verifyAsync: jest.fn(async () => ({
+        data: { amount: 50, tax: 0, discount: 0, isGuest: true },
+      })),
+    };
 
     const service = new BudPayService(
       httpService as any,
@@ -70,6 +78,8 @@ describe("BudPayService", () => {
       budPayAccountConfigService as any,
       orderPlaceService as any,
       paystackService as any,
+      guestOrderService as any,
+      jwtService as any,
     );
 
     return {
@@ -80,6 +90,8 @@ describe("BudPayService", () => {
       userCheckoutRepository,
       orderPlaceService,
       paystackService,
+      guestOrderService,
+      jwtService,
     };
   };
 
@@ -166,7 +178,9 @@ describe("BudPayService", () => {
       amount: 120000,
       delivery_charge: 5000,
       callback_url: "https://frontend.example.com/guest/callback",
-      order_payload: {} as any,
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
     });
 
     expect(httpService.post).toHaveBeenCalledWith(
@@ -194,6 +208,63 @@ describe("BudPayService", () => {
       }),
     );
   });
+
+  it("ignores a tampered client amount and charges the DB-recomputed total instead", async () => {
+    const { service, httpService } = createService();
+    httpService.post.mockReturnValue(
+      of({ data: initializationResponse("budpay_guest_ref_456") }),
+    );
+
+    // Client claims a 1 kobo cart with no delivery charge; the mocked
+    // guestOrderService/jwtService still report the real 1200 + 50 total.
+    const result = await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        { product_id: 1, store_id: 7, quantity: 1, unit_price: 1 },
+      ],
+      amount: 1,
+      delivery_charge: 0,
+      callback_url: "https://frontend.example.com/guest/callback",
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      "https://api.budpay.com/api/v2/transaction/initialize",
+      expect.objectContaining({ amount: 125000 }),
+      expect.any(Object),
+    );
+    expect(result.data.amount).toBe(1250);
+  });
+
+  it("rejects guest checkout when the delivery token is missing", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.initializeGuestPayment({
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        cart_items: [
+          { product_id: 1, store_id: 7, quantity: 1, unit_price: 120000 },
+        ],
+        amount: 120000,
+        delivery_charge: 5000,
+        callback_url: "https://frontend.example.com/guest/callback",
+        order_payload: {} as any,
+      }),
+    ).rejects.toThrow("Delivery charge token is required");
+  });
+
 
   it("returns the full BudPay verification envelope and validates checkout data", async () => {
     const {

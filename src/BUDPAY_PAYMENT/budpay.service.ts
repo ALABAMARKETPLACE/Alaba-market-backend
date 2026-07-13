@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { InjectModel } from "@nestjs/sequelize";
+import { JwtService } from "@nestjs/jwt";
 import * as crypto from "crypto";
 import { catchError, firstValueFrom, map } from "rxjs";
 
@@ -21,6 +22,7 @@ import { PaystackInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-initiali
 import { PaystackUserInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-user-initialize.dto";
 import { PaystackGuestInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-guest-initialize.dto";
 import { OrderPlaceService } from "../ORDER/order.place";
+import { GuestOrderService } from "../ORDER/guest-order.service";
 import { BudPayVerifyDto } from "./dto/budpay-verify.dto";
 import { BudPayWebhookDto } from "./dto/budpay-webhook.dto";
 import { Store } from "../STORE/store.entity";
@@ -47,6 +49,9 @@ export class BudPayService {
     private readonly orderPlaceService: OrderPlaceService,
     @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
+    @Inject(forwardRef(() => GuestOrderService))
+    private readonly guestOrderService: GuestOrderService,
+    private readonly jwtService: JwtService,
   ) {}
 
   private get baseUrl(): string {
@@ -210,10 +215,42 @@ export class BudPayService {
   async initializeGuestPayment(
     guestData: PaystackGuestInitializeDto,
   ): Promise<any> {
+    // The client's amount/delivery_charge/unit_price fields are never trusted for
+    // what we actually charge — recompute from the DB and the signed delivery
+    // token, same as the Paystack guest checkout path.
+    const deliveryToken = guestData.order_payload?.delivery?.delivery_token;
+    if (!deliveryToken) {
+      throw new BadRequestException(
+        "Delivery charge token is required. Please recalculate delivery.",
+      );
+    }
+
+    let verifiedDelivery: any;
+    try {
+      verifiedDelivery = await this.jwtService.verifyAsync(deliveryToken);
+    } catch {
+      throw new BadRequestException(
+        "Invalid or expired delivery token. Please recalculate delivery.",
+      );
+    }
+
+    if (!verifiedDelivery?.data || verifiedDelivery.data.isGuest !== true) {
+      throw new BadRequestException("Invalid guest delivery token.");
+    }
+
+    const subtotalNaira =
+      await this.guestOrderService.calculateGuestCartSubtotalNaira(
+        guestData.cart_items,
+      );
+    const deliveryNaira = Number(verifiedDelivery.data.amount || 0);
+    const taxNaira = Number(verifiedDelivery.data.tax || 0);
+    const discountNaira = Number(verifiedDelivery.data.discount || 0);
+    const amountInKobo = Math.round(
+      Math.max(subtotalNaira + deliveryNaira + taxNaira - discountNaira, 0) *
+        100,
+    );
+
     const reference = this.generateReference("budpay_guest");
-    const amountInKobo =
-      Math.round(Number(guestData.amount)) +
-      Math.round(Number(guestData.delivery_charge));
     await this.assertBudPaySellerProfiles(
       guestData.cart_items
         .map((item) => Number(item.store_id))
