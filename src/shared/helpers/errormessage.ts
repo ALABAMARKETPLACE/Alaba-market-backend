@@ -101,6 +101,8 @@ export const getErrorMessage = (err: any): string => {
     return message;
   } else if (err.name == "JsonWebTokenError") {
     return "Unauthorized Action.";
+  } else if (err.name == "TokenExpiredError") {
+    return "Session token has expired. Please try again.";
   } else {
     return "Something went wrong in our end..";
   }

@@ -313,7 +313,15 @@ export class OrderPlaceService {
       let verified: any = options.verifiedChargesData;
 
       if (!options.skipDeliveryTokenVerification) {
-        verified = await this.jwtService.verifyAsync(data?.charges?.token);
+        try {
+          verified = await this.jwtService.verifyAsync(data?.charges?.token);
+        } catch (jwtErr) {
+          throw new BadRequestException(
+            jwtErr?.name === "TokenExpiredError"
+              ? "Delivery charge token has expired. Please recalculate your delivery charges and try again."
+              : "Invalid delivery charge token. Please recalculate your delivery charges and try again."
+          );
+        }
       }
 
       if (!verified || isNaN(Number(verified?.data?.amount))) {

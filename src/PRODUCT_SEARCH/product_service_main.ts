@@ -93,6 +93,8 @@ export class ProductServiceMain extends ProductAttributes {
         throw new NotFoundException("Product not found");
       }
 
+      data.setDataValue("id", data._id);
+
       if (userId) {
         this.applyUserFlags(data);
         this.addtoHistory(userId, data?._id);
@@ -121,6 +123,8 @@ export class ProductServiceMain extends ProductAttributes {
       if (!data) {
         throw new NotFoundException("Product not found");
       }
+
+      data.setDataValue("id", data._id);
 
       if (userId) {
         this.applyUserFlags(data);
