@@ -19661,7 +19661,7 @@
           ]
         },
         {
-          "name": "🧾 Paystack Reconciliation",
+          "name": "\ud83e\uddfe Paystack Reconciliation",
           "item": [
             {
               "name": "GET /paystack/reconciliation/orphaned-payments",
@@ -41448,7 +41448,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:8000",
+      "value": "https://dev-backend.alabamarketplace.ng",
       "type": "string",
       "enabled": true
     },

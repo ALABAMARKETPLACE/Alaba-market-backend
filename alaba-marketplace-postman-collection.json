@@ -11,7 +11,7 @@
       "id": "baseUrl",
       "key": "baseUrl",
       "type": "string",
-      "value": "http://localhost:8000",
+      "value": "https://dev-backend.alabamarketplace.ng",
       "enabled": true
     },
     {
@@ -1546,7 +1546,7 @@
       ]
     },
     {
-      "name": "🔒 Admin",
+      "name": "\ud83d\udd12 Admin",
       "description": "Admin-only endpoints for system management and user administration",
       "item": [
         {
@@ -3108,7 +3108,7 @@
       ]
     },
     {
-      "name": "👤 User Management",
+      "name": "\ud83d\udc64 User Management",
       "description": "User profile and account management endpoints",
       "item": [
         {
@@ -4727,7 +4727,7 @@
       ]
     },
     {
-      "name": "🏪 Store Management",
+      "name": "\ud83c\udfea Store Management",
       "description": "Store/Corporate account management endpoints",
       "item": [
         {
@@ -5274,7 +5274,7 @@
       ]
     },
     {
-      "name": "📦 Products",
+      "name": "\ud83d\udce6 Products",
       "description": "Product management and browsing endpoints",
       "item": [
         {
@@ -6916,7 +6916,7 @@
       ]
     },
     {
-      "name": "🛒 Orders",
+      "name": "\ud83d\uded2 Orders",
       "description": "Order placement, management, and tracking",
       "item": [
         {
@@ -8481,7 +8481,7 @@
       ]
     },
     {
-      "name": "💳 Payments",
+      "name": "\ud83d\udcb3 Payments",
       "description": "Payment processing and management",
       "item": [
         {
@@ -9474,7 +9474,7 @@
           ]
         },
         {
-          "name": "🧾 Paystack Reconciliation",
+          "name": "\ud83e\uddfe Paystack Reconciliation",
           "item": [
             {
               "name": "GET /paystack/reconciliation/orphaned-payments",
@@ -10409,7 +10409,7 @@
       ]
     },
     {
-      "name": "✉️ Enquiries",
+      "name": "\u2709\ufe0f Enquiries",
       "description": "Enquiry creation and management",
       "item": [
         {
@@ -10872,7 +10872,7 @@
       ]
     },
     {
-      "name": "📮 Cart & Wishlist",
+      "name": "\ud83d\udcee Cart & Wishlist",
       "description": "Shopping cart and wishlist management",
       "item": [
         {
@@ -11377,7 +11377,7 @@
       ]
     },
     {
-      "name": "🏷️ Categories & Search",
+      "name": "\ud83c\udff7\ufe0f Categories & Search",
       "description": "Product categories, search, and browse functionality",
       "item": [
         {
@@ -12468,7 +12468,7 @@
       ]
     },
     {
-      "name": "📍 Address Management",
+      "name": "\ud83d\udccd Address Management",
       "description": "User address and delivery location management",
       "item": [
         {
@@ -12891,7 +12891,7 @@
       ]
     },
     {
-      "name": "📝 Invoices & Documentation",
+      "name": "\ud83d\udcdd Invoices & Documentation",
       "description": "Invoice generation and order documentation",
       "item": [
         {
@@ -13156,7 +13156,7 @@
       ]
     },
     {
-      "name": "🔔 Notifications",
+      "name": "\ud83d\udd14 Notifications",
       "description": "User notifications and alerts",
       "item": [
         {
@@ -13429,7 +13429,7 @@
       ]
     },
     {
-      "name": "🎁 Promotions & Offers",
+      "name": "\ud83c\udf81 Promotions & Offers",
       "description": "Promotional offers and deals",
       "item": [
         {
@@ -42901,11 +42901,11 @@
       ]
     },
     {
-      "name": "🛒 Marketplace Feed",
-      "description": "Public marketplace discovery routes — no authentication required.\nGuest users can browse products across stores, search globally, and discover stores Jumia-style.",
+      "name": "\ud83d\uded2 Marketplace Feed",
+      "description": "Public marketplace discovery routes \u2014 no authentication required.\nGuest users can browse products across stores, search globally, and discover stores Jumia-style.",
       "item": [
         {
-          "name": "Home — All sections in one request",
+          "name": "Home \u2014 All sections in one request",
           "request": {
             "method": "GET",
             "header": [],
@@ -42999,7 +42999,7 @@
           ]
         },
         {
-          "name": "Products — Balanced Feed",
+          "name": "Products \u2014 Balanced Feed",
           "request": {
             "method": "GET",
             "header": [],
@@ -43075,7 +43075,7 @@
                 }
               ]
             },
-            "description": "Fetches randomized products across all approved stores. perStoreLimit caps how many products any single store contributes — prevents one mega-store dominating the feed.\n\nNo authentication required."
+            "description": "Fetches randomized products across all approved stores. perStoreLimit caps how many products any single store contributes \u2014 prevents one mega-store dominating the feed.\n\nNo authentication required."
           },
           "response": [],
           "event": [
@@ -43141,7 +43141,7 @@
           ]
         },
         {
-          "name": "Products — Global Search",
+          "name": "Products \u2014 Global Search",
           "request": {
             "method": "GET",
             "header": [],
@@ -43284,7 +43284,7 @@
           ]
         },
         {
-          "name": "Stores — Discover",
+          "name": "Stores \u2014 Discover",
           "request": {
             "method": "GET",
             "header": [],
@@ -43402,7 +43402,7 @@
           ]
         },
         {
-          "name": "Stores — Search",
+          "name": "Stores \u2014 Search",
           "request": {
             "method": "GET",
             "header": [],
@@ -43521,7 +43521,7 @@
           ]
         },
         {
-          "name": "Store — Profile (single store)",
+          "name": "Store \u2014 Profile (single store)",
           "request": {
             "method": "GET",
             "header": [],
@@ -43616,7 +43616,7 @@
           ]
         },
         {
-          "name": "Store Products — List",
+          "name": "Store Products \u2014 List",
           "request": {
             "method": "GET",
             "header": [],
@@ -43754,7 +43754,7 @@
           ]
         },
         {
-          "name": "Store Products — Search",
+          "name": "Store Products \u2014 Search",
           "request": {
             "method": "GET",
             "header": [],
