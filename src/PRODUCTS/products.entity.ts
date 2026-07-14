@@ -10,6 +10,7 @@ import {
   HasMany,
   Index,
   IsUrl,
+  AfterFind,
 } from "sequelize-typescript";
 import { SubCategory } from "../SUB_CATEGORY/sub_category.entity";
 import { Category } from "../CATEGORY/category.entity";
@@ -35,6 +36,15 @@ export class Products extends Model<Products> {
     },
   })
   _id: number;
+
+  @AfterFind
+  static addIdAlias(instances: Products | Products[]): void {
+    const list = Array.isArray(instances) ? instances : instances ? [instances] : [];
+    for (const instance of list) {
+      const raw = instance.getDataValue("_id");
+      instance.setDataValue("id", raw !== null ? Number(raw) : null);
+    }
+  }
 
   @Index
   @Column({
