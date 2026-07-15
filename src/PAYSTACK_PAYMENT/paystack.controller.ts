@@ -77,6 +77,25 @@ export class PaystackController {
     ).toLowerCase() === "budpay";
   }
 
+  private normalizeUserInitializeData(
+    data: PaystackUserInitializeDto & Record<string, any>,
+  ): PaystackUserInitializeDto {
+    if (data?.order_payload || !data?.cart) {
+      return data;
+    }
+
+    return {
+      ...data,
+      callback_url: data.callback_url || data.payment?.callback_url,
+      order_payload: {
+        cart: data.cart,
+        payment: data.payment,
+        address: data.address,
+        charges: data.charges,
+      },
+    };
+  }
+
   @Post("initialize")
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   @UseGuards(AuthGuard)
@@ -119,6 +138,7 @@ export class PaystackController {
     @UserId() userId: number,
     @Body() initData: PaystackUserInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
+    initData = this.normalizeUserInitializeData(initData);
     this.logger.log(
       {
         event: "checkout_initialization_requested",

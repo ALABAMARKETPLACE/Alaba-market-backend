@@ -653,7 +653,9 @@ export class PaystackService {
       currency: "NGN",
       reference,
       callback_url:
-        initData.callback_url || `${process.env.FRONTEND_URL}/payment/callback`,
+        initData.callback_url ||
+        initData.order_payload?.payment?.callback_url ||
+        `${process.env.FRONTEND_URL}/payment/callback`,
       metadata: {
         ...initData.metadata,
         checkout_type: "authenticated_order",

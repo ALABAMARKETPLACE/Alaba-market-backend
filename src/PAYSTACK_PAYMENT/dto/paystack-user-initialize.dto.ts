@@ -5,10 +5,15 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { CreateOrderDto } from "../../ORDER/dto/createOrder.dto";
+
+const hasTopLevelOrderPayload = (obj: any) => {
+  return Boolean(obj?.cart && obj?.payment && obj?.address && obj?.charges);
+};
 
 export class PaystackUserInitializeDto {
   @ApiProperty({
@@ -35,6 +40,7 @@ export class PaystackUserInitializeDto {
       "Full logged-in order payload. The backend validates it, initializes Paystack, and the webhook creates the real orders.",
     type: CreateOrderDto,
   })
+  @ValidateIf((obj) => !hasTopLevelOrderPayload(obj))
   @IsNotEmpty()
   @ValidateNested()
   @Type(() => CreateOrderDto)

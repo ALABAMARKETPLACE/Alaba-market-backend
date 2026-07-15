@@ -39,6 +39,25 @@ import { BudPayWebhookDto } from "./dto/budpay-webhook.dto";
 export class BudPayController {
   constructor(private readonly budPayService: BudPayService) {}
 
+  private normalizeUserInitializeData(
+    data: PaystackUserInitializeDto & Record<string, any>,
+  ): PaystackUserInitializeDto {
+    if (data?.order_payload || !data?.cart) {
+      return data;
+    }
+
+    return {
+      ...data,
+      callback_url: data.callback_url || data.payment?.callback_url,
+      order_payload: {
+        cart: data.cart,
+        payment: data.payment,
+        address: data.address,
+        charges: data.charges,
+      },
+    };
+  }
+
   @Post("initialize")
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   @UseGuards(AuthGuard)
@@ -64,7 +83,10 @@ export class BudPayController {
     @UserId() userId: number,
     @Body() data: PaystackUserInitializeDto,
   ) {
-    return this.budPayService.initializeAuthenticatedCheckout(userId, data);
+    return this.budPayService.initializeAuthenticatedCheckout(
+      userId,
+      this.normalizeUserInitializeData(data),
+    );
   }
 
   @Post("initialize-guest")

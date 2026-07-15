@@ -191,7 +191,8 @@ export class BudPayService {
       amount: preparedCheckout.amount_kobo,
       currency: "NGN",
       reference,
-      callback_url: initData.callback_url,
+      callback_url:
+        initData.callback_url || initData.order_payload?.payment?.callback_url,
     });
 
     await this.paystackService.persistUserCheckoutInitialization(
