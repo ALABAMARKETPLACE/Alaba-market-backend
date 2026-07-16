@@ -70,6 +70,56 @@ export class BudPayService {
     return `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
   }
 
+  private isPublicHttpsUrl(value?: string): boolean {
+    if (!value) {
+      return false;
+    }
+
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === "https:" &&
+        !["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private resolveCallbackUrl(rawCallback?: string): string {
+    if (this.isPublicHttpsUrl(rawCallback)) {
+      return rawCallback!;
+    }
+
+    const fallbackBase = [
+      process.env.BUDPAY_CALLBACK_URL,
+      process.env.FRONTEND_URL,
+      "https://dev.alabamarketplace.ng",
+    ].find((value) => this.isPublicHttpsUrl(value));
+
+    if (!fallbackBase) {
+      return "https://dev.alabamarketplace.ng/payment/callback";
+    }
+
+    let callbackPath = "/payment/callback";
+    let callbackSearch = "";
+    try {
+      if (rawCallback) {
+        const url = new URL(rawCallback);
+        callbackPath = url.pathname;
+        callbackSearch = url.search;
+      }
+    } catch {
+      // Keep the default callback path when the client sent an invalid URL.
+    }
+
+    const baseUrl = new URL(fallbackBase);
+    baseUrl.pathname = callbackPath;
+    baseUrl.search = callbackSearch;
+
+    return baseUrl.toString();
+  }
+
   private async assertBudPaySellerProfiles(storeIds: number[]): Promise<void> {
     if ((process.env.SPLIT_PROVIDER || "paystack").toLowerCase() !== "budpay") {
       return;
@@ -116,20 +166,10 @@ export class BudPayService {
     }
 
     const reference = input.reference || this.generateReference();
-    const rawCallback =
-      input.callback_url ||
-      `${process.env.FRONTEND_URL || ""}/payment/callback`;
-    // BudPay rejects localhost / plain-HTTP callback URLs — fall back to the
-    // configured FRONTEND_URL so dev testing doesn't break.
-    const isLocalCallback =
-      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(rawCallback) ||
-      rawCallback.startsWith("http://");
-    const callback = isLocalCallback
-      ? `${process.env.FRONTEND_URL || "https://dev.alabamarketplace.ng"}/payment/callback`
-      : rawCallback;
+    const callback = this.resolveCallbackUrl(input.callback_url);
     const payload = {
       email: input.email,
-      amount,
+      amount: String(amount),
       currency: input.currency || "NGN",
       reference,
       callback,
@@ -227,7 +267,10 @@ export class BudPayService {
     // The client's amount/delivery_charge/unit_price fields are never trusted for
     // what we actually charge — recompute from the DB and the signed delivery
     // token, same as the Paystack guest checkout path.
-    const deliveryToken = guestData.order_payload?.delivery?.delivery_token;
+    const deliveryToken =
+      guestData.order_payload?.delivery?.delivery_token ||
+      (guestData.metadata as any)?.delivery?.delivery_token ||
+      (guestData.metadata as any)?.delivery_token;
     if (!deliveryToken) {
       throw new BadRequestException(
         "Delivery charge token is required. Please recalculate delivery.",

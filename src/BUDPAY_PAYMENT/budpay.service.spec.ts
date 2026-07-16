@@ -131,7 +131,7 @@ describe("BudPayService", () => {
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
         email: "buyer@example.com",
-        amount: 150000,
+        amount: "150000",
         currency: "NGN",
         reference: "budpay_user_ref_123",
         callback: "https://frontend.example.com/payment/callback",
@@ -187,7 +187,7 @@ describe("BudPayService", () => {
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
         email: "guest@example.com",
-        amount: 125000,
+        amount: "125000",
         callback: "https://frontend.example.com/guest/callback",
       }),
       expect.any(Object),
@@ -237,10 +237,45 @@ describe("BudPayService", () => {
 
     expect(httpService.post).toHaveBeenCalledWith(
       "https://api.budpay.com/api/v2/transaction/initialize",
-      expect.objectContaining({ amount: 125000 }),
+      expect.objectContaining({ amount: "125000" }),
       expect.any(Object),
     );
     expect(result.data.amount).toBe(1250);
+  });
+
+  it("uses a public HTTPS callback when the client sends a localhost callback", async () => {
+    const { service, httpService } = createService();
+    process.env.FRONTEND_URL = "http://localhost:3000";
+    httpService.post.mockReturnValue(
+      of({ data: initializationResponse("budpay_guest_ref_789") }),
+    );
+
+    await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        { product_id: 1, store_id: 7, quantity: 1, unit_price: 120000 },
+      ],
+      amount: 120000,
+      delivery_charge: 0,
+      callback_url: "http://localhost:3000/checkoutsuccess/2",
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      "https://api.budpay.com/api/v2/transaction/initialize",
+      expect.objectContaining({
+        amount: "125000",
+        callback: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+      }),
+      expect.any(Object),
+    );
   });
 
   it("rejects guest checkout when the delivery token is missing", async () => {
