@@ -116,9 +116,17 @@ export class BudPayService {
     }
 
     const reference = input.reference || this.generateReference();
-    const callback =
+    const rawCallback =
       input.callback_url ||
       `${process.env.FRONTEND_URL || ""}/payment/callback`;
+    // BudPay rejects localhost / plain-HTTP callback URLs — fall back to the
+    // configured FRONTEND_URL so dev testing doesn't break.
+    const isLocalCallback =
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(rawCallback) ||
+      rawCallback.startsWith("http://");
+    const callback = isLocalCallback
+      ? `${process.env.FRONTEND_URL || "https://dev.alabamarketplace.ng"}/payment/callback`
+      : rawCallback;
     const payload = {
       email: input.email,
       amount,
