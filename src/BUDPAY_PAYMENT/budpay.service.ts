@@ -120,6 +120,13 @@ export class BudPayService {
     return baseUrl.toString();
   }
 
+  private formatKoboAsNaira(amountKobo: number): string {
+    return (amountKobo / 100)
+      .toFixed(2)
+      .replace(/\.00$/, "")
+      .replace(/(\.\d)0$/, "$1");
+  }
+
   private async assertBudPaySellerProfiles(storeIds: number[]): Promise<void> {
     if ((process.env.SPLIT_PROVIDER || "paystack").toLowerCase() !== "budpay") {
       return;
@@ -160,8 +167,8 @@ export class BudPayService {
     reference?: string;
     callback_url?: string;
   }): Promise<any> {
-    const amount = Math.round(Number(input.amount));
-    if (!Number.isFinite(amount) || amount < 100) {
+    const amountKobo = Math.round(Number(input.amount));
+    if (!Number.isFinite(amountKobo) || amountKobo < 100) {
       throw new BadRequestException("Amount must be at least 100 kobo");
     }
 
@@ -169,7 +176,7 @@ export class BudPayService {
     const callback = this.resolveCallbackUrl(input.callback_url);
     const payload = {
       email: input.email,
-      amount: String(amount),
+      amount: this.formatKoboAsNaira(amountKobo),
       currency: input.currency || "NGN",
       reference,
       callback,
@@ -335,12 +342,26 @@ export class BudPayService {
     };
   }
 
-  private normalizeAmount(data: any): number {
+  private normalizeAmount(data: any, expectedAmountKobo?: number): number {
     const amount = Number(data?.requested_amount ?? data?.amount);
     if (!Number.isFinite(amount)) {
       throw new BadRequestException("BudPay returned an invalid amount");
     }
-    return Math.round(amount);
+
+    const asKobo = Math.round(amount * 100);
+    const asLegacyKobo = Math.round(amount);
+
+    if (Number.isFinite(expectedAmountKobo)) {
+      if (asKobo === Math.round(expectedAmountKobo)) {
+        return asKobo;
+      }
+
+      if (asLegacyKobo === Math.round(expectedAmountKobo)) {
+        return asLegacyKobo;
+      }
+    }
+
+    return asKobo;
   }
 
   private async getExpectedCheckout(reference: string): Promise<{
@@ -397,7 +418,10 @@ export class BudPayService {
     data: any,
   ): Promise<number> {
     const expectedCheckout = await this.getExpectedCheckout(reference);
-    const verifiedAmount = this.normalizeAmount(data);
+    const verifiedAmount = this.normalizeAmount(
+      data,
+      expectedCheckout?.amount_kobo,
+    );
     const customerEmail = String(data?.customer?.email || "")
       .trim()
       .toLowerCase();

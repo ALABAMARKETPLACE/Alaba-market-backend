@@ -131,7 +131,7 @@ describe("BudPayService", () => {
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
         email: "buyer@example.com",
-        amount: "150000",
+        amount: "1500",
         currency: "NGN",
         reference: "budpay_user_ref_123",
         callback: "https://frontend.example.com/payment/callback",
@@ -187,7 +187,7 @@ describe("BudPayService", () => {
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
         email: "guest@example.com",
-        amount: "125000",
+        amount: "1250",
         callback: "https://frontend.example.com/guest/callback",
       }),
       expect.any(Object),
@@ -237,7 +237,7 @@ describe("BudPayService", () => {
 
     expect(httpService.post).toHaveBeenCalledWith(
       "https://api.budpay.com/api/v2/transaction/initialize",
-      expect.objectContaining({ amount: "125000" }),
+      expect.objectContaining({ amount: "1250" }),
       expect.any(Object),
     );
     expect(result.data.amount).toBe(1250);
@@ -271,7 +271,7 @@ describe("BudPayService", () => {
     expect(httpService.post).toHaveBeenCalledWith(
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
-        amount: "125000",
+        amount: "1250",
         callback: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
       }),
       expect.any(Object),
@@ -320,8 +320,8 @@ describe("BudPayService", () => {
           data: {
             status: "success",
             reference: "budpay_guest_ref_123",
-            amount: "125250",
-            requested_amount: "125000",
+            amount: "1252.5",
+            requested_amount: "1250",
             currency: "NGN",
             customer: { email: "GUEST@example.com" },
           },
@@ -338,7 +338,7 @@ describe("BudPayService", () => {
         status: "success",
         reference: "budpay_guest_ref_123",
         amount: 125000,
-        provider_amount: 125250,
+        provider_amount: 1252.5,
         customer: { email: "guest@example.com" },
       }),
     });
@@ -364,7 +364,7 @@ describe("BudPayService", () => {
           data: {
             status: "success",
             reference: "budpay_guest_ref_123",
-            amount: "125000",
+            amount: "1250",
             currency: "NGN",
             customer: { email: "guest@example.com" },
           },
@@ -376,7 +376,7 @@ describe("BudPayService", () => {
       notifyType: "successful",
       data: {
         reference: "budpay_guest_ref_123",
-        amount: "125000",
+        amount: "1250",
         currency: "NGN",
         status: "success",
         customer: { email: "guest@example.com" },
