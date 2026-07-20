@@ -87,8 +87,9 @@ export class BudPayService {
   }
 
   private resolveCallbackUrl(rawCallback?: string): string {
-    if (this.isPublicHttpsUrl(rawCallback)) {
-      return rawCallback!;
+    const callback = rawCallback?.trim();
+    if (callback) {
+      return callback;
     }
 
     const fallbackBase = [
@@ -101,21 +102,9 @@ export class BudPayService {
       return "https://dev.alabamarketplace.ng/payment/callback";
     }
 
-    let callbackPath = "/payment/callback";
-    let callbackSearch = "";
-    try {
-      if (rawCallback) {
-        const url = new URL(rawCallback);
-        callbackPath = url.pathname;
-        callbackSearch = url.search;
-      }
-    } catch {
-      // Keep the default callback path when the client sent an invalid URL.
-    }
-
     const baseUrl = new URL(fallbackBase);
-    baseUrl.pathname = callbackPath;
-    baseUrl.search = callbackSearch;
+    baseUrl.pathname = "/payment/callback";
+    baseUrl.search = "";
 
     return baseUrl.toString();
   }
@@ -619,3 +608,4 @@ export class BudPayService {
     return { status: "ok", message: "Webhook processed" };
   }
 }
+

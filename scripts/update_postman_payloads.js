@@ -7,12 +7,13 @@ const collectionPaths = [
 ];
 const srcRoot = path.join(__dirname, "..", "src");
 const DEFAULT_EMAIL = "olagiddz@gmail.com";
+const DEFAULT_PASSWORD = "Options123@";
 
 const collectionVariables = [
   { key: "baseUrl", value: "http://localhost:8000", type: "string" },
   { key: "authToken", value: "", type: "string" },
   { key: "refreshToken", value: "", type: "string" },
-  { key: "password", value: "Options123#", type: "string" },
+  { key: "password", value: DEFAULT_PASSWORD, type: "string" },
   { key: "userId", value: "1", type: "number" },
   { key: "managedUserId", value: "1", type: "number" },
   { key: "userEmail", value: DEFAULT_EMAIL, type: "string" },
@@ -360,13 +361,13 @@ function sampleForResource(resource) {
     return { storeId: 123, productId: 456, days: 7, amount: 5000 };
   }
   if (resource.includes("auth") || resource.includes("login")) {
-    return { email: DEFAULT_EMAIL, password: "Options123#" };
+    return { email: DEFAULT_EMAIL, password: DEFAULT_PASSWORD };
   }
   if (resource.includes("user") || resource.includes("users")) {
     return {
       name: "Jane Customer",
       email: DEFAULT_EMAIL,
-      password: "Options123#",
+      password: DEFAULT_PASSWORD,
       phone: "+2348012345678",
     };
   }
@@ -788,6 +789,145 @@ function rawBodyForRequest(method, pathSegments = []) {
     ].join("\n");
   }
 
+  if (normalizedMethod === "POST" && normalizedPath === "paystack/verify-guest") {
+    return [
+      "{",
+      '  "reference": "{{paymentReference}}",',
+      '  "guest_email": "{{guestEmail}}"',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "budpay/admin/import-paystack-subaccounts"
+  ) {
+    return [
+      "{",
+      '  "dryRun": true,',
+      '  "limit": 25,',
+      '  "storeId": {{storeId}},',
+      '  "retryFailed": false,',
+      '  "force": false',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    ["paystack/initialize-checkout", "budpay/initialize-checkout"].includes(
+      normalizedPath,
+    )
+  ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : "{{paymentProvider}}";
+    return [
+      "{",
+      `  "payment_provider": "${provider}",`,
+      '  "order_payload": {',
+      '    "cart": [',
+      "      {",
+      '        "id": {{cartItemId}},',
+      '        "productId": {{productId}},',
+      '        "variantId": {{variantId}},',
+      '        "storeId": {{storeId}},',
+      '        "quantity": {{orderQuantity}}',
+      "      }",
+      "    ],",
+      '    "payment": {',
+      `      "type": "${provider}",`,
+      '      "callback_url": "{{callbackUrl}}"',
+      "    },",
+      '    "address": {',
+      '      "id": {{addressId}}',
+      "    },",
+      '    "charges": {',
+      '      "token": "{{deliveryToken}}"',
+      "    }",
+      "  },",
+      '  "callback_url": "{{callbackUrl}}"',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    ["paystack/initialize-guest", "budpay/initialize-guest"].includes(
+      normalizedPath,
+    )
+  ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : "{{paymentProvider}}";
+    return [
+      "{",
+      `  "payment_provider": "${provider}",`,
+      '  "guest_info": {',
+      '    "email": "{{guestEmail}}",',
+      '    "first_name": "Guest",',
+      '    "last_name": "Buyer",',
+      '    "phone": "08000000000"',
+      "  },",
+      '  "cart_items": [',
+      "    {",
+      '      "product_id": {{productId}},',
+      '      "store_id": {{storeId}},',
+      '      "quantity": 1,',
+      '      "unit_price": 500000',
+      "    }",
+      "  ],",
+      '  "amount": 500000,',
+      '  "delivery_charge": 0,',
+      '  "currency": "NGN",',
+      '  "callback_url": "{{callbackUrl}}",',
+      '  "order_payload": {',
+      '    "guest_info": {',
+      '      "email": "{{guestEmail}}",',
+      '      "first_name": "Guest",',
+      '      "last_name": "Buyer",',
+      '      "phone": "08000000000"',
+      "    },",
+      '    "delivery_address": {',
+      '      "id": "guest_address_001",',
+      '      "full_name": "Guest Buyer",',
+      '      "phone_no": "08000000000",',
+      '      "full_address": "12 Test Street, Ikeja, Lagos",',
+      '      "city": "Ikeja",',
+      '      "state": "Lagos",',
+      '      "state_id": {{stateId}},',
+      '      "country": "Nigeria",',
+      '      "country_id": {{countryId}}',
+      "    },",
+      '    "cart_items": [',
+      "      {",
+      '        "product_id": {{productId}},',
+      '        "store_id": {{storeId}},',
+      '        "product_name": "{{productName}}",',
+      '        "quantity": 1,',
+      '        "unit_price": 500000,',
+      '        "total_price": 500000',
+      "      }",
+      "    ],",
+      '    "payment": {',
+      `      "payment_method": "${provider}",`,
+      '      "payment_status": "pending"',
+      "    },",
+      '    "delivery": {',
+      '      "delivery_token": "{{deliveryToken}}"',
+      "    },",
+      '    "order_summary": {',
+      '      "subtotal": 5000,',
+      '      "delivery_fee": 0,',
+      '      "discount": 0,',
+      '      "tax": 0,',
+      '      "total": 5000',
+      "    }",
+      "  }",
+      "}",
+    ].join("\n");
+  }
+
   return JSON.stringify(sampleForRequest(method, pathSegments), null, 2);
 }
 
@@ -855,6 +995,8 @@ function processItem(item, summary) {
     [
       "paystack/initialize-checkout",
       "paystack/initialize-guest",
+      "paystack/verify",
+      "paystack/verify-guest",
       "budpay/initialize",
       "budpay/initialize-checkout",
       "budpay/initialize-guest",
@@ -993,7 +1135,8 @@ function upsertCollectionVariables(collection) {
       if (
         existing.value == null ||
         variable.key === "userEmail" ||
-        variable.key === "guestEmail"
+        variable.key === "guestEmail" ||
+        variable.key === "password"
       ) {
         existing.value = variable.value;
       }
@@ -1019,7 +1162,9 @@ function replaceInString(value) {
     .replaceAll("user@example.com", "{{userEmail}}")
     .replaceAll("jane@example.com", "{{userEmail}}")
     .replaceAll("newemail@example.com", "{{userEmail}}")
-    .replaceAll("guest@example.com", "{{guestEmail}}");
+    .replaceAll("guest@example.com", "{{guestEmail}}")
+    .replaceAll("Options123#", "{{password}}")
+    .replaceAll("P@ssw0rd", "{{password}}");
 }
 
 function normalizeEmailsInRequest(request) {

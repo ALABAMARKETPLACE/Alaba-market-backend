@@ -383,7 +383,7 @@
       "id": "password",
       "key": "password",
       "type": "string",
-      "value": "P@ssw0rd",
+      "value": "Options123@",
       "enabled": true
     },
     {
@@ -1369,12 +1369,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}"
             }
           },
           "event": [
@@ -1546,7 +1541,7 @@
       ]
     },
     {
-      "name": "\ud83d\udd12 Admin",
+      "name": "🔒 Admin",
       "description": "Admin-only endpoints for system management and user administration",
       "item": [
         {
@@ -1766,7 +1761,7 @@
             "description": "Reactivate deactivated user (admin only)\nPath Parameters:\n- id: User ID to reactivate",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "response": [],
@@ -2744,7 +2739,7 @@
             "description": "Request email verification (sends verification email to user)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"P@ssw0rd\"\n}"
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "response": [],
@@ -3108,7 +3103,7 @@
       ]
     },
     {
-      "name": "\ud83d\udc64 User Management",
+      "name": "👤 User Management",
       "description": "User profile and account management endpoints",
       "item": [
         {
@@ -4239,7 +4234,7 @@
             "description": "Reactivate deactivated user (admin only)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "response": [],
@@ -4546,7 +4541,7 @@
             "description": "Downgrade the authenticated user back to buyer-only access.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123@\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "response": [],
@@ -4727,7 +4722,7 @@
       ]
     },
     {
-      "name": "\ud83c\udfea Store Management",
+      "name": "🏪 Store Management",
       "description": "Store/Corporate account management endpoints",
       "item": [
         {
@@ -5274,7 +5269,7 @@
       ]
     },
     {
-      "name": "\ud83d\udce6 Products",
+      "name": "📦 Products",
       "description": "Product management and browsing endpoints",
       "item": [
         {
@@ -6916,7 +6911,7 @@
       ]
     },
     {
-      "name": "\ud83d\uded2 Orders",
+      "name": "🛒 Orders",
       "description": "Order placement, management, and tracking",
       "item": [
         {
@@ -8481,7 +8476,7 @@
       ]
     },
     {
-      "name": "\ud83d\udcb3 Payments",
+      "name": "💳 Payments",
       "description": "Payment processing and management",
       "item": [
         {
@@ -8698,7 +8693,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": \"{{productId}}\",\n      \"store_id\": \"{{storeId}}\",\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": \"{{stateId}}\",\n      \"country\": \"Nigeria\",\n      \"country_id\": \"{{countryId}}\"\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": \"{{productId}}\",\n        \"store_id\": \"{{storeId}}\",\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"{{paymentProvider}}\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
+              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": {{productId}},\n      \"store_id\": {{storeId}},\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": {{stateId}},\n      \"country\": \"Nigeria\",\n      \"country_id\": {{countryId}}\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": {{productId}},\n        \"store_id\": {{storeId}},\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"{{paymentProvider}}\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/paystack/initialize-guest",
@@ -8799,12 +8794,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/paystack/verify",
@@ -9000,7 +8990,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\"reference\":\"{{paymentReference}}\",\"guest_email\":\"{{guestEmail}}\"}"
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\",\n  \"guest_email\": \"{{guestEmail}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/paystack/verify-guest",
@@ -9474,7 +9464,7 @@
           ]
         },
         {
-          "name": "\ud83e\uddfe Paystack Reconciliation",
+          "name": "🧾 Paystack Reconciliation",
           "item": [
             {
               "name": "GET /paystack/reconciliation/orphaned-payments",
@@ -10409,7 +10399,7 @@
       ]
     },
     {
-      "name": "\u2709\ufe0f Enquiries",
+      "name": "✉️ Enquiries",
       "description": "Enquiry creation and management",
       "item": [
         {
@@ -10872,7 +10862,7 @@
       ]
     },
     {
-      "name": "\ud83d\udcee Cart & Wishlist",
+      "name": "📮 Cart & Wishlist",
       "description": "Shopping cart and wishlist management",
       "item": [
         {
@@ -11377,7 +11367,7 @@
       ]
     },
     {
-      "name": "\ud83c\udff7\ufe0f Categories & Search",
+      "name": "🏷️ Categories & Search",
       "description": "Product categories, search, and browse functionality",
       "item": [
         {
@@ -12468,7 +12458,7 @@
       ]
     },
     {
-      "name": "\ud83d\udccd Address Management",
+      "name": "📍 Address Management",
       "description": "User address and delivery location management",
       "item": [
         {
@@ -12891,7 +12881,7 @@
       ]
     },
     {
-      "name": "\ud83d\udcdd Invoices & Documentation",
+      "name": "📝 Invoices & Documentation",
       "description": "Invoice generation and order documentation",
       "item": [
         {
@@ -13156,7 +13146,7 @@
       ]
     },
     {
-      "name": "\ud83d\udd14 Notifications",
+      "name": "🔔 Notifications",
       "description": "User notifications and alerts",
       "item": [
         {
@@ -13429,7 +13419,7 @@
       ]
     },
     {
-      "name": "\ud83c\udf81 Promotions & Offers",
+      "name": "🎁 Promotions & Offers",
       "description": "Promotional offers and deals",
       "item": [
         {
@@ -29380,7 +29370,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": \"{{cartItemId}}\",\n        \"productId\": \"{{productId}}\",\n        \"variantId\": \"{{variantId}}\",\n        \"storeId\": \"{{storeId}}\",\n        \"quantity\": \"{{orderQuantity}}\"\n      }\n    ],\n    \"payment\": {\n      \"type\": \"{{paymentProvider}}\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": \"{{addressId}}\"\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
+              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": {{cartItemId}},\n        \"productId\": {{productId}},\n        \"variantId\": {{variantId}},\n        \"storeId\": {{storeId}},\n        \"quantity\": {{orderQuantity}}\n      }\n    ],\n    \"payment\": {\n      \"type\": \"{{paymentProvider}}\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": {{addressId}}\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
             }
           },
           "response": [],
@@ -39914,7 +39904,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -40122,7 +40112,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -40229,7 +40219,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -40428,7 +40418,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -40535,7 +40525,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -40833,7 +40823,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}",
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -41252,7 +41242,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}",
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -41358,7 +41348,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}",
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -41464,7 +41454,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}",
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -41570,7 +41560,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}",
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -41849,7 +41839,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -41946,7 +41936,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -42296,7 +42286,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -42901,11 +42891,11 @@
       ]
     },
     {
-      "name": "\ud83d\uded2 Marketplace Feed",
-      "description": "Public marketplace discovery routes \u2014 no authentication required.\nGuest users can browse products across stores, search globally, and discover stores Jumia-style.",
+      "name": "🛒 Marketplace Feed",
+      "description": "Public marketplace discovery routes — no authentication required.\nGuest users can browse products across stores, search globally, and discover stores Jumia-style.",
       "item": [
         {
-          "name": "Home \u2014 All sections in one request",
+          "name": "Home — All sections in one request",
           "request": {
             "method": "GET",
             "header": [],
@@ -42999,7 +42989,7 @@
           ]
         },
         {
-          "name": "Products \u2014 Balanced Feed",
+          "name": "Products — Balanced Feed",
           "request": {
             "method": "GET",
             "header": [],
@@ -43075,7 +43065,7 @@
                 }
               ]
             },
-            "description": "Fetches randomized products across all approved stores. perStoreLimit caps how many products any single store contributes \u2014 prevents one mega-store dominating the feed.\n\nNo authentication required."
+            "description": "Fetches randomized products across all approved stores. perStoreLimit caps how many products any single store contributes — prevents one mega-store dominating the feed.\n\nNo authentication required."
           },
           "response": [],
           "event": [
@@ -43141,7 +43131,7 @@
           ]
         },
         {
-          "name": "Products \u2014 Global Search",
+          "name": "Products — Global Search",
           "request": {
             "method": "GET",
             "header": [],
@@ -43284,7 +43274,7 @@
           ]
         },
         {
-          "name": "Stores \u2014 Discover",
+          "name": "Stores — Discover",
           "request": {
             "method": "GET",
             "header": [],
@@ -43402,7 +43392,7 @@
           ]
         },
         {
-          "name": "Stores \u2014 Search",
+          "name": "Stores — Search",
           "request": {
             "method": "GET",
             "header": [],
@@ -43521,7 +43511,7 @@
           ]
         },
         {
-          "name": "Store \u2014 Profile (single store)",
+          "name": "Store — Profile (single store)",
           "request": {
             "method": "GET",
             "header": [],
@@ -43616,7 +43606,7 @@
           ]
         },
         {
-          "name": "Store Products \u2014 List",
+          "name": "Store Products — List",
           "request": {
             "method": "GET",
             "header": [],
@@ -43754,7 +43744,7 @@
           ]
         },
         {
-          "name": "Store Products \u2014 Search",
+          "name": "Store Products — Search",
           "request": {
             "method": "GET",
             "header": [],
@@ -44693,7 +44683,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"dryRun\": true,\n  \"limit\": 25,\n  \"storeId\": \"{{storeId}}\",\n  \"retryFailed\": false,\n  \"force\": false\n}"
+              "raw": "{\n  \"dryRun\": true,\n  \"limit\": 25,\n  \"storeId\": {{storeId}},\n  \"retryFailed\": false,\n  \"force\": false\n}"
             },
             "description": "Admin-only seller payout-profile import. Start with dryRun=true. force=true may replace stored BudPay identifiers."
           },
@@ -45122,7 +45112,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": \"{{cartItemId}}\",\n        \"productId\": \"{{productId}}\",\n        \"variantId\": \"{{variantId}}\",\n        \"storeId\": \"{{storeId}}\",\n        \"quantity\": \"{{orderQuantity}}\"\n      }\n    ],\n    \"payment\": {\n      \"type\": \"budpay\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": \"{{addressId}}\"\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
+              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": {{cartItemId}},\n        \"productId\": {{productId}},\n        \"variantId\": {{variantId}},\n        \"storeId\": {{storeId}},\n        \"quantity\": {{orderQuantity}}\n      }\n    ],\n    \"payment\": {\n      \"type\": \"budpay\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": {{addressId}}\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
             },
             "description": "Authenticated BudPay checkout using the same order_payload contract as Paystack."
           },
@@ -45221,7 +45211,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": \"{{productId}}\",\n      \"store_id\": \"{{storeId}}\",\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": \"{{stateId}}\",\n      \"country\": \"Nigeria\",\n      \"country_id\": \"{{countryId}}\"\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": \"{{productId}}\",\n        \"store_id\": \"{{storeId}}\",\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"budpay\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
+              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": {{productId}},\n      \"store_id\": {{storeId}},\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": {{stateId}},\n      \"country\": \"Nigeria\",\n      \"country_id\": {{countryId}}\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": {{productId}},\n        \"store_id\": {{storeId}},\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"budpay\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
             },
             "description": "Guest BudPay checkout using the same request contract as Paystack."
           },

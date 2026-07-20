@@ -10,6 +10,7 @@ describe("BudPayService", () => {
     delete process.env.BUDPAY_SECRET_KEY;
     delete process.env.BUDPAY_BASE_URL;
     delete process.env.BUDPAY_WEBHOOK_SECRET;
+    delete process.env.BUDPAY_CALLBACK_URL;
     delete process.env.FRONTEND_URL;
   });
 
@@ -243,7 +244,7 @@ describe("BudPayService", () => {
     expect(result.data.amount).toBe(1250);
   });
 
-  it("uses a public HTTPS callback when the client sends a localhost callback", async () => {
+  it("preserves a localhost callback sent by the client", async () => {
     const { service, httpService } = createService();
     process.env.FRONTEND_URL = "http://localhost:3000";
     httpService.post.mockReturnValue(
@@ -272,7 +273,41 @@ describe("BudPayService", () => {
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
         amount: "1250",
-        callback: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+        callback: "http://localhost:3000/checkoutsuccess/2",
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("preserves a relative callback path sent by the client", async () => {
+    const { service, httpService } = createService();
+    httpService.post.mockReturnValue(
+      of({ data: initializationResponse("budpay_guest_ref_790") }),
+    );
+
+    await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        { product_id: 1, store_id: 7, quantity: 1, unit_price: 120000 },
+      ],
+      amount: 120000,
+      delivery_charge: 0,
+      callback_url: "/checkoutsuccess/2",
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      "https://api.budpay.com/api/v2/transaction/initialize",
+      expect.objectContaining({
+        amount: "1250",
+        callback: "/checkoutsuccess/2",
       }),
       expect.any(Object),
     );
