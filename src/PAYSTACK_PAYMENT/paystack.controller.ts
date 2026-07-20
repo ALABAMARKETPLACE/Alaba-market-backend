@@ -53,6 +53,7 @@ import { DiagnosePaystackTransactionDto } from "./dto/diagnose-paystack-transact
 import { ManualSettlementAuditDto } from "./dto/manual-settlement-audit.dto";
 import { SkipThrottle, Throttle } from "@nestjs/throttler";
 import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+import { PalmPayService } from "../PALMPAY_PAYMENT/palmpay.service";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -63,18 +64,37 @@ export class PaystackController {
     private readonly paystackService: PaystackService,
     @Inject(forwardRef(() => BudPayService))
     private readonly budPayService: BudPayService,
+    @Inject(forwardRef(() => PalmPayService))
+    private readonly palmPayService: PalmPayService,
   ) {}
+
+  private resolveProvider(data: {
+    payment_provider?: string;
+    payment_channel?: string;
+  }): "paystack" | "budpay" | "palmpay" {
+    const provider = (
+      data.payment_provider ||
+      data.payment_channel ||
+      process.env.PAYMENT_PROVIDER ||
+      "paystack"
+    ).toLowerCase();
+    return provider === "budpay" || provider === "palmpay"
+      ? provider
+      : "paystack";
+  }
 
   private useBudPay(data: {
     payment_provider?: string;
     payment_channel?: string;
   }): boolean {
-    return (
-      data.payment_provider ||
-      data.payment_channel ||
-      process.env.PAYMENT_PROVIDER ||
-      "paystack"
-    ).toLowerCase() === "budpay";
+    return this.resolveProvider(data) === "budpay";
+  }
+
+  private usePalmPay(data: {
+    payment_provider?: string;
+    payment_channel?: string;
+  }): boolean {
+    return this.resolveProvider(data) === "palmpay";
   }
 
   private normalizeUserInitializeData(
@@ -116,6 +136,9 @@ export class PaystackController {
     if (this.useBudPay(initData)) {
       return await this.budPayService.initializePayment(initData);
     }
+    if (this.usePalmPay(initData)) {
+      return await this.palmPayService.initializePayment(initData);
+    }
     return await this.paystackService.initializePayment(initData);
   }
 
@@ -142,7 +165,7 @@ export class PaystackController {
     this.logger.log(
       {
         event: "checkout_initialization_requested",
-        gateway: this.useBudPay(initData) ? "budpay" : "paystack",
+        gateway: this.resolveProvider(initData),
         userId,
         storeIds: initData.order_payload?.cart?.map((item) => item.storeId),
       },
@@ -150,6 +173,12 @@ export class PaystackController {
     );
     if (this.useBudPay(initData)) {
       return await this.budPayService.initializeAuthenticatedCheckout(
+        userId,
+        initData,
+      );
+    }
+    if (this.usePalmPay(initData)) {
+      return await this.palmPayService.initializeAuthenticatedCheckout(
         userId,
         initData,
       );
@@ -180,7 +209,7 @@ export class PaystackController {
     this.logger.log(
       {
         event: "guest_checkout_initialization_requested",
-        gateway: this.useBudPay(guestData) ? "budpay" : "paystack",
+        gateway: this.resolveProvider(guestData),
         storeIds: guestData.cart_items?.map((item) => item.store_id),
         amount: guestData.amount + guestData.delivery_charge,
       },
@@ -188,6 +217,9 @@ export class PaystackController {
     );
     if (this.useBudPay(guestData)) {
       return await this.budPayService.initializeGuestPayment(guestData);
+    }
+    if (this.usePalmPay(guestData)) {
+      return await this.palmPayService.initializeGuestPayment(guestData);
     }
     return await this.paystackService.initializeGuestPayment(guestData);
   }

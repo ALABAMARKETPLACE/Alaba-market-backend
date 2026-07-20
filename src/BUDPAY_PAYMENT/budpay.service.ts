@@ -405,13 +405,15 @@ export class BudPayService {
   private async assertCheckoutMatches(
     reference: string,
     data: any,
-  ): Promise<number> {
+  ): Promise<{ verifiedAmount: number; customerEmail: string }> {
     const expectedCheckout = await this.getExpectedCheckout(reference);
     const verifiedAmount = this.normalizeAmount(
       data,
       expectedCheckout?.amount_kobo,
     );
-    const customerEmail = String(data?.customer?.email || "")
+    const customerEmail = String(
+      data?.customer?.email || data?.customer_email || data?.email || "",
+    )
       .trim()
       .toLowerCase();
 
@@ -424,12 +426,17 @@ export class BudPayService {
 
     if (
       expectedCheckout?.email &&
+      customerEmail &&
       customerEmail !== expectedCheckout.email.trim().toLowerCase()
     ) {
       throw new BadRequestException("Payment email mismatch");
     }
 
-    return verifiedAmount;
+    return {
+      verifiedAmount,
+      customerEmail:
+        customerEmail || expectedCheckout?.email?.trim().toLowerCase() || "",
+    };
   }
 
   async verifyPayment(verifyData: BudPayVerifyDto): Promise<any> {
@@ -443,13 +450,10 @@ export class BudPayService {
       );
     }
 
-    const verifiedAmount = await this.assertCheckoutMatches(
+    const { verifiedAmount, customerEmail } = await this.assertCheckoutMatches(
       verifyData.reference,
       response.data,
     );
-    const customerEmail = String(response.data?.customer?.email || "")
-      .trim()
-      .toLowerCase();
 
     return {
       ...response,
@@ -608,4 +612,3 @@ export class BudPayService {
     return { status: "ok", message: "Webhook processed" };
   }
 }
-

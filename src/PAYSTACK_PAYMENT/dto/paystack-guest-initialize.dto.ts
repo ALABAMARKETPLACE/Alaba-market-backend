@@ -76,21 +76,21 @@ export class PaystackGuestInitializeDto {
   @ApiProperty({
     description:
       "Optional payment provider selector. Missing values remain Paystack for backward compatibility.",
-    enum: ["paystack", "budpay"],
+    enum: ["paystack", "budpay", "palmpay"],
     required: false,
   })
   @IsOptional()
-  @IsIn(["paystack", "budpay"])
-  payment_provider?: "paystack" | "budpay";
+  @IsIn(["paystack", "budpay", "palmpay"])
+  payment_provider?: "paystack" | "budpay" | "palmpay";
 
   @ApiProperty({
     description: "Alias for payment_provider.",
-    enum: ["paystack", "budpay"],
+    enum: ["paystack", "budpay", "palmpay"],
     required: false,
   })
   @IsOptional()
-  @IsIn(["paystack", "budpay"])
-  payment_channel?: "paystack" | "budpay";
+  @IsIn(["paystack", "budpay", "palmpay"])
+  payment_channel?: "paystack" | "budpay" | "palmpay";
 
   @ApiProperty({
     description: "Guest information",
@@ -130,7 +130,7 @@ export class PaystackGuestInitializeDto {
 
   @ApiProperty({
     description:
-      "Browser redirect URL after payment. For backend-only testing, use /paystack/success on this API.",
+      "Browser redirect URL after payment.",
     example: "http://localhost:8000/paystack/success",
     required: false,
   })
@@ -147,7 +147,7 @@ export class PaystackGuestInitializeDto {
 
   @ApiProperty({
     description:
-      "Optional full guest order payload. When provided, the Paystack webhook can finalize the guest order without waiting for frontend verification.",
+      "Optional full guest order payload. When provided, the selected provider webhook can finalize the guest order without waiting for frontend verification.",
     required: false,
     type: CreateGuestOrderDto,
   })

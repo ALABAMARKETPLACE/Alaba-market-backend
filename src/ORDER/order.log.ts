@@ -37,6 +37,7 @@ import { JwtService } from "@nestjs/jwt";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { PaymentTypeEnum } from "./dto/payment-type.enum";
 import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+import { PalmPayService } from "../PALMPAY_PAYMENT/palmpay.service";
 
 const appLog = createStructuredLogger("order_log");
 
@@ -49,6 +50,8 @@ export class OrderLogService {
     private readonly paystackService: PaystackService,
     @Inject(forwardRef(() => BudPayService))
     private readonly budPayService: BudPayService,
+    @Inject(forwardRef(() => PalmPayService))
+    private readonly palmPayService: PalmPayService,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
     private readonly jwtService: JwtService
@@ -251,6 +254,23 @@ export class OrderLogService {
     paymentRef: string,
     grandTotal: number
   ) {
+    if (paymentRef.startsWith("PP")) {
+      const palmPayResponse = await this.palmPayService.verifyPayment(paymentRef);
+      const amountInKobo = Number(palmPayResponse.data?.amount);
+      const expectedAmountInKobo = Math.round(grandTotal * 100);
+
+      return {
+        verified:
+          palmPayResponse.status && palmPayResponse.data?.status === "success",
+        status:
+          amountInKobo === expectedAmountInKobo ? "success" : "incomplete",
+        amount: amountInKobo,
+        currency: palmPayResponse.data?.currency,
+        email: palmPayResponse.data?.customer?.email,
+        gateway: "palmpay",
+      };
+    }
+
     if (paymentRef.startsWith("budpay_")) {
       const budPayResponse = await this.budPayService.verifyPayment({
         reference: paymentRef,
@@ -415,6 +435,7 @@ export class OrderLogService {
     switch (payment?.type) {
       case PaymentTypeEnum.Paystack:
       case PaymentTypeEnum.BudPay:
+      case PaymentTypeEnum.PalmPay:
       case PaymentTypeEnum.Stripe:
       case PaymentTypeEnum.Flutterwave:
         return "pay-online";

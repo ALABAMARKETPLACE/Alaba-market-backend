@@ -17,6 +17,7 @@ import { User } from "../USERS/user.entity";
 import { PaymentLog } from "../PAYMENT_LOG/paymentlog.entity";
 import { PaystackReconciliationModule } from "./paystack-reconciliation.module";
 import { BudPayModule } from "../BUDPAY_PAYMENT/budpay.module";
+import { PalmPayModule } from "../PALMPAY_PAYMENT/palmpay.module";
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { BudPayModule } from "../BUDPAY_PAYMENT/budpay.module";
     forwardRef(() => OrderModule),
     PaystackReconciliationModule,
     forwardRef(() => BudPayModule),
+    forwardRef(() => PalmPayModule),
   ],
   controllers: [PaystackController],
   providers: [PaystackService, PaystackAccountConfigService],

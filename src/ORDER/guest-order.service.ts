@@ -36,6 +36,7 @@ import { GuestCheckout } from "../PAYSTACK_PAYMENT/guest-checkout.entity";
 import { UpdateOrderStatus } from "./dto/updateOrderStatus.dto";
 import { Role } from "../shared/enum/role.enum";
 import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+import { PalmPayService } from "../PALMPAY_PAYMENT/palmpay.service";
 
 const appLog = createStructuredLogger("guest_order_service");
 
@@ -57,6 +58,8 @@ export class GuestOrderService {
     private readonly paystackService: PaystackService,
     @Inject(forwardRef(() => BudPayService))
     private readonly budPayService: BudPayService,
+    @Inject(forwardRef(() => PalmPayService))
+    private readonly palmPayService: PalmPayService,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
     private readonly jwtService: JwtService,
@@ -214,6 +217,8 @@ export class GuestOrderService {
           itemCount: data.cart_items.length,
           gateway: data.payment.payment_reference?.startsWith("budpay_")
             ? "budpay"
+            : data.payment.payment_reference?.startsWith("PP")
+            ? "palmpay"
             : "paystack",
         },
         "guest order creation started",
@@ -408,6 +413,8 @@ export class GuestOrderService {
           paymentReference: data.payment?.payment_reference,
           gateway: data.payment?.payment_reference?.startsWith("budpay_")
             ? "budpay"
+            : data.payment?.payment_reference?.startsWith("PP")
+            ? "palmpay"
             : "paystack",
           err,
         },
@@ -1028,12 +1035,10 @@ export class GuestOrderService {
     const paymentReference =
       rawPayload?.payment?.payment_reference || checkout.reference;
     const paystackResponse: any = paymentReference.startsWith("budpay_")
-      ? await this.budPayService.verifyPayment({
-          reference: paymentReference,
-        })
-      : await this.paystackService.verifyPayment({
-          reference: paymentReference,
-        });
+      ? await this.budPayService.verifyPayment({ reference: paymentReference })
+      : paymentReference.startsWith("PP")
+      ? await this.palmPayService.verifyPayment(paymentReference)
+      : await this.paystackService.verifyPayment({ reference: paymentReference });
 
     const payload: CreateGuestOrderDto = {
       ...rawPayload,
@@ -1152,12 +1157,10 @@ export class GuestOrderService {
 
       try {
         const paystackResponse: any = paymentReference.startsWith("budpay_")
-          ? await this.budPayService.verifyPayment({
-              reference: paymentReference,
-            })
-          : await this.paystackService.verifyPayment({
-              reference: paymentReference,
-            });
+          ? await this.budPayService.verifyPayment({ reference: paymentReference })
+          : paymentReference.startsWith("PP")
+          ? await this.palmPayService.verifyPayment(paymentReference)
+          : await this.paystackService.verifyPayment({ reference: paymentReference });
 
         const payload: CreateGuestOrderDto = {
           ...rawPayload,
@@ -1855,6 +1858,8 @@ export class GuestOrderService {
     try {
       const gateway = paymentReference.startsWith("budpay_")
         ? "budpay"
+        : paymentReference.startsWith("PP")
+        ? "palmpay"
         : "paystack";
       appLog.info(
         {
@@ -1866,13 +1871,16 @@ export class GuestOrderService {
         "guest payment verification started",
       );
 
-      const paystackResponse: any = gateway === "budpay"
-        ? await this.budPayService.verifyPayment({
-            reference: paymentReference,
-          })
-        : await this.paystackService.verifyPayment({
-            reference: paymentReference,
-          });
+      const paystackResponse: any =
+        gateway === "budpay"
+          ? await this.budPayService.verifyPayment({
+              reference: paymentReference,
+            })
+          : gateway === "palmpay"
+          ? await this.palmPayService.verifyPayment(paymentReference)
+          : await this.paystackService.verifyPayment({
+              reference: paymentReference,
+            });
       this.assertVerifiedPaymentData(
         paystackResponse.data,
         paymentReference,
@@ -1897,6 +1905,8 @@ export class GuestOrderService {
           paymentReference,
           gateway: paymentReference.startsWith("budpay_")
             ? "budpay"
+            : paymentReference.startsWith("PP")
+            ? "palmpay"
             : "paystack",
           amount: expectedAmountInKobo,
           err,
@@ -1943,6 +1953,8 @@ export class GuestOrderService {
           amount: amountInKobo,
           gateway: paymentReference.startsWith("budpay_")
             ? "budpay"
+            : paymentReference.startsWith("PP")
+            ? "palmpay"
             : "paystack",
         },
         "verified payment amount does not match order total",

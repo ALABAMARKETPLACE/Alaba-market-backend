@@ -379,6 +379,44 @@ describe("BudPayService", () => {
     });
   });
 
+  it("uses the stored checkout email when BudPay omits customer details", async () => {
+    const {
+      service,
+      httpService,
+      guestCheckoutRepository,
+    } = createService();
+    guestCheckoutRepository.findOne.mockResolvedValue({
+      reference: "budpay_user_ref_123",
+      guest_email: "buyer@example.com",
+      amount_kobo: 125000,
+    });
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          message: "Transaction verified successfully",
+          data: {
+            status: "success",
+            reference: "budpay_user_ref_123",
+            amount: "1250",
+            currency: "NGN",
+          },
+        },
+      }),
+    );
+
+    await expect(
+      service.verifyPayment({ reference: "budpay_user_ref_123" }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amount: 125000,
+          customer: { email: "buyer@example.com" },
+        }),
+      }),
+    );
+  });
+
   it("server-verifies a successful webhook and delegates shared finalization", async () => {
     const {
       service,
