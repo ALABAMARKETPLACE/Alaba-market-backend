@@ -846,6 +846,15 @@ function rawBodyForRequest(method, pathSegments = []) {
     ].join("\n");
   }
 
+  if (normalizedMethod === "POST" && normalizedPath === "budpay/verify-guest") {
+    return [
+      "{",
+      '  "reference": "{{paymentReference}}",',
+      '  "guest_email": "{{guestEmail}}"',
+      "}",
+    ].join("\n");
+  }
+
   if (
     normalizedMethod === "POST" &&
     normalizedPath === "budpay/admin/import-paystack-subaccounts"
@@ -1061,6 +1070,7 @@ function processItem(item, summary) {
       "budpay/initialize-checkout",
       "budpay/initialize-guest",
       "budpay/verify",
+      "budpay/verify-guest",
       "budpay/webhook",
       "budpay/admin/import-paystack-subaccounts",
       "palmpay/initialize",
@@ -1096,6 +1106,8 @@ function configureBudPayRequests(collection) {
       "Verify a BudPay reference and validate stored checkout amount/email.",
     "GET budpay/verify":
       "Verify a BudPay reference using a query parameter.",
+    "POST budpay/verify-guest":
+      "Public guest verification guarded by the stored checkout email.",
     "POST budpay/webhook":
       "BudPay webhook example. Production webhooks are server-verified against BudPay before order finalization.",
     "GET budpay/public-key":
@@ -1123,7 +1135,8 @@ function configureBudPayRequests(collection) {
     const isPublic =
       route === "budpay/webhook" ||
       route === "budpay/public-key" ||
-      route === "budpay/initialize-guest";
+      route === "budpay/initialize-guest" ||
+      route === "budpay/verify-guest";
     request.header = (request.header || []).filter(
       (header) =>
         !isPublic || String(header.key || "").toLowerCase() !== "authorization",

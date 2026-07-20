@@ -473,6 +473,31 @@ export class BudPayService {
     return this.verifyPayment({ reference });
   }
 
+  async verifyGuestPayment(
+    reference: string,
+    guestEmail: string,
+  ): Promise<any> {
+    const checkout = await this.guestCheckoutRepository.findOne({
+      where: { reference },
+    });
+    const storedEmail = checkout?.guest_email?.trim().toLowerCase();
+    const providedEmail = guestEmail?.trim().toLowerCase();
+    const paymentProvider = String(
+      checkout?.payload?.payment?.payment_method || "",
+    ).toLowerCase();
+
+    if (
+      !checkout ||
+      !storedEmail ||
+      storedEmail !== providedEmail ||
+      (paymentProvider && paymentProvider !== "budpay")
+    ) {
+      throw new BadRequestException("Guest checkout details do not match");
+    }
+
+    return this.verifyPayment({ reference });
+  }
+
   private verifyWebhookSignature(
     rawPayload: string,
     signature?: string,

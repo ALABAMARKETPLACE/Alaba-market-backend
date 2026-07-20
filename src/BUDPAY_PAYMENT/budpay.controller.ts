@@ -32,6 +32,7 @@ import { PaystackUserInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-user
 import { PaystackGuestInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-guest-initialize.dto";
 import { BudPayService } from "./budpay.service";
 import { BudPayVerifyDto } from "./dto/budpay-verify.dto";
+import { BudPayGuestVerifyDto } from "./dto/budpay-guest-verify.dto";
 import { BudPayWebhookDto } from "./dto/budpay-webhook.dto";
 
 @Controller("budpay")
@@ -119,6 +120,18 @@ export class BudPayController {
   @ApiQuery({ name: "reference", required: true })
   verifyByReference(@Query("reference") reference: string) {
     return this.budPayService.verifyPaymentByReference(reference);
+  }
+
+  @Post("verify-guest")
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Verify a BudPay guest transaction" })
+  verifyGuest(@Body() data: BudPayGuestVerifyDto) {
+    return this.budPayService.verifyGuestPayment(
+      data.reference,
+      data.guest_email,
+    );
   }
 
   @Post("webhook")

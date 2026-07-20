@@ -417,6 +417,58 @@ describe("BudPayService", () => {
     );
   });
 
+  it("verifies a guest checkout when its reference and email match", async () => {
+    const { service, httpService, guestCheckoutRepository } = createService();
+    guestCheckoutRepository.findOne.mockResolvedValue({
+      reference: "budpay_guest_ref_123",
+      guest_email: "guest@example.com",
+      amount_kobo: 125000,
+      payload: { payment: { payment_method: "budpay" } },
+    });
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          message: "Transaction verified successfully",
+          data: {
+            status: "success",
+            reference: "budpay_guest_ref_123",
+            amount: "1250",
+            customer: { email: "guest@example.com" },
+          },
+        },
+      }),
+    );
+
+    await expect(
+      service.verifyGuestPayment(
+        "budpay_guest_ref_123",
+        " GUEST@example.com ",
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 125000 }),
+      }),
+    );
+  });
+
+  it("rejects guest verification when checkout details do not match", async () => {
+    const { service, httpService, guestCheckoutRepository } = createService();
+    guestCheckoutRepository.findOne.mockResolvedValue({
+      reference: "budpay_guest_ref_123",
+      guest_email: "guest@example.com",
+      payload: { payment: { payment_method: "budpay" } },
+    });
+
+    await expect(
+      service.verifyGuestPayment(
+        "budpay_guest_ref_123",
+        "different@example.com",
+      ),
+    ).rejects.toThrow("Guest checkout details do not match");
+    expect(httpService.get).not.toHaveBeenCalled();
+  });
+
   it("server-verifies a successful webhook and delegates shared finalization", async () => {
     const {
       service,
