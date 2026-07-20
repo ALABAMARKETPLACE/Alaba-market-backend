@@ -36,17 +36,38 @@ const envSchema = Joi.object({
     .default("https://api.budpay.com/api/v2"),
   BUDPAY_WEBHOOK_SECRET: Joi.string().trim().optional().allow(""),
   PALMPAY_ENV: Joi.string().valid("sandbox", "production").default("sandbox"),
-  PALMPAY_BASE_URL: Joi.string().uri({ allowRelative: false }).optional(),
-  PALMPAY_APP_ID: Joi.string().trim().optional(),
-  PALMPAY_MERCHANT_PRIVATE_KEY: Joi.string().trim().optional(),
-  PALMPAY_MERCHANT_PRIVATE_KEY_BASE64: Joi.string().trim().optional(),
-  PALMPAY_MERCHANT_PRIVATE_KEY_FILE: Joi.string().trim().optional(),
-  PALMPAY_PLATFORM_PUBLIC_KEY: Joi.string().trim().optional(),
-  PALMPAY_PLATFORM_PUBLIC_KEY_BASE64: Joi.string().trim().optional(),
-  PALMPAY_PLATFORM_PUBLIC_KEY_FILE: Joi.string().trim().optional(),
+  PALMPAY_BASE_URL: Joi.string()
+    .uri({ allowRelative: false })
+    .optional()
+    .allow(""),
+  PALMPAY_APP_ID: Joi.string().trim().optional().allow(""),
+  PALMPAY_MERCHANT_PRIVATE_KEY: Joi.string().trim().optional().allow(""),
+  PALMPAY_MERCHANT_PRIVATE_KEY_BASE64: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
+  PALMPAY_MERCHANT_PRIVATE_KEY_FILE: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
+  PALMPAY_PLATFORM_PUBLIC_KEY: Joi.string().trim().optional().allow(""),
+  PALMPAY_PLATFORM_PUBLIC_KEY_BASE64: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
+  PALMPAY_PLATFORM_PUBLIC_KEY_FILE: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
   PALMPAY_COUNTRY_CODE: Joi.string().trim().length(2).default("NG"),
-  PALMPAY_NOTIFY_URL: Joi.string().uri({ allowRelative: false }).optional(),
-  PALMPAY_CALLBACK_URL: Joi.string().uri({ allowRelative: false }).optional(),
+  PALMPAY_NOTIFY_URL: Joi.string()
+    .uri({ allowRelative: false })
+    .optional()
+    .allow(""),
+  PALMPAY_CALLBACK_URL: Joi.string()
+    .uri({ allowRelative: false })
+    .optional()
+    .allow(""),
   PAYMENT_PROVIDER: Joi.string()
     .valid("paystack", "budpay", "palmpay")
     .default("paystack"),
