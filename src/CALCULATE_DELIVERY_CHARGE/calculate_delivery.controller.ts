@@ -3,6 +3,7 @@ import { Controller, Post, Body, UseGuards, HttpCode } from "@nestjs/common";
 import { CalculateDeliveryChargeService } from "./calculate_delivery.service";
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -43,11 +44,23 @@ export class CalculateDeliveryController {
   @Post("new")
   @ApiBearerAuth()
   @ApiOperation({
-    summary: "Calculate weight-based delivery charge",
+    summary: "Calculate weight-based delivery charge (authenticated)",
     description:
-      "Uses the newer weight and location configuration flow. This is separate from the legacy distance-based calculation.",
+      "Returns a signed **delivery_token** (20 min TTL). Pass the token in `charges.token` when calling `POST /paystack/initialize-checkout` or `POST /budpay/initialize-checkout`.",
   })
   @ApiOkResponse({ type: DataResponseDto })
+  @ApiBody({
+    type: NewCalculateDeliveryDto,
+    examples: {
+      example: {
+        summary: "Single item, Lagos",
+        value: {
+          cart: [{ weight: 1, quantity: 1 }],
+          address: { id: 171, state_id: 42, country_id: 1 },
+        },
+      },
+    },
+  })
   @HttpCode(200)
   calculateNewDelivery(
     @Body() body: NewCalculateDeliveryDto,
@@ -63,11 +76,45 @@ export class CalculateDeliveryController {
   @Public()
   @Post("public")
   @ApiOperation({
-    summary: "Calculate public delivery charge for guest checkout",
+    summary: "Calculate delivery charge for guest checkout (no auth)",
     description:
-      "Uses the guest weight/state-country delivery flow and returns a guest delivery token for later guest checkout.",
+      "Returns a signed **delivery_token** (20 min TTL). Pass the token in `order_payload.delivery.delivery_token` when calling `POST /paystack/initialize-guest` or `POST /budpay/initialize-guest`.\n\n" +
+      "The `id` in the cart array must be the numeric **`id`** field from the product search response — never 0.",
   })
   @ApiOkResponse({ type: DataResponseDto })
+  @ApiBody({
+    type: CalculateDeliveryPublicDto,
+    examples: {
+      example: {
+        summary: "Single item, Lagos guest",
+        value: {
+          cart: [
+            {
+              id: 8068,
+              name: "Track light cast 20w",
+              quantity: 1,
+              weight: 1,
+              totalPrice: 3500,
+              storeId: 3030,
+              productId: 8068,
+            },
+          ],
+          address: {
+            id: "guest_1784064622512",
+            full_name: "Sunday Ibiam",
+            phone_no: "07066026820",
+            full_address: "Igando Lagos",
+            country_id: 1,
+            state_id: 42,
+            country: "Nigeria",
+            state: "Lagos State",
+            is_guest: true,
+          },
+          total: 3500,
+        },
+      },
+    },
+  })
   @HttpCode(200)
   calculateDeliveryPublic(
     @Body() body: CalculateDeliveryPublicDto,
