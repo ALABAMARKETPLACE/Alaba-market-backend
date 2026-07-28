@@ -197,7 +197,7 @@ export class GuestOrderService {
     const paymentStatus = String(checkout?.payment_status || "").toLowerCase();
 
     if (paymentStatus === "success" && checkoutStatus !== "completed") {
-      return "Payment was successful and is awaiting backend order finalization.";
+      return "Payment received. Order confirmation is in progress.";
     }
 
     return checkout?.error || null;

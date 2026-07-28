@@ -438,7 +438,7 @@ describe("GuestOrderService", () => {
           status: "success",
         }),
         status_remark:
-          "Payment was successful and is awaiting backend order finalization.",
+          "Payment received. Order confirmation is in progress.",
         store: expect.objectContaining({
           id: 7,
         }),
