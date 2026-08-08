@@ -812,12 +812,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}"
             }
           },
           "event": [
@@ -14422,102 +14417,6 @@
           ]
         },
         {
-          "name": "GET /order/all-orders-debug",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{authToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/order/all-orders-debug",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "order",
-                "all-orders-debug"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "let json = null;",
-                  "try {",
-                  "  json = pm.response.json();",
-                  "} catch (error) {",
-                  "  console.log('Response is not valid JSON', error);",
-                  "}",
-                  "if (json) {",
-                  "  const setIf = (key, value) => {",
-                  "    if (value !== undefined && value !== null && value !== '') {",
-                  "      const normalized = String(value);",
-                  "      pm.collectionVariables.set(key, normalized);",
-                  "      if (pm.environment) {",
-                  "        pm.environment.set(key, normalized);",
-                  "      }",
-                  "    }",
-                  "  };",
-                  "  const unsetVar = (key) => {",
-                  "    pm.collectionVariables.unset(key);",
-                  "    if (pm.environment) {",
-                  "      pm.environment.unset(key);",
-                  "    }",
-                  "  };",
-                  "  const decodeJwtPayload = (token) => {",
-                  "    try {",
-                  "      if (!token || String(token).split('.').length < 2) return null;",
-                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
-                  "      while (payload.length % 4) payload += '=';",
-                  "      return JSON.parse(atob(payload));",
-                  "    } catch (error) {",
-                  "      console.log('Unable to decode JWT payload', error);",
-                  "      return null;",
-                  "    }",
-                  "  };",
-                  "  const data = json?.data ?? json;",
-                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
-                  "  const results = Array.isArray(data?.results) ? data.results : [];",
-                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
-                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
-                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
-                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
-                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
-                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
-                  "  const user = data?.user || first?.user || first;",
-                  "  const product = first?.product || data?.product || first;",
-                  "  const address = first?.address || data?.address || first;",
-                  "  const category = first?.category || data?.category || first;",
-                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
-                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
-                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
-                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
-                  "  const orderCandidate = order || first;",
-                  "  setIf('orderId', orderCandidate?.id || data?.id);",
-                  "  setIf('orderPublicId', orderCandidate?.order_id || data?.order_id);",
-                  "  setIf('paymentReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
-                  "  setIf('reconcileReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
-                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.authorizationUrl || payment?.authorization_url);",
-                  "  setIf('paystackAccessCode', data?.access_code || data?.accessCode || payment?.access_code);",
-                  "  setIf('guestEmail', orderCandidate?.guest_email || data?.email);",
-                  "  setIf('storeId', orderCandidate?.storeId || store?.id || data?.storeId);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "GET /order/store",
           "request": {
             "method": "GET",
@@ -17230,6 +17129,100 @@
               }
             }
           ]
+        },
+        {
+          "name": "GET /order/track/{{reference}}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/order/track/{{reference}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "order",
+                "track",
+                "{{reference}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const orderCandidate = order || first;",
+                  "  setIf('orderId', orderCandidate?.id || data?.id);",
+                  "  setIf('orderPublicId', orderCandidate?.order_id || data?.order_id);",
+                  "  setIf('paymentReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+                  "  setIf('reconcileReference', data?.reference || payment?.ref || orderCandidate?.payment_reference || orderCandidate?.transaction_reference);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.authorizationUrl || payment?.authorization_url);",
+                  "  setIf('paystackAccessCode', data?.access_code || data?.accessCode || payment?.access_code);",
+                  "  setIf('guestEmail', orderCandidate?.guest_email || data?.email);",
+                  "  setIf('storeId', orderCandidate?.storeId || store?.id || data?.storeId);",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -19009,12 +19002,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}"
             }
           },
           "event": [
@@ -20507,7 +20495,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": \"{{cartItemId}}\",\n        \"productId\": \"{{productId}}\",\n        \"variantId\": \"{{variantId}}\",\n        \"storeId\": \"{{storeId}}\",\n        \"quantity\": \"{{orderQuantity}}\"\n      }\n    ],\n    \"payment\": {\n      \"type\": \"{{paymentProvider}}\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": \"{{addressId}}\"\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
+              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": {{cartItemId}},\n        \"productId\": {{productId}},\n        \"variantId\": {{variantId}},\n        \"storeId\": {{storeId}},\n        \"quantity\": {{orderQuantity}}\n      }\n    ],\n    \"payment\": {\n      \"type\": \"{{paymentProvider}}\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": {{addressId}}\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
             }
           },
           "response": [],
@@ -20607,7 +20595,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": \"{{productId}}\",\n      \"store_id\": \"{{storeId}}\",\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": \"{{stateId}}\",\n      \"country\": \"Nigeria\",\n      \"country_id\": \"{{countryId}}\"\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": \"{{productId}}\",\n        \"store_id\": \"{{storeId}}\",\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"{{paymentProvider}}\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
+              "raw": "{\n  \"payment_provider\": \"{{paymentProvider}}\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": {{productId}},\n      \"store_id\": {{storeId}},\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": {{stateId}},\n      \"country\": \"Nigeria\",\n      \"country_id\": {{countryId}}\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": {{productId}},\n        \"store_id\": {{storeId}},\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"{{paymentProvider}}\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
             }
           },
           "response": [],
@@ -20707,7 +20695,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{}"
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\",\n  \"guest_email\": \"{{guestEmail}}\"\n}"
             }
           },
           "response": [],
@@ -33448,7 +33436,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -33548,7 +33536,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -33648,7 +33636,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -33748,7 +33736,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -33848,7 +33836,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -33948,7 +33936,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -34048,7 +34036,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -34148,7 +34136,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -34249,7 +34237,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -34836,7 +34824,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -34936,7 +34924,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -35036,7 +35024,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -35136,7 +35124,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -35654,7 +35642,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -35754,7 +35742,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -35854,7 +35842,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -35954,7 +35942,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -36054,7 +36042,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"P@ssw0rd\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -36154,7 +36142,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -36254,7 +36242,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\"\n}"
+              "raw": "{\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\"\n}"
             }
           },
           "event": [
@@ -36533,7 +36521,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -36624,7 +36612,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -36976,7 +36964,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -37068,7 +37056,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}"
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}"
             }
           },
           "event": [
@@ -38621,7 +38609,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -38727,7 +38715,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -38834,7 +38822,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -38941,7 +38929,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -39048,7 +39036,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -39247,7 +39235,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -39354,7 +39342,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -39461,7 +39449,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"Options123#\",\n  \"phone\": \"+2348012345678\"\n}",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"olagiddz@gmail.com\",\n  \"password\": \"{{password}}\",\n  \"phone\": \"+2348012345678\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -40440,7 +40428,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"dryRun\": true,\n  \"limit\": 25,\n  \"storeId\": \"{{storeId}}\",\n  \"retryFailed\": false,\n  \"force\": false\n}"
+              "raw": "{\n  \"dryRun\": true,\n  \"limit\": 25,\n  \"storeId\": {{storeId}},\n  \"retryFailed\": false,\n  \"force\": false\n}"
             },
             "description": "Admin-only seller payout-profile import. Start with dryRun=true. force=true may replace stored BudPay identifiers."
           },
@@ -40869,7 +40857,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": \"{{cartItemId}}\",\n        \"productId\": \"{{productId}}\",\n        \"variantId\": \"{{variantId}}\",\n        \"storeId\": \"{{storeId}}\",\n        \"quantity\": \"{{orderQuantity}}\"\n      }\n    ],\n    \"payment\": {\n      \"type\": \"budpay\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": \"{{addressId}}\"\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
+              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": {{cartItemId}},\n        \"productId\": {{productId}},\n        \"variantId\": {{variantId}},\n        \"storeId\": {{storeId}},\n        \"quantity\": {{orderQuantity}}\n      }\n    ],\n    \"payment\": {\n      \"type\": \"budpay\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": {{addressId}}\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
             },
             "description": "Authenticated BudPay checkout using the same order_payload contract as Paystack."
           },
@@ -40968,7 +40956,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": \"{{productId}}\",\n      \"store_id\": \"{{storeId}}\",\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": \"{{stateId}}\",\n      \"country\": \"Nigeria\",\n      \"country_id\": \"{{countryId}}\"\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": \"{{productId}}\",\n        \"store_id\": \"{{storeId}}\",\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"budpay\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
+              "raw": "{\n  \"payment_provider\": \"budpay\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": {{productId}},\n      \"store_id\": {{storeId}},\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": {{stateId}},\n      \"country\": \"Nigeria\",\n      \"country_id\": {{countryId}}\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": {{productId}},\n        \"store_id\": {{storeId}},\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"budpay\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
             },
             "description": "Guest BudPay checkout using the same request contract as Paystack."
           },
@@ -41443,6 +41431,789 @@
               }
             }
           ]
+        },
+        {
+          "name": "POST /budpay/verify-guest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/budpay/verify-guest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "budpay",
+                "verify-guest"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\",\n  \"guest_email\": \"{{guestEmail}}\"\n}"
+            },
+            "description": "Public guest verification guarded by the stored checkout email."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const budpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  const importResult = results[0] || (Array.isArray(data?.stores) ? data.stores[0] : null) || first;",
+                  "  setIf('paymentReference', budpayReference);",
+                  "  setIf('reconcileReference', budpayReference);",
+                  "  setIf('budpayAccessCode', data?.access_code || json?.access_code);",
+                  "  setIf('budpayCustomerId', importResult?.budpay?.customer_id || importResult?.budpay_customer_id || data?.customer?.id);",
+                  "  setIf('budpayVirtualAccountId', importResult?.budpay?.virtual_account_id || importResult?.budpay_virtual_account_id);",
+                  "  setIf('budpayAccountNumber', importResult?.budpay?.account_number || importResult?.budpay_account_number);",
+                  "  setIf('budpayImportStatus', importResult?.result || importResult?.status || data?.status || json?.status);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PALMPAY",
+      "item": [
+        {
+          "name": "POST /palmpay/initialize",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/palmpay/initialize",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "palmpay",
+                "initialize"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_provider\": \"palmpay\",\n  \"email\": \"{{userEmail}}\",\n  \"amount\": 500000,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"metadata\": {\n    \"source\": \"postman\"\n  }\n}"
+            },
+            "description": "Initialize a direct PalmPay Checkout transaction. Amount is in kobo."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', palmpayReference);",
+                  "  setIf('reconcileReference', palmpayReference);",
+                  "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /palmpay/initialize-checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/palmpay/initialize-checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "palmpay",
+                "initialize-checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_provider\": \"palmpay\",\n  \"order_payload\": {\n    \"cart\": [\n      {\n        \"id\": {{cartItemId}},\n        \"productId\": {{productId}},\n        \"variantId\": {{variantId}},\n        \"storeId\": {{storeId}},\n        \"quantity\": {{orderQuantity}}\n      }\n    ],\n    \"payment\": {\n      \"type\": \"palmpay\",\n      \"callback_url\": \"{{callbackUrl}}\"\n    },\n    \"address\": {\n      \"id\": {{addressId}}\n    },\n    \"charges\": {\n      \"token\": \"{{deliveryToken}}\"\n    }\n  },\n  \"callback_url\": \"{{callbackUrl}}\"\n}"
+            },
+            "description": "Authenticated PalmPay checkout. The backend calculates the amount and the signed webhook creates the orders."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', palmpayReference);",
+                  "  setIf('reconcileReference', palmpayReference);",
+                  "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /palmpay/initialize-guest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/palmpay/initialize-guest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "palmpay",
+                "initialize-guest"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_provider\": \"palmpay\",\n  \"guest_info\": {\n    \"email\": \"{{guestEmail}}\",\n    \"first_name\": \"Guest\",\n    \"last_name\": \"Buyer\",\n    \"phone\": \"08000000000\"\n  },\n  \"cart_items\": [\n    {\n      \"product_id\": {{productId}},\n      \"store_id\": {{storeId}},\n      \"quantity\": 1,\n      \"unit_price\": 500000\n    }\n  ],\n  \"amount\": 500000,\n  \"delivery_charge\": 0,\n  \"currency\": \"NGN\",\n  \"callback_url\": \"{{callbackUrl}}\",\n  \"order_payload\": {\n    \"guest_info\": {\n      \"email\": \"{{guestEmail}}\",\n      \"first_name\": \"Guest\",\n      \"last_name\": \"Buyer\",\n      \"phone\": \"08000000000\"\n    },\n    \"delivery_address\": {\n      \"id\": \"guest_address_001\",\n      \"full_name\": \"Guest Buyer\",\n      \"phone_no\": \"08000000000\",\n      \"full_address\": \"12 Test Street, Ikeja, Lagos\",\n      \"city\": \"Ikeja\",\n      \"state\": \"Lagos\",\n      \"state_id\": {{stateId}},\n      \"country\": \"Nigeria\",\n      \"country_id\": {{countryId}}\n    },\n    \"cart_items\": [\n      {\n        \"product_id\": {{productId}},\n        \"store_id\": {{storeId}},\n        \"product_name\": \"{{productName}}\",\n        \"quantity\": 1,\n        \"unit_price\": 500000,\n        \"total_price\": 500000\n      }\n    ],\n    \"payment\": {\n      \"payment_method\": \"palmpay\",\n      \"payment_status\": \"pending\"\n    },\n    \"delivery\": {\n      \"delivery_token\": \"{{deliveryToken}}\"\n    },\n    \"order_summary\": {\n      \"subtotal\": 5000,\n      \"delivery_fee\": 0,\n      \"discount\": 0,\n      \"tax\": 0,\n      \"total\": 5000\n    }\n  }\n}"
+            },
+            "description": "Guest PalmPay checkout. Run calculate_delivery/public first and provide its delivery token."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', palmpayReference);",
+                  "  setIf('reconcileReference', palmpayReference);",
+                  "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /palmpay/verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/palmpay/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "palmpay",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\"\n}"
+            },
+            "description": "Server-query PalmPay by merchant order reference and validate the stored checkout amount."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', palmpayReference);",
+                  "  setIf('reconcileReference', palmpayReference);",
+                  "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /palmpay/verify",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{authToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/palmpay/verify?reference={{paymentReference}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "palmpay",
+                "verify"
+              ],
+              "query": [
+                {
+                  "key": "reference",
+                  "value": "{{paymentReference}}"
+                }
+              ]
+            },
+            "description": "Server-query PalmPay using the paymentReference collection variable."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', palmpayReference);",
+                  "  setIf('reconcileReference', palmpayReference);",
+                  "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /palmpay/verify-guest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/palmpay/verify-guest",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "palmpay",
+                "verify-guest"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reference\": \"{{paymentReference}}\",\n  \"guest_email\": \"{{guestEmail}}\"\n}"
+            },
+            "description": "Public guest verification guarded by the stored checkout email."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', palmpayReference);",
+                  "  setIf('reconcileReference', palmpayReference);",
+                  "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /palmpay/webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/palmpay/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "palmpay",
+                "webhook"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{paymentReference}}\",\n  \"orderNo\": \"{{palmpayOrderNo}}\",\n  \"appId\": \"PALMPAY_APP_ID\",\n  \"currency\": \"NGN\",\n  \"amount\": 500000,\n  \"orderStatus\": 2,\n  \"completeTime\": 1784585743068,\n  \"sign\": \"SIGNATURE_FROM_PALMPAY\"\n}"
+            },
+            "description": "PalmPay provider callback. A hand-written payload will fail unless sign is a real PalmPay RSA signature; successful processing returns plain text success."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = null;",
+                  "try {",
+                  "  json = pm.response.json();",
+                  "} catch (error) {",
+                  "  console.log('Response is not valid JSON', error);",
+                  "}",
+                  "if (json) {",
+                  "  const setIf = (key, value) => {",
+                  "    if (value !== undefined && value !== null && value !== '') {",
+                  "      const normalized = String(value);",
+                  "      pm.collectionVariables.set(key, normalized);",
+                  "      if (pm.environment) {",
+                  "        pm.environment.set(key, normalized);",
+                  "      }",
+                  "    }",
+                  "  };",
+                  "  const unsetVar = (key) => {",
+                  "    pm.collectionVariables.unset(key);",
+                  "    if (pm.environment) {",
+                  "      pm.environment.unset(key);",
+                  "    }",
+                  "  };",
+                  "  const decodeJwtPayload = (token) => {",
+                  "    try {",
+                  "      if (!token || String(token).split('.').length < 2) return null;",
+                  "      let payload = String(token).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "      while (payload.length % 4) payload += '=';",
+                  "      return JSON.parse(atob(payload));",
+                  "    } catch (error) {",
+                  "      console.log('Unable to decode JWT payload', error);",
+                  "      return null;",
+                  "    }",
+                  "  };",
+                  "  const data = json?.data ?? json;",
+                  "  const rows = Array.isArray(data?.rows) ? data.rows : [];",
+                  "  const results = Array.isArray(data?.results) ? data.results : [];",
+                  "  const nestedList = Array.isArray(data?.data) ? data.data : [];",
+                  "  const list = Array.isArray(data) ? data : (rows.length ? rows : (results.length ? results : nestedList));",
+                  "  const first = list[0] || data?.newOrder || data?.order || data?.store || data?.product || data?.user || data || {};",
+                  "  const order = first?.newOrder || first?.order || data?.newOrder || data?.order || null;",
+                  "  const payment = order?.payment || order?.orderPayment || first?.payment || data?.payment || data?.orderPayment || null;",
+                  "  const store = first?.store || first?.storeDetails || data?.store || data?.storeDetails || null;",
+                  "  const user = data?.user || first?.user || first;",
+                  "  const product = first?.product || data?.product || first;",
+                  "  const address = first?.address || data?.address || first;",
+                  "  const category = first?.category || data?.category || first;",
+                  "  const subCategory = first?.subCategory || first?.subcategory || data?.subCategory || data?.subcategory || first;",
+                  "  const enquiry = data?.enquiry || first?.enquiry || first;",
+                  "  const firstVariant = Array.isArray(product?.variants) ? product.variants[0] : (Array.isArray(first?.variants) ? first.variants[0] : null);",
+                  "  const reconcile = results.find((entry) => entry?.action === 'missing' || entry?.action === 'failed' || entry?.action === 'skipped') || results[0] || null;",
+                  "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+                  "  setIf('paymentReference', palmpayReference);",
+                  "  setIf('reconcileReference', palmpayReference);",
+                  "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+                  "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
+                  "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
@@ -41450,7 +42221,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:8000",
+      "value": "https://dev-backend.alabamarketplace.ng",
       "type": "string",
       "enabled": true
     },
@@ -41841,7 +42612,7 @@
     {
       "id": "password",
       "key": "password",
-      "value": "Options123#",
+      "value": "Options123@",
       "type": "string",
       "enabled": true
     },
@@ -42018,6 +42789,13 @@
       "key": "managedStatus",
       "type": "boolean",
       "value": "true",
+      "enabled": true
+    },
+    {
+      "id": "palmpayOrderNo",
+      "key": "palmpayOrderNo",
+      "type": "string",
+      "value": "",
       "enabled": true
     }
   ]

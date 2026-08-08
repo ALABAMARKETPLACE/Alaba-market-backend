@@ -51,6 +51,72 @@ export class OrderService {
     private readonly guestCheckoutRepository: typeof GuestCheckout,
   ) {}
 
+  private getPublicCheckoutStatus(checkout: GuestCheckout): string {
+    const checkoutStatus = String(checkout?.status || "").toLowerCase();
+    const paymentStatus = String(checkout?.payment_status || "").toLowerCase();
+
+    if (checkoutStatus === "completed") {
+      return "confirmed";
+    }
+
+    if (paymentStatus === "success") {
+      return "processing";
+    }
+
+    if (paymentStatus === "failed" || checkoutStatus === "failed") {
+      return "payment_failed";
+    }
+
+    if (paymentStatus === "cancelled" || checkoutStatus === "cancelled") {
+      return "cancelled";
+    }
+
+    return "payment_pending";
+  }
+
+  private getPublicCheckoutMessage(checkout: GuestCheckout): string {
+    const status = this.getPublicCheckoutStatus(checkout);
+
+    if (status === "processing") {
+      return "Payment received. Your order is being confirmed.";
+    }
+
+    if (status === "payment_failed") {
+      return "Payment failed. Please try again.";
+    }
+
+    if (status === "cancelled") {
+      return "Payment was cancelled.";
+    }
+
+    if (status === "confirmed") {
+      return "Order confirmed.";
+    }
+
+    return "Payment is pending. Complete payment to confirm your order.";
+  }
+
+  private formatGuestCheckoutAddress(payload: any): string | null {
+    const address = payload?.delivery_address || {};
+    return [
+      address.full_address,
+      address.city,
+      address.state,
+      address.country,
+    ]
+      .filter(Boolean)
+      .join(", ") || null;
+  }
+
+  private getGuestCheckoutItemCount(payload: any): number {
+    return Array.isArray(payload?.cart_items) ? payload.cart_items.length : 0;
+  }
+
+  private getGuestCheckoutTotalAmount(checkout: GuestCheckout): number | null {
+    const amountKobo = Number(checkout?.amount_kobo);
+    return Number.isFinite(amountKobo) ? amountKobo / 100 : null;
+  }
+
   includeModals: any[] = [
     {
       model: OrderStatus,
@@ -1009,24 +1075,20 @@ export class OrderService {
       });
 
       if (guestCheckout) {
-        const isPending =
-          String(guestCheckout.payment_status).toLowerCase() === "success" &&
-          String(guestCheckout.status).toLowerCase() !== "completed";
+        const payload = guestCheckout.payload || {};
 
         return new DataResponseDto(
           {
             reference,
-            order_status: isPending ? "pending" : guestCheckout.status,
-            items_count: 0,
-            total_amount: null,
-            delivery_address: null,
+            order_status: this.getPublicCheckoutStatus(guestCheckout),
+            items_count: this.getGuestCheckoutItemCount(payload),
+            total_amount: this.getGuestCheckoutTotalAmount(guestCheckout),
+            delivery_address: this.formatGuestCheckoutAddress(payload),
             estimated_delivery: null,
             tracking_updates: [],
           },
           true,
-          isPending
-            ? "Payment received, confirming your order"
-            : "Order is being processed",
+          this.getPublicCheckoutMessage(guestCheckout),
         );
       }
 

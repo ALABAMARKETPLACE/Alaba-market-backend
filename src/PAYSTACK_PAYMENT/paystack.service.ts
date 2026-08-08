@@ -57,9 +57,12 @@ import {
   PaystackAccountType,
   resolveStoreSubaccountSelection,
 } from "../shared/helpers/paystack-subaccount.helper";
+
 import { OrderItems } from "../ORDER_ITEMS/order_items.entity";
 import computeSplit from "../shared/helpers/computeSplit";
 import { getErrorMessage } from "../shared/helpers/errormessage";
+
+type CheckoutPaymentProvider = "paystack" | "budpay" | "palmpay";
 
 @Injectable()
 export class PaystackService {
@@ -653,7 +656,9 @@ export class PaystackService {
       currency: "NGN",
       reference,
       callback_url:
-        initData.callback_url || `${process.env.FRONTEND_URL}/payment/callback`,
+        initData.callback_url ||
+        initData.order_payload?.payment?.callback_url ||
+        `${process.env.FRONTEND_URL}/payment/callback`,
       metadata: {
         ...initData.metadata,
         checkout_type: "authenticated_order",
@@ -2302,7 +2307,7 @@ export class PaystackService {
   async finalizePaymentTransaction(
     paymentData: any,
     paymentStatus: "success" | "failed",
-    provider: "paystack" | "budpay" = "paystack",
+    provider: CheckoutPaymentProvider = "paystack",
   ): Promise<void> {
     const reference = paymentData?.reference;
 
@@ -2493,7 +2498,7 @@ export class PaystackService {
     reference: string,
     paymentData: any,
     transaction: Transaction,
-    provider: "paystack" | "budpay",
+    provider: CheckoutPaymentProvider,
   ): Promise<OrderPayments> {
     const settlementMetadata = await this.buildSettlementAuditMetadata(
       order,
@@ -2549,7 +2554,7 @@ export class PaystackService {
     order: Order,
     paymentData: any,
     transaction: Transaction,
-    provider: "paystack" | "budpay",
+    provider: CheckoutPaymentProvider,
   ): Promise<{
     collection_mode: string;
     paystack_account_used: string;
@@ -2557,14 +2562,15 @@ export class PaystackService {
     manual_settlement_reason: string | null;
   }> {
     const metadata = paymentData?.metadata || {};
-    if (provider === "budpay") {
+    if (provider !== "paystack") {
+      const providerName = provider === "budpay" ? "BudPay" : "PalmPay";
       return {
         collection_mode:
           metadata.collection_mode || "company_account_no_subaccount",
         paystack_account_used: null,
         requires_manual_settlement: true,
         manual_settlement_reason:
-          "Funds were collected through BudPay without a Paystack subaccount split, so seller settlement requires the configured non-Paystack settlement flow.",
+          `Funds were collected through ${providerName} without a Paystack subaccount split, so seller settlement requires the configured non-Paystack settlement flow.`,
       };
     }
     const store = await this.storeRepository.findByPk(order.storeId, {
@@ -2623,9 +2629,14 @@ export class PaystackService {
 
   private getOrderStatusRemark(
     paymentStatus: "success" | "failed",
-    provider: "paystack" | "budpay",
+    provider: CheckoutPaymentProvider,
   ): string {
-    const providerName = provider === "budpay" ? "BudPay" : "Paystack";
+    const providerName =
+      provider === "budpay"
+        ? "BudPay"
+        : provider === "palmpay"
+        ? "PalmPay"
+        : "Paystack";
     return paymentStatus === "success"
       ? `Payment confirmed via ${providerName} webhook.`
       : `Payment failed via ${providerName} webhook.`;
@@ -3058,7 +3069,7 @@ export class PaystackService {
   private buildGuestOrderPayload(
     payload: CreateGuestOrderDto,
     reference: string,
-    provider: "paystack" | "budpay" = "paystack",
+    provider: CheckoutPaymentProvider = "paystack",
   ): CreateGuestOrderDto {
     return {
       ...payload,
@@ -3077,7 +3088,7 @@ export class PaystackService {
   private buildAuthenticatedOrderPayload(
     payload: CreateOrderDto,
     reference: string,
-    provider: "paystack" | "budpay" = "paystack",
+    provider: CheckoutPaymentProvider = "paystack",
   ): CreateOrderDto {
     return {
       ...payload,
@@ -3087,6 +3098,8 @@ export class PaystackService {
         type:
           provider === "budpay"
             ? PaymentTypeEnum.BudPay
+            : provider === "palmpay"
+            ? PaymentTypeEnum.PalmPay
             : payload?.payment?.type || PaymentTypeEnum.Paystack,
       },
     };
@@ -3096,7 +3109,7 @@ export class PaystackService {
     reference: string,
     guestData: PaystackGuestInitializeDto,
     amountInKobo: number,
-    provider: "paystack" | "budpay" = "paystack",
+    provider: CheckoutPaymentProvider = "paystack",
   ) {
     const payload = guestData.order_payload
       ? this.buildGuestOrderPayload(
@@ -3130,7 +3143,7 @@ export class PaystackService {
         discount: number;
       }>;
     },
-    provider: "paystack" | "budpay" = "paystack",
+    provider: CheckoutPaymentProvider = "paystack",
   ) {
     await this.userCheckoutRepository.create({
       reference,

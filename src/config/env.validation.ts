@@ -35,8 +35,41 @@ const envSchema = Joi.object({
     .uri({ allowRelative: false })
     .default("https://api.budpay.com/api/v2"),
   BUDPAY_WEBHOOK_SECRET: Joi.string().trim().optional().allow(""),
+  PALMPAY_ENV: Joi.string().valid("sandbox", "production").default("sandbox"),
+  PALMPAY_BASE_URL: Joi.string()
+    .uri({ allowRelative: false })
+    .optional()
+    .allow(""),
+  PALMPAY_APP_ID: Joi.string().trim().optional().allow(""),
+  PALMPAY_MERCHANT_PRIVATE_KEY: Joi.string().trim().optional().allow(""),
+  PALMPAY_MERCHANT_PRIVATE_KEY_BASE64: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
+  PALMPAY_MERCHANT_PRIVATE_KEY_FILE: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
+  PALMPAY_PLATFORM_PUBLIC_KEY: Joi.string().trim().optional().allow(""),
+  PALMPAY_PLATFORM_PUBLIC_KEY_BASE64: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
+  PALMPAY_PLATFORM_PUBLIC_KEY_FILE: Joi.string()
+    .trim()
+    .optional()
+    .allow(""),
+  PALMPAY_COUNTRY_CODE: Joi.string().trim().length(2).default("NG"),
+  PALMPAY_NOTIFY_URL: Joi.string()
+    .uri({ allowRelative: false })
+    .optional()
+    .allow(""),
+  PALMPAY_CALLBACK_URL: Joi.string()
+    .uri({ allowRelative: false })
+    .optional()
+    .allow(""),
   PAYMENT_PROVIDER: Joi.string()
-    .valid("paystack", "budpay")
+    .valid("paystack", "budpay", "palmpay")
     .default("paystack"),
   SPLIT_PROVIDER: Joi.string()
     .valid("paystack", "budpay")
@@ -76,6 +109,12 @@ export function validateEnvironment(): ValidationResult {
   if (!process.env.FRONTEND_URL) {
     warnings.push(
       "FRONTEND_URL is not set; Paystack callback URLs will use service defaults.",
+    );
+  }
+
+  if (process.env.PALMPAY_APP_ID && !process.env.PALMPAY_NOTIFY_URL) {
+    warnings.push(
+      "PALMPAY_NOTIFY_URL is not set; PalmPay checkout initialization will fail.",
     );
   }
 

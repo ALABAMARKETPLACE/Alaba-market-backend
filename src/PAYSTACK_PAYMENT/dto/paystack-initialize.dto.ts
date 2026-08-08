@@ -17,21 +17,21 @@ export class PaystackInitializeDto {
   @ApiProperty({
     description:
       "Optional payment provider selector. Missing values remain Paystack for backward compatibility.",
-    enum: ["paystack", "budpay"],
+    enum: ["paystack", "budpay", "palmpay"],
     required: false,
   })
   @IsOptional()
-  @IsIn(["paystack", "budpay"])
-  payment_provider?: "paystack" | "budpay";
+  @IsIn(["paystack", "budpay", "palmpay"])
+  payment_provider?: "paystack" | "budpay" | "palmpay";
 
   @ApiProperty({
     description: "Alias for payment_provider.",
-    enum: ["paystack", "budpay"],
+    enum: ["paystack", "budpay", "palmpay"],
     required: false,
   })
   @IsOptional()
-  @IsIn(["paystack", "budpay"])
-  payment_channel?: "paystack" | "budpay";
+  @IsIn(["paystack", "budpay", "palmpay"])
+  payment_channel?: "paystack" | "budpay" | "palmpay";
 
   @ApiProperty({ description: "Customer email address" })
   @IsEmail()

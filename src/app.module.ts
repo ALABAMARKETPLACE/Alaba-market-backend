@@ -74,6 +74,7 @@ import { DeliveryCompanyModule } from "./DELIVERY_COMPANY/delivery_company.modul
 import { NewsAndBlogsModule } from "./NEWS_AND_BLOGS/newsandblogs.module";
 import { MarketplaceFeedModule } from "./MARKETPLACE_FEED/marketplace-feed.module";
 import { BudPayModule } from "./BUDPAY_PAYMENT/budpay.module";
+import { PalmPayModule } from "./PALMPAY_PAYMENT/palmpay.module";
 import { LoggingModule } from "./shared/logger/logging.module";
 
 
@@ -153,6 +154,7 @@ import { LoggingModule } from "./shared/logger/logging.module";
     PrintStatusModule,
     PaystackModule,
     BudPayModule,
+    PalmPayModule,
     PaystackSubaccountModule,
     CountriesModule,
     NewDistanceChargeModule,

@@ -16,7 +16,7 @@ class PaymentDto {
   @ApiProperty({
     enum: PaymentTypeEnum,
     description:
-      "Payment provider/type. Server-side hosted checkout is supported for Paystack and BudPay.",
+      "Payment provider/type. Server-side hosted checkout is supported for Paystack, BudPay, and PalmPay.",
   })
   @IsEnum(PaymentTypeEnum)
   type: PaymentTypeEnum;

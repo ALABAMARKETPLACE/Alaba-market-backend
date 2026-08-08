@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { HttpService } from "@nestjs/axios";
 import { InjectModel } from "@nestjs/sequelize";
+import { JwtService } from "@nestjs/jwt";
 import * as crypto from "crypto";
 import { catchError, firstValueFrom, map } from "rxjs";
 
@@ -21,6 +22,7 @@ import { PaystackInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-initiali
 import { PaystackUserInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-user-initialize.dto";
 import { PaystackGuestInitializeDto } from "../PAYSTACK_PAYMENT/dto/paystack-guest-initialize.dto";
 import { OrderPlaceService } from "../ORDER/order.place";
+import { GuestOrderService } from "../ORDER/guest-order.service";
 import { BudPayVerifyDto } from "./dto/budpay-verify.dto";
 import { BudPayWebhookDto } from "./dto/budpay-webhook.dto";
 import { Store } from "../STORE/store.entity";
@@ -47,7 +49,22 @@ export class BudPayService {
     private readonly orderPlaceService: OrderPlaceService,
     @Inject(forwardRef(() => PaystackService))
     private readonly paystackService: PaystackService,
+    @Inject(forwardRef(() => GuestOrderService))
+    private readonly guestOrderService: GuestOrderService,
+    private readonly jwtService: JwtService,
   ) {}
+
+  private assertNotProduction(): void {
+    if (process.env.NODE_ENV === "production") {
+      throw new HttpException(
+        {
+          status: false,
+          message: "BudPay payments are coming soon. Please use Paystack or PalmPay to complete your purchase.",
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
 
   private get baseUrl(): string {
     return this.budPayAccountConfigService.getBaseUrl();
@@ -63,6 +80,52 @@ export class BudPayService {
 
   private generateReference(prefix = "budpay"): string {
     return `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  }
+
+  private isPublicHttpsUrl(value?: string): boolean {
+    if (!value) {
+      return false;
+    }
+
+    try {
+      const url = new URL(value);
+      return (
+        url.protocol === "https:" &&
+        !["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private resolveCallbackUrl(rawCallback?: string): string {
+    const callback = rawCallback?.trim();
+    if (callback) {
+      return callback;
+    }
+
+    const fallbackBase = [
+      process.env.BUDPAY_CALLBACK_URL,
+      process.env.FRONTEND_URL,
+      "https://dev.alabamarketplace.ng",
+    ].find((value) => this.isPublicHttpsUrl(value));
+
+    if (!fallbackBase) {
+      return "https://dev.alabamarketplace.ng/payment/callback";
+    }
+
+    const baseUrl = new URL(fallbackBase);
+    baseUrl.pathname = "/payment/callback";
+    baseUrl.search = "";
+
+    return baseUrl.toString();
+  }
+
+  private formatKoboAsNaira(amountKobo: number): string {
+    return (amountKobo / 100)
+      .toFixed(2)
+      .replace(/\.00$/, "")
+      .replace(/(\.\d)0$/, "$1");
   }
 
   private async assertBudPaySellerProfiles(storeIds: number[]): Promise<void> {
@@ -105,18 +168,16 @@ export class BudPayService {
     reference?: string;
     callback_url?: string;
   }): Promise<any> {
-    const amount = Math.round(Number(input.amount));
-    if (!Number.isFinite(amount) || amount < 100) {
+    const amountKobo = Math.round(Number(input.amount));
+    if (!Number.isFinite(amountKobo) || amountKobo < 100) {
       throw new BadRequestException("Amount must be at least 100 kobo");
     }
 
     const reference = input.reference || this.generateReference();
-    const callback =
-      input.callback_url ||
-      `${process.env.FRONTEND_URL || ""}/payment/callback`;
+    const callback = this.resolveCallbackUrl(input.callback_url);
     const payload = {
       email: input.email,
-      amount,
+      amount: this.formatKoboAsNaira(amountKobo),
       currency: input.currency || "NGN",
       reference,
       callback,
@@ -154,6 +215,7 @@ export class BudPayService {
   }
 
   async initializePayment(initData: PaystackInitializeDto): Promise<any> {
+    this.assertNotProduction();
     const data = await this.initializeTransaction(initData);
     return {
       status: true,
@@ -169,6 +231,7 @@ export class BudPayService {
     userId: number,
     initData: PaystackUserInitializeDto,
   ): Promise<any> {
+    this.assertNotProduction();
     const user = await this.userRepository.findByPk(userId);
     if (!user?.email) {
       throw new BadRequestException("Authenticated user not found");
@@ -186,7 +249,8 @@ export class BudPayService {
       amount: preparedCheckout.amount_kobo,
       currency: "NGN",
       reference,
-      callback_url: initData.callback_url,
+      callback_url:
+        initData.callback_url || initData.order_payload?.payment?.callback_url,
     });
 
     await this.paystackService.persistUserCheckoutInitialization(
@@ -210,10 +274,46 @@ export class BudPayService {
   async initializeGuestPayment(
     guestData: PaystackGuestInitializeDto,
   ): Promise<any> {
+    this.assertNotProduction();
+    // The client's amount/delivery_charge/unit_price fields are never trusted for
+    // what we actually charge — recompute from the DB and the signed delivery
+    // token, same as the Paystack guest checkout path.
+    const deliveryToken =
+      guestData.order_payload?.delivery?.delivery_token ||
+      (guestData.metadata as any)?.delivery?.delivery_token ||
+      (guestData.metadata as any)?.delivery_token;
+    if (!deliveryToken) {
+      throw new BadRequestException(
+        "Delivery charge token is required. Please recalculate delivery.",
+      );
+    }
+
+    let verifiedDelivery: any;
+    try {
+      verifiedDelivery = await this.jwtService.verifyAsync(deliveryToken);
+    } catch {
+      throw new BadRequestException(
+        "Invalid or expired delivery token. Please recalculate delivery.",
+      );
+    }
+
+    if (!verifiedDelivery?.data || verifiedDelivery.data.isGuest !== true) {
+      throw new BadRequestException("Invalid guest delivery token.");
+    }
+
+    const subtotalNaira =
+      await this.guestOrderService.calculateGuestCartSubtotalNaira(
+        guestData.cart_items,
+      );
+    const deliveryNaira = Number(verifiedDelivery.data.amount || 0);
+    const taxNaira = Number(verifiedDelivery.data.tax || 0);
+    const discountNaira = Number(verifiedDelivery.data.discount || 0);
+    const amountInKobo = Math.round(
+      Math.max(subtotalNaira + deliveryNaira + taxNaira - discountNaira, 0) *
+        100,
+    );
+
     const reference = this.generateReference("budpay_guest");
-    const amountInKobo =
-      Math.round(Number(guestData.amount)) +
-      Math.round(Number(guestData.delivery_charge));
     await this.assertBudPaySellerProfiles(
       guestData.cart_items
         .map((item) => Number(item.store_id))
@@ -246,12 +346,26 @@ export class BudPayService {
     };
   }
 
-  private normalizeAmount(data: any): number {
+  private normalizeAmount(data: any, expectedAmountKobo?: number): number {
     const amount = Number(data?.requested_amount ?? data?.amount);
     if (!Number.isFinite(amount)) {
       throw new BadRequestException("BudPay returned an invalid amount");
     }
-    return Math.round(amount);
+
+    const asKobo = Math.round(amount * 100);
+    const asLegacyKobo = Math.round(amount);
+
+    if (Number.isFinite(expectedAmountKobo)) {
+      if (asKobo === Math.round(expectedAmountKobo)) {
+        return asKobo;
+      }
+
+      if (asLegacyKobo === Math.round(expectedAmountKobo)) {
+        return asLegacyKobo;
+      }
+    }
+
+    return asKobo;
   }
 
   private async getExpectedCheckout(reference: string): Promise<{
@@ -306,10 +420,15 @@ export class BudPayService {
   private async assertCheckoutMatches(
     reference: string,
     data: any,
-  ): Promise<number> {
+  ): Promise<{ verifiedAmount: number; customerEmail: string }> {
     const expectedCheckout = await this.getExpectedCheckout(reference);
-    const verifiedAmount = this.normalizeAmount(data);
-    const customerEmail = String(data?.customer?.email || "")
+    const verifiedAmount = this.normalizeAmount(
+      data,
+      expectedCheckout?.amount_kobo,
+    );
+    const customerEmail = String(
+      data?.customer?.email || data?.customer_email || data?.email || "",
+    )
       .trim()
       .toLowerCase();
 
@@ -322,12 +441,17 @@ export class BudPayService {
 
     if (
       expectedCheckout?.email &&
+      customerEmail &&
       customerEmail !== expectedCheckout.email.trim().toLowerCase()
     ) {
       throw new BadRequestException("Payment email mismatch");
     }
 
-    return verifiedAmount;
+    return {
+      verifiedAmount,
+      customerEmail:
+        customerEmail || expectedCheckout?.email?.trim().toLowerCase() || "",
+    };
   }
 
   async verifyPayment(verifyData: BudPayVerifyDto): Promise<any> {
@@ -341,13 +465,10 @@ export class BudPayService {
       );
     }
 
-    const verifiedAmount = await this.assertCheckoutMatches(
+    const { verifiedAmount, customerEmail } = await this.assertCheckoutMatches(
       verifyData.reference,
       response.data,
     );
-    const customerEmail = String(response.data?.customer?.email || "")
-      .trim()
-      .toLowerCase();
 
     return {
       ...response,
@@ -364,6 +485,31 @@ export class BudPayService {
   }
 
   async verifyPaymentByReference(reference: string): Promise<any> {
+    return this.verifyPayment({ reference });
+  }
+
+  async verifyGuestPayment(
+    reference: string,
+    guestEmail: string,
+  ): Promise<any> {
+    const checkout = await this.guestCheckoutRepository.findOne({
+      where: { reference },
+    });
+    const storedEmail = checkout?.guest_email?.trim().toLowerCase();
+    const providedEmail = guestEmail?.trim().toLowerCase();
+    const paymentProvider = String(
+      checkout?.payload?.payment?.payment_method || "",
+    ).toLowerCase();
+
+    if (
+      !checkout ||
+      !storedEmail ||
+      storedEmail !== providedEmail ||
+      (paymentProvider && paymentProvider !== "budpay")
+    ) {
+      throw new BadRequestException("Guest checkout details do not match");
+    }
+
     return this.verifyPayment({ reference });
   }
 

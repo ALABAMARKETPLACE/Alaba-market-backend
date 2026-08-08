@@ -98,6 +98,42 @@ ts-node -r tsconfig-paths/register src/main.ts
 This project uses the Nest swagger module for API documentation. [NestJS Swagger](https://github.com/nestjs/swagger) - [www.swagger.io](https://swagger.io/)  
 Swagger docs will be available at localhost:3000/documentation
 
+## PalmPay Checkout
+
+PalmPay uses signed server-to-server requests. Generate a 2048-bit RSA merchant
+key pair, upload only the merchant public key in the PalmPay portal, and keep the
+private key in the deployment secret store. `PALMPAY_PLATFORM_PUBLIC_KEY` is the
+separate PalmPay-provided key used to verify payment notifications.
+
+```env
+PALMPAY_ENV=sandbox
+PALMPAY_APP_ID=Lxxxxxxxx
+PALMPAY_MERCHANT_PRIVATE_KEY_FILE=.secrets/palmpay/merchant_private_key.pem
+PALMPAY_PLATFORM_PUBLIC_KEY_BASE64=<palmpay-public-key-body>
+PALMPAY_COUNTRY_CODE=NG
+PALMPAY_NOTIFY_URL=https://api.example.com/palmpay/webhook
+PALMPAY_CALLBACK_URL=https://frontend.example.com/payment/callback
+```
+
+`PALMPAY_NOTIFY_URL` must be the public backend webhook route. It is different
+from `PALMPAY_CALLBACK_URL`, which is only the browser redirect after checkout.
+
+```text
+POST /palmpay/initialize-checkout  authenticated checkout
+POST /palmpay/initialize-guest     guest checkout
+POST /palmpay/verify               authenticated verification
+GET  /palmpay/verify               authenticated verification by query
+POST /palmpay/verify-guest         guest verification with stored email
+POST /palmpay/webhook              PalmPay callback
+```
+
+The webhook verifies PalmPay's RSA signature, queries PalmPay independently,
+checks the stored amount and currency, and then uses the shared order finalizer.
+It returns exactly the plain-text response `success` after processing. PalmPay
+collections currently use the company account and are marked for the existing
+manual seller-settlement flow; native PalmPay Split Payments require seller
+PalmPay merchant IDs and separate product activation.
+
 ## BudPay seller payout profile import
 
 BudPay's documented API does not provide Paystack-style marketplace

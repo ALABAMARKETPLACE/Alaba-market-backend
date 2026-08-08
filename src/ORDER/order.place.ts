@@ -44,6 +44,7 @@ import { JwtService } from "@nestjs/jwt";
 import { PaystackService } from "../PAYSTACK_PAYMENT/paystack.service";
 import { PaymentTypeEnum } from "./dto/payment-type.enum";
 import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+import { PalmPayService } from "../PALMPAY_PAYMENT/palmpay.service";
 
 const appLog = createStructuredLogger("order_place");
 
@@ -62,6 +63,8 @@ export class OrderPlaceService {
     private readonly paystackService: PaystackService,
     @Inject(forwardRef(() => BudPayService))
     private readonly budPayService: BudPayService,
+    @Inject(forwardRef(() => PalmPayService))
+    private readonly palmPayService: PalmPayService,
     private readonly cartService: CartServices,
     private readonly notificationService: NotificationsService,
     private readonly mailService: MailService,
@@ -313,7 +316,15 @@ export class OrderPlaceService {
       let verified: any = options.verifiedChargesData;
 
       if (!options.skipDeliveryTokenVerification) {
-        verified = await this.jwtService.verifyAsync(data?.charges?.token);
+        try {
+          verified = await this.jwtService.verifyAsync(data?.charges?.token);
+        } catch (jwtErr) {
+          throw new BadRequestException(
+            jwtErr?.name === "TokenExpiredError"
+              ? "Delivery charge token has expired. Please recalculate your delivery charges and try again."
+              : "Invalid delivery charge token. Please recalculate your delivery charges and try again."
+          );
+        }
       }
 
       if (!verified || isNaN(Number(verified?.data?.amount))) {
@@ -368,6 +379,7 @@ export class OrderPlaceService {
     return [
       PaymentTypeEnum.Paystack,
       PaymentTypeEnum.BudPay,
+      PaymentTypeEnum.PalmPay,
       PaymentTypeEnum.Stripe,
       PaymentTypeEnum.Flutterwave,
     ].includes(paymentType as PaymentTypeEnum);
@@ -399,6 +411,17 @@ export class OrderPlaceService {
 
           return new DataResponseDto(result.data, true, result.message);
         }
+
+      case PaymentTypeEnum.PalmPay: {
+        const result =
+          await this.palmPayService.initializeAuthenticatedCheckout(userId, {
+            order_payload: data,
+            callback_url: data.payment.callback_url,
+            payment_provider: "palmpay",
+          });
+
+        return new DataResponseDto(result.data, true, result.message);
+      }
 
       case PaymentTypeEnum.Stripe:
       case PaymentTypeEnum.Flutterwave:
@@ -693,6 +716,25 @@ export class OrderPlaceService {
     paymentRef: string,
     grandTotal: number
   ) {
+    if (paymentRef.startsWith("PP")) {
+      const palmPayResponse: any = await this.palmPayService.verifyPayment(
+        paymentRef,
+      );
+      const amountInKobo = Number(palmPayResponse.data?.amount);
+      const expectedAmountInKobo = Math.round(grandTotal * 100);
+
+      return {
+        verified:
+          palmPayResponse.status && palmPayResponse.data?.status === "success",
+        status:
+          amountInKobo === expectedAmountInKobo ? "success" : "incomplete",
+        amount: amountInKobo,
+        currency: palmPayResponse.data?.currency,
+        email: palmPayResponse.data?.customer?.email,
+        gateway: "palmpay",
+      };
+    }
+
     if (paymentRef.startsWith("budpay_")) {
       const budPayResponse: any = await this.budPayService.verifyPayment({
         reference: paymentRef,
@@ -800,6 +842,7 @@ export class OrderPlaceService {
     switch (payment?.type) {
       case PaymentTypeEnum.Paystack:
       case PaymentTypeEnum.BudPay:
+      case PaymentTypeEnum.PalmPay:
       case PaymentTypeEnum.Stripe:
       case PaymentTypeEnum.Flutterwave:
         return "pay-online";

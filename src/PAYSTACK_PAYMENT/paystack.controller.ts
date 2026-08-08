@@ -19,6 +19,7 @@ import {
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -53,6 +54,7 @@ import { DiagnosePaystackTransactionDto } from "./dto/diagnose-paystack-transact
 import { ManualSettlementAuditDto } from "./dto/manual-settlement-audit.dto";
 import { SkipThrottle, Throttle } from "@nestjs/throttler";
 import { BudPayService } from "../BUDPAY_PAYMENT/budpay.service";
+import { PalmPayService } from "../PALMPAY_PAYMENT/palmpay.service";
 
 @Controller("paystack")
 @ApiTags("Paystack Payment")
@@ -63,18 +65,56 @@ export class PaystackController {
     private readonly paystackService: PaystackService,
     @Inject(forwardRef(() => BudPayService))
     private readonly budPayService: BudPayService,
+    @Inject(forwardRef(() => PalmPayService))
+    private readonly palmPayService: PalmPayService,
   ) {}
+
+  private resolveProvider(data: {
+    payment_provider?: string;
+    payment_channel?: string;
+  }): "paystack" | "budpay" | "palmpay" {
+    const provider = (
+      data.payment_provider ||
+      data.payment_channel ||
+      process.env.PAYMENT_PROVIDER ||
+      "paystack"
+    ).toLowerCase();
+    return provider === "budpay" || provider === "palmpay"
+      ? provider
+      : "paystack";
+  }
 
   private useBudPay(data: {
     payment_provider?: string;
     payment_channel?: string;
   }): boolean {
-    return (
-      data.payment_provider ||
-      data.payment_channel ||
-      process.env.PAYMENT_PROVIDER ||
-      "paystack"
-    ).toLowerCase() === "budpay";
+    return this.resolveProvider(data) === "budpay";
+  }
+
+  private usePalmPay(data: {
+    payment_provider?: string;
+    payment_channel?: string;
+  }): boolean {
+    return this.resolveProvider(data) === "palmpay";
+  }
+
+  private normalizeUserInitializeData(
+    data: PaystackUserInitializeDto & Record<string, any>,
+  ): PaystackUserInitializeDto {
+    if (data?.order_payload || !data?.cart) {
+      return data;
+    }
+
+    return {
+      ...data,
+      callback_url: data.callback_url || data.payment?.callback_url,
+      order_payload: {
+        cart: data.cart,
+        payment: data.payment,
+        address: data.address,
+        charges: data.charges,
+      },
+    };
   }
 
   @Post("initialize")
@@ -97,6 +137,9 @@ export class PaystackController {
     if (this.useBudPay(initData)) {
       return await this.budPayService.initializePayment(initData);
     }
+    if (this.usePalmPay(initData)) {
+      return await this.palmPayService.initializePayment(initData);
+    }
     return await this.paystackService.initializePayment(initData);
   }
 
@@ -109,20 +152,109 @@ export class PaystackController {
     summary:
       "Initialize a single Paystack checkout for a logged-in cart. The webhook finalizes one order per store.",
     description:
-      "Backend-driven checkout initializer. The backend validates the order payload, creates one Paystack transaction for the full cart, and the Paystack webhook creates the final per-store orders after successful payment.",
+      "Backend-driven checkout initializer. The backend validates the order payload, creates one Paystack transaction for the full cart, and the Paystack webhook creates the final per-store orders after successful payment.\n\n" +
+      "**charges.token** must come from a fresh call to `POST /calculate_delivery/new` (expires in 20 min).\n\n" +
+      "Use `payment_provider: \"budpay\"` or `\"palmpay\"` to route to a different gateway.",
   })
   @ApiOkResponse({
     description: "Checkout payment initialized successfully",
     type: PaystackInitializeResponseDto,
   })
+  @ApiBody({
+    type: PaystackUserInitializeDto,
+    examples: {
+      paystack: {
+        summary: "Paystack checkout",
+        value: {
+          payment_provider: "paystack",
+          callback_url: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+          order_payload: {
+            cart: [
+              {
+                id: 323,
+                productId: 13199,
+                variantId: null,
+                storeId: 4831,
+                quantity: 1,
+              },
+            ],
+            payment: {
+              type: "paystack",
+              callback_url:
+                "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+            },
+            address: { id: 171 },
+            charges: {
+              token: "<token from POST /calculate_delivery/new>",
+            },
+          },
+        },
+      },
+      budpay: {
+        summary: "BudPay checkout",
+        value: {
+          payment_provider: "budpay",
+          callback_url: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+          order_payload: {
+            cart: [
+              {
+                id: 323,
+                productId: 13199,
+                variantId: null,
+                storeId: 4831,
+                quantity: 1,
+              },
+            ],
+            payment: {
+              type: "budpay",
+              callback_url:
+                "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+            },
+            address: { id: 171 },
+            charges: {
+              token: "<token from POST /calculate_delivery/new>",
+            },
+          },
+        },
+      },
+      palmpay: {
+        summary: "PalmPay checkout",
+        value: {
+          payment_provider: "palmpay",
+          callback_url: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+          order_payload: {
+            cart: [
+              {
+                id: 323,
+                productId: 13199,
+                variantId: null,
+                storeId: 4831,
+                quantity: 1,
+              },
+            ],
+            payment: {
+              type: "palmpay",
+              callback_url:
+                "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+            },
+            address: { id: 171 },
+            charges: {
+              token: "<token from POST /calculate_delivery/new>",
+            },
+          },
+        },
+      },
+    },
+  })
   async initializeAuthenticatedCheckout(
     @UserId() userId: number,
     @Body() initData: PaystackUserInitializeDto,
   ): Promise<PaystackInitializeResponseDto> {
+    initData = this.normalizeUserInitializeData(initData);
     this.logger.log(
       {
         event: "checkout_initialization_requested",
-        gateway: this.useBudPay(initData) ? "budpay" : "paystack",
+        gateway: this.resolveProvider(initData),
         userId,
         storeIds: initData.order_payload?.cart?.map((item) => item.storeId),
       },
@@ -130,6 +262,12 @@ export class PaystackController {
     );
     if (this.useBudPay(initData)) {
       return await this.budPayService.initializeAuthenticatedCheckout(
+        userId,
+        initData,
+      );
+    }
+    if (this.usePalmPay(initData)) {
+      return await this.palmPayService.initializeAuthenticatedCheckout(
         userId,
         initData,
       );
@@ -149,10 +287,161 @@ export class PaystackController {
   @ApiOperation({
     summary: "Initialize Paystack payment for guest checkout",
     description:
-      "Returns a Paystack authorization URL for guest checkout. If order_payload is provided, the webhook can create guest orders without frontend verification.",
+      "Returns a Paystack authorization URL for guest checkout. If order_payload is provided, the webhook can create guest orders without frontend verification.\n\n" +
+      "**amount** and **delivery_charge** are in kobo (₦ × 100). Use `payment_provider: \"budpay\"` or `\"palmpay\"` to route to a different gateway through this same endpoint.\n\n" +
+      "**delivery_token** inside `order_payload.delivery` must come from a fresh call to `POST /calculate_delivery/public` (expires in 20 min).",
   })
   @ApiOkResponse({
     description: "Guest payment initialized successfully",
+  })
+  @ApiBody({
+    type: PaystackGuestInitializeDto,
+    examples: {
+      paystack: {
+        summary: "Paystack — single product",
+        value: {
+          payment_provider: "paystack",
+          guest_info: {
+            email: "buyer@example.com",
+            first_name: "Sunday",
+            last_name: "Ibiam",
+            phone: "07066026820",
+            country_code: "+234",
+          },
+          cart_items: [
+            {
+              product_id: 8068,
+              store_id: 3030,
+              variant_id: null,
+              quantity: 1,
+              unit_price: 3500,
+            },
+          ],
+          amount: 350000,
+          delivery_charge: 0,
+          currency: "NGN",
+          callback_url: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+          metadata: { order_notes: "", source: "web" },
+          order_payload: {
+            guest_info: {
+              email: "buyer@example.com",
+              first_name: "Sunday",
+              last_name: "Ibiam",
+              phone: "07066026820",
+              country_code: "+234",
+            },
+            delivery_address: {
+              id: "guest_1784064622512",
+              full_name: "Sunday Ibiam",
+              phone_no: "07066026820",
+              full_address: "Igando Lagos",
+              city: "Agege",
+              state: "Lagos State Mainland E",
+              state_id: 42,
+              country: "Nigeria",
+              country_id: 1,
+            },
+            cart_items: [
+              {
+                product_id: 8068,
+                store_id: 3030,
+                quantity: 1,
+                unit_price: 3500,
+                total_price: 3500,
+                product_name: "Track light cast 20w",
+                weight: 1,
+              },
+            ],
+            payment: {
+              payment_method: "paystack",
+              amount_paid: 3500,
+              payment_status: "pending",
+            },
+            delivery: {
+              delivery_token: "<token from POST /calculate_delivery/public>",
+              delivery_charge: 0,
+              total_weight: 1,
+            },
+            order_summary: {
+              subtotal: 3500,
+              delivery_fee: 0,
+              tax: 0,
+              discount: 0,
+              total: 3500,
+            },
+          },
+        },
+      },
+      budpay: {
+        summary: "BudPay — single product",
+        value: {
+          payment_provider: "budpay",
+          guest_info: {
+            email: "buyer@example.com",
+            first_name: "Sunday",
+            last_name: "Ibiam",
+            phone: "07066026820",
+          },
+          cart_items: [
+            {
+              product_id: 8068,
+              store_id: 3030,
+              variant_id: null,
+              quantity: 1,
+              unit_price: 3500,
+            },
+          ],
+          amount: 350000,
+          delivery_charge: 0,
+          currency: "NGN",
+          callback_url: "https://dev.alabamarketplace.ng/checkoutsuccess/2",
+          order_payload: {
+            guest_info: {
+              email: "buyer@example.com",
+              first_name: "Sunday",
+              last_name: "Ibiam",
+              phone: "07066026820",
+            },
+            delivery_address: {
+              full_name: "Sunday Ibiam",
+              phone_no: "07066026820",
+              full_address: "Igando Lagos",
+              city: "Agege",
+              state: "Lagos State Mainland E",
+              state_id: 42,
+              country: "Nigeria",
+              country_id: 1,
+            },
+            cart_items: [
+              {
+                product_id: 8068,
+                store_id: 3030,
+                quantity: 1,
+                unit_price: 3500,
+                total_price: 3500,
+                weight: 1,
+              },
+            ],
+            payment: {
+              payment_method: "budpay",
+              amount_paid: 3500,
+              payment_status: "pending",
+            },
+            delivery: {
+              delivery_token: "<token from POST /calculate_delivery/public>",
+              delivery_charge: 0,
+            },
+            order_summary: {
+              subtotal: 3500,
+              delivery_fee: 0,
+              tax: 0,
+              discount: 0,
+              total: 3500,
+            },
+          },
+        },
+      },
+    },
   })
   async initializeGuestPayment(
     @Body() guestData: PaystackGuestInitializeDto,
@@ -160,7 +449,7 @@ export class PaystackController {
     this.logger.log(
       {
         event: "guest_checkout_initialization_requested",
-        gateway: this.useBudPay(guestData) ? "budpay" : "paystack",
+        gateway: this.resolveProvider(guestData),
         storeIds: guestData.cart_items?.map((item) => item.store_id),
         amount: guestData.amount + guestData.delivery_charge,
       },
@@ -168,6 +457,9 @@ export class PaystackController {
     );
     if (this.useBudPay(guestData)) {
       return await this.budPayService.initializeGuestPayment(guestData);
+    }
+    if (this.usePalmPay(guestData)) {
+      return await this.palmPayService.initializeGuestPayment(guestData);
     }
     return await this.paystackService.initializeGuestPayment(guestData);
   }

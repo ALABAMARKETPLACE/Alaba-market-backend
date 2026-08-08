@@ -10,6 +10,7 @@ describe("BudPayService", () => {
     delete process.env.BUDPAY_SECRET_KEY;
     delete process.env.BUDPAY_BASE_URL;
     delete process.env.BUDPAY_WEBHOOK_SECRET;
+    delete process.env.BUDPAY_CALLBACK_URL;
     delete process.env.FRONTEND_URL;
   });
 
@@ -60,6 +61,14 @@ describe("BudPayService", () => {
       persistGuestCheckoutInitialization: jest.fn(async () => undefined),
       finalizePaymentTransaction: jest.fn(async () => undefined),
     };
+    const guestOrderService = {
+      calculateGuestCartSubtotalNaira: jest.fn(async () => 1200),
+    };
+    const jwtService = {
+      verifyAsync: jest.fn(async () => ({
+        data: { amount: 50, tax: 0, discount: 0, isGuest: true },
+      })),
+    };
 
     const service = new BudPayService(
       httpService as any,
@@ -70,6 +79,8 @@ describe("BudPayService", () => {
       budPayAccountConfigService as any,
       orderPlaceService as any,
       paystackService as any,
+      guestOrderService as any,
+      jwtService as any,
     );
 
     return {
@@ -80,6 +91,8 @@ describe("BudPayService", () => {
       userCheckoutRepository,
       orderPlaceService,
       paystackService,
+      guestOrderService,
+      jwtService,
     };
   };
 
@@ -119,7 +132,7 @@ describe("BudPayService", () => {
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
         email: "buyer@example.com",
-        amount: 150000,
+        amount: "1500",
         currency: "NGN",
         reference: "budpay_user_ref_123",
         callback: "https://frontend.example.com/payment/callback",
@@ -166,14 +179,16 @@ describe("BudPayService", () => {
       amount: 120000,
       delivery_charge: 5000,
       callback_url: "https://frontend.example.com/guest/callback",
-      order_payload: {} as any,
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
     });
 
     expect(httpService.post).toHaveBeenCalledWith(
       "https://api.budpay.com/api/v2/transaction/initialize",
       expect.objectContaining({
         email: "guest@example.com",
-        amount: 125000,
+        amount: "1250",
         callback: "https://frontend.example.com/guest/callback",
       }),
       expect.any(Object),
@@ -195,6 +210,132 @@ describe("BudPayService", () => {
     );
   });
 
+  it("ignores a tampered client amount and charges the DB-recomputed total instead", async () => {
+    const { service, httpService } = createService();
+    httpService.post.mockReturnValue(
+      of({ data: initializationResponse("budpay_guest_ref_456") }),
+    );
+
+    // Client claims a 1 kobo cart with no delivery charge; the mocked
+    // guestOrderService/jwtService still report the real 1200 + 50 total.
+    const result = await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        { product_id: 1, store_id: 7, quantity: 1, unit_price: 1 },
+      ],
+      amount: 1,
+      delivery_charge: 0,
+      callback_url: "https://frontend.example.com/guest/callback",
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      "https://api.budpay.com/api/v2/transaction/initialize",
+      expect.objectContaining({ amount: "1250" }),
+      expect.any(Object),
+    );
+    expect(result.data.amount).toBe(1250);
+  });
+
+  it("preserves a localhost callback sent by the client", async () => {
+    const { service, httpService } = createService();
+    process.env.FRONTEND_URL = "http://localhost:3000";
+    httpService.post.mockReturnValue(
+      of({ data: initializationResponse("budpay_guest_ref_789") }),
+    );
+
+    await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        { product_id: 1, store_id: 7, quantity: 1, unit_price: 120000 },
+      ],
+      amount: 120000,
+      delivery_charge: 0,
+      callback_url: "http://localhost:3000/checkoutsuccess/2",
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      "https://api.budpay.com/api/v2/transaction/initialize",
+      expect.objectContaining({
+        amount: "1250",
+        callback: "http://localhost:3000/checkoutsuccess/2",
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("preserves a relative callback path sent by the client", async () => {
+    const { service, httpService } = createService();
+    httpService.post.mockReturnValue(
+      of({ data: initializationResponse("budpay_guest_ref_790") }),
+    );
+
+    await service.initializeGuestPayment({
+      guest_info: {
+        email: "guest@example.com",
+        first_name: "Guest",
+        last_name: "Buyer",
+        phone: "08000000000",
+      },
+      cart_items: [
+        { product_id: 1, store_id: 7, quantity: 1, unit_price: 120000 },
+      ],
+      amount: 120000,
+      delivery_charge: 0,
+      callback_url: "/checkoutsuccess/2",
+      order_payload: {
+        delivery: { delivery_token: "signed-delivery-token" },
+      } as any,
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      "https://api.budpay.com/api/v2/transaction/initialize",
+      expect.objectContaining({
+        amount: "1250",
+        callback: "/checkoutsuccess/2",
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("rejects guest checkout when the delivery token is missing", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.initializeGuestPayment({
+        guest_info: {
+          email: "guest@example.com",
+          first_name: "Guest",
+          last_name: "Buyer",
+          phone: "08000000000",
+        },
+        cart_items: [
+          { product_id: 1, store_id: 7, quantity: 1, unit_price: 120000 },
+        ],
+        amount: 120000,
+        delivery_charge: 5000,
+        callback_url: "https://frontend.example.com/guest/callback",
+        order_payload: {} as any,
+      }),
+    ).rejects.toThrow("Delivery charge token is required");
+  });
+
+
   it("returns the full BudPay verification envelope and validates checkout data", async () => {
     const {
       service,
@@ -214,8 +355,8 @@ describe("BudPayService", () => {
           data: {
             status: "success",
             reference: "budpay_guest_ref_123",
-            amount: "125250",
-            requested_amount: "125000",
+            amount: "1252.5",
+            requested_amount: "1250",
             currency: "NGN",
             customer: { email: "GUEST@example.com" },
           },
@@ -232,10 +373,100 @@ describe("BudPayService", () => {
         status: "success",
         reference: "budpay_guest_ref_123",
         amount: 125000,
-        provider_amount: 125250,
+        provider_amount: 1252.5,
         customer: { email: "guest@example.com" },
       }),
     });
+  });
+
+  it("uses the stored checkout email when BudPay omits customer details", async () => {
+    const {
+      service,
+      httpService,
+      guestCheckoutRepository,
+    } = createService();
+    guestCheckoutRepository.findOne.mockResolvedValue({
+      reference: "budpay_user_ref_123",
+      guest_email: "buyer@example.com",
+      amount_kobo: 125000,
+    });
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          message: "Transaction verified successfully",
+          data: {
+            status: "success",
+            reference: "budpay_user_ref_123",
+            amount: "1250",
+            currency: "NGN",
+          },
+        },
+      }),
+    );
+
+    await expect(
+      service.verifyPayment({ reference: "budpay_user_ref_123" }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amount: 125000,
+          customer: { email: "buyer@example.com" },
+        }),
+      }),
+    );
+  });
+
+  it("verifies a guest checkout when its reference and email match", async () => {
+    const { service, httpService, guestCheckoutRepository } = createService();
+    guestCheckoutRepository.findOne.mockResolvedValue({
+      reference: "budpay_guest_ref_123",
+      guest_email: "guest@example.com",
+      amount_kobo: 125000,
+      payload: { payment: { payment_method: "budpay" } },
+    });
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          status: true,
+          message: "Transaction verified successfully",
+          data: {
+            status: "success",
+            reference: "budpay_guest_ref_123",
+            amount: "1250",
+            customer: { email: "guest@example.com" },
+          },
+        },
+      }),
+    );
+
+    await expect(
+      service.verifyGuestPayment(
+        "budpay_guest_ref_123",
+        " GUEST@example.com ",
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 125000 }),
+      }),
+    );
+  });
+
+  it("rejects guest verification when checkout details do not match", async () => {
+    const { service, httpService, guestCheckoutRepository } = createService();
+    guestCheckoutRepository.findOne.mockResolvedValue({
+      reference: "budpay_guest_ref_123",
+      guest_email: "guest@example.com",
+      payload: { payment: { payment_method: "budpay" } },
+    });
+
+    await expect(
+      service.verifyGuestPayment(
+        "budpay_guest_ref_123",
+        "different@example.com",
+      ),
+    ).rejects.toThrow("Guest checkout details do not match");
+    expect(httpService.get).not.toHaveBeenCalled();
   });
 
   it("server-verifies a successful webhook and delegates shared finalization", async () => {
@@ -258,7 +489,7 @@ describe("BudPayService", () => {
           data: {
             status: "success",
             reference: "budpay_guest_ref_123",
-            amount: "125000",
+            amount: "1250",
             currency: "NGN",
             customer: { email: "guest@example.com" },
           },
@@ -270,7 +501,7 @@ describe("BudPayService", () => {
       notifyType: "successful",
       data: {
         reference: "budpay_guest_ref_123",
-        amount: "125000",
+        amount: "1250",
         currency: "NGN",
         status: "success",
         customer: { email: "guest@example.com" },

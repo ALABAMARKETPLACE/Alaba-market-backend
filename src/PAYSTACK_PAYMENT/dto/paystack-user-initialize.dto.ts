@@ -5,36 +5,42 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { CreateOrderDto } from "../../ORDER/dto/createOrder.dto";
 
+const hasTopLevelOrderPayload = (obj: any) => {
+  return Boolean(obj?.cart && obj?.payment && obj?.address && obj?.charges);
+};
+
 export class PaystackUserInitializeDto {
   @ApiProperty({
     description:
       "Optional payment provider selector. Missing values remain Paystack for backward compatibility.",
-    enum: ["paystack", "budpay"],
+    enum: ["paystack", "budpay", "palmpay"],
     required: false,
   })
   @IsOptional()
-  @IsIn(["paystack", "budpay"])
-  payment_provider?: "paystack" | "budpay";
+  @IsIn(["paystack", "budpay", "palmpay"])
+  payment_provider?: "paystack" | "budpay" | "palmpay";
 
   @ApiProperty({
     description: "Alias for payment_provider.",
-    enum: ["paystack", "budpay"],
+    enum: ["paystack", "budpay", "palmpay"],
     required: false,
   })
   @IsOptional()
-  @IsIn(["paystack", "budpay"])
-  payment_channel?: "paystack" | "budpay";
+  @IsIn(["paystack", "budpay", "palmpay"])
+  payment_channel?: "paystack" | "budpay" | "palmpay";
 
   @ApiProperty({
     description:
-      "Full logged-in order payload. The backend validates it, initializes Paystack, and the webhook creates the real orders.",
+      "Full logged-in order payload. The backend validates it, initializes the selected provider, and the webhook creates the real orders.",
     type: CreateOrderDto,
   })
+  @ValidateIf((obj) => !hasTopLevelOrderPayload(obj))
   @IsNotEmpty()
   @ValidateNested()
   @Type(() => CreateOrderDto)
@@ -42,7 +48,7 @@ export class PaystackUserInitializeDto {
 
   @ApiProperty({
     description:
-      "Browser redirect URL after payment. For backend-only testing, use /paystack/success on this API.",
+      "Browser redirect URL after payment.",
     example: "http://localhost:8000/paystack/success",
     required: false,
   })

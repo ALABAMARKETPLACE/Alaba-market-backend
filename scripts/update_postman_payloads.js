@@ -7,12 +7,13 @@ const collectionPaths = [
 ];
 const srcRoot = path.join(__dirname, "..", "src");
 const DEFAULT_EMAIL = "olagiddz@gmail.com";
+const DEFAULT_PASSWORD = "Options123@";
 
 const collectionVariables = [
   { key: "baseUrl", value: "http://localhost:8000", type: "string" },
   { key: "authToken", value: "", type: "string" },
   { key: "refreshToken", value: "", type: "string" },
-  { key: "password", value: "Options123#", type: "string" },
+  { key: "password", value: DEFAULT_PASSWORD, type: "string" },
   { key: "userId", value: "1", type: "number" },
   { key: "managedUserId", value: "1", type: "number" },
   { key: "userEmail", value: DEFAULT_EMAIL, type: "string" },
@@ -41,6 +42,7 @@ const collectionVariables = [
   { key: "budpayAccountNumber", value: "", type: "string" },
   { key: "budpayImportStatus", value: "", type: "string" },
   { key: "budpayWebhookSignature", value: "", type: "string" },
+  { key: "palmpayOrderNo", value: "", type: "string" },
   { key: "boosterPlanId", value: "1", type: "number" },
   { key: "boosterConfigId", value: "1", type: "number" },
   { key: "boosterReference", value: "", type: "string" },
@@ -360,13 +362,13 @@ function sampleForResource(resource) {
     return { storeId: 123, productId: 456, days: 7, amount: 5000 };
   }
   if (resource.includes("auth") || resource.includes("login")) {
-    return { email: DEFAULT_EMAIL, password: "Options123#" };
+    return { email: DEFAULT_EMAIL, password: DEFAULT_PASSWORD };
   }
   if (resource.includes("user") || resource.includes("users")) {
     return {
       name: "Jane Customer",
       email: DEFAULT_EMAIL,
-      password: "Options123#",
+      password: DEFAULT_PASSWORD,
       phone: "+2348012345678",
     };
   }
@@ -545,12 +547,18 @@ function sampleForRequest(method, pathSegments = []) {
 
   if (
     normalizedMethod === "POST" &&
-    ["paystack/initialize-checkout", "budpay/initialize-checkout"].includes(
+    [
+      "paystack/initialize-checkout",
+      "budpay/initialize-checkout",
+      "palmpay/initialize-checkout",
+    ].includes(
       normalizedPath,
     )
   ) {
     const provider = normalizedPath.startsWith("budpay/")
       ? "budpay"
+      : normalizedPath.startsWith("palmpay/")
+      ? "palmpay"
       : "{{paymentProvider}}";
     const orderPayload = sampleForRequest("POST", ["order"]);
     orderPayload.payment.type = provider;
@@ -563,7 +571,9 @@ function sampleForRequest(method, pathSegments = []) {
 
   if (
     normalizedMethod === "POST" &&
-    ["paystack/verify", "budpay/verify"].includes(normalizedPath)
+    ["paystack/verify", "budpay/verify", "palmpay/verify"].includes(
+      normalizedPath,
+    )
   ) {
     return {
       reference: "{{paymentReference}}",
@@ -584,14 +594,31 @@ function sampleForRequest(method, pathSegments = []) {
     };
   }
 
+  if (normalizedMethod === "POST" && normalizedPath === "palmpay/initialize") {
+    return {
+      payment_provider: "palmpay",
+      email: "{{userEmail}}",
+      amount: 500000,
+      currency: "NGN",
+      callback_url: "{{callbackUrl}}",
+      metadata: { source: "postman" },
+    };
+  }
+
   if (
     normalizedMethod === "POST" &&
-    ["paystack/initialize-guest", "budpay/initialize-guest"].includes(
+    [
+      "paystack/initialize-guest",
+      "budpay/initialize-guest",
+      "palmpay/initialize-guest",
+    ].includes(
       normalizedPath,
     )
   ) {
     const provider = normalizedPath.startsWith("budpay/")
       ? "budpay"
+      : normalizedPath.startsWith("palmpay/")
+      ? "palmpay"
       : "{{paymentProvider}}";
     return {
       payment_provider: provider,
@@ -675,6 +702,19 @@ function sampleForRequest(method, pathSegments = []) {
           payment_provider: "budpay",
         },
       },
+    };
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "palmpay/webhook") {
+    return {
+      orderId: "{{paymentReference}}",
+      orderNo: "{{palmpayOrderNo}}",
+      appId: "PALMPAY_APP_ID",
+      currency: "NGN",
+      amount: 500000,
+      orderStatus: 2,
+      completeTime: Date.now(),
+      sign: "SIGNATURE_FROM_PALMPAY",
     };
   }
 
@@ -788,6 +828,175 @@ function rawBodyForRequest(method, pathSegments = []) {
     ].join("\n");
   }
 
+  if (normalizedMethod === "POST" && normalizedPath === "paystack/verify-guest") {
+    return [
+      "{",
+      '  "reference": "{{paymentReference}}",',
+      '  "guest_email": "{{guestEmail}}"',
+      "}",
+    ].join("\n");
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "palmpay/verify-guest") {
+    return [
+      "{",
+      '  "reference": "{{paymentReference}}",',
+      '  "guest_email": "{{guestEmail}}"',
+      "}",
+    ].join("\n");
+  }
+
+  if (normalizedMethod === "POST" && normalizedPath === "budpay/verify-guest") {
+    return [
+      "{",
+      '  "reference": "{{paymentReference}}",',
+      '  "guest_email": "{{guestEmail}}"',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    normalizedPath === "budpay/admin/import-paystack-subaccounts"
+  ) {
+    return [
+      "{",
+      '  "dryRun": true,',
+      '  "limit": 25,',
+      '  "storeId": {{storeId}},',
+      '  "retryFailed": false,',
+      '  "force": false',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    [
+      "paystack/initialize-checkout",
+      "budpay/initialize-checkout",
+      "palmpay/initialize-checkout",
+    ].includes(
+      normalizedPath,
+    )
+  ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : normalizedPath.startsWith("palmpay/")
+      ? "palmpay"
+      : "{{paymentProvider}}";
+    return [
+      "{",
+      `  "payment_provider": "${provider}",`,
+      '  "order_payload": {',
+      '    "cart": [',
+      "      {",
+      '        "id": {{cartItemId}},',
+      '        "productId": {{productId}},',
+      '        "variantId": {{variantId}},',
+      '        "storeId": {{storeId}},',
+      '        "quantity": {{orderQuantity}}',
+      "      }",
+      "    ],",
+      '    "payment": {',
+      `      "type": "${provider}",`,
+      '      "callback_url": "{{callbackUrl}}"',
+      "    },",
+      '    "address": {',
+      '      "id": {{addressId}}',
+      "    },",
+      '    "charges": {',
+      '      "token": "{{deliveryToken}}"',
+      "    }",
+      "  },",
+      '  "callback_url": "{{callbackUrl}}"',
+      "}",
+    ].join("\n");
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    [
+      "paystack/initialize-guest",
+      "budpay/initialize-guest",
+      "palmpay/initialize-guest",
+    ].includes(
+      normalizedPath,
+    )
+  ) {
+    const provider = normalizedPath.startsWith("budpay/")
+      ? "budpay"
+      : normalizedPath.startsWith("palmpay/")
+      ? "palmpay"
+      : "{{paymentProvider}}";
+    return [
+      "{",
+      `  "payment_provider": "${provider}",`,
+      '  "guest_info": {',
+      '    "email": "{{guestEmail}}",',
+      '    "first_name": "Guest",',
+      '    "last_name": "Buyer",',
+      '    "phone": "08000000000"',
+      "  },",
+      '  "cart_items": [',
+      "    {",
+      '      "product_id": {{productId}},',
+      '      "store_id": {{storeId}},',
+      '      "quantity": 1,',
+      '      "unit_price": 500000',
+      "    }",
+      "  ],",
+      '  "amount": 500000,',
+      '  "delivery_charge": 0,',
+      '  "currency": "NGN",',
+      '  "callback_url": "{{callbackUrl}}",',
+      '  "order_payload": {',
+      '    "guest_info": {',
+      '      "email": "{{guestEmail}}",',
+      '      "first_name": "Guest",',
+      '      "last_name": "Buyer",',
+      '      "phone": "08000000000"',
+      "    },",
+      '    "delivery_address": {',
+      '      "id": "guest_address_001",',
+      '      "full_name": "Guest Buyer",',
+      '      "phone_no": "08000000000",',
+      '      "full_address": "12 Test Street, Ikeja, Lagos",',
+      '      "city": "Ikeja",',
+      '      "state": "Lagos",',
+      '      "state_id": {{stateId}},',
+      '      "country": "Nigeria",',
+      '      "country_id": {{countryId}}',
+      "    },",
+      '    "cart_items": [',
+      "      {",
+      '        "product_id": {{productId}},',
+      '        "store_id": {{storeId}},',
+      '        "product_name": "{{productName}}",',
+      '        "quantity": 1,',
+      '        "unit_price": 500000,',
+      '        "total_price": 500000',
+      "      }",
+      "    ],",
+      '    "payment": {',
+      `      "payment_method": "${provider}",`,
+      '      "payment_status": "pending"',
+      "    },",
+      '    "delivery": {',
+      '      "delivery_token": "{{deliveryToken}}"',
+      "    },",
+      '    "order_summary": {',
+      '      "subtotal": 5000,',
+      '      "delivery_fee": 0,',
+      '      "discount": 0,',
+      '      "tax": 0,',
+      '      "total": 5000',
+      "    }",
+      "  }",
+      "}",
+    ].join("\n");
+  }
+
   return JSON.stringify(sampleForRequest(method, pathSegments), null, 2);
 }
 
@@ -855,12 +1064,21 @@ function processItem(item, summary) {
     [
       "paystack/initialize-checkout",
       "paystack/initialize-guest",
+      "paystack/verify",
+      "paystack/verify-guest",
       "budpay/initialize",
       "budpay/initialize-checkout",
       "budpay/initialize-guest",
       "budpay/verify",
+      "budpay/verify-guest",
       "budpay/webhook",
       "budpay/admin/import-paystack-subaccounts",
+      "palmpay/initialize",
+      "palmpay/initialize-checkout",
+      "palmpay/initialize-guest",
+      "palmpay/verify",
+      "palmpay/verify-guest",
+      "palmpay/webhook",
     ].includes(pathSegments.join("/"));
 
   if (
@@ -888,6 +1106,8 @@ function configureBudPayRequests(collection) {
       "Verify a BudPay reference and validate stored checkout amount/email.",
     "GET budpay/verify":
       "Verify a BudPay reference using a query parameter.",
+    "POST budpay/verify-guest":
+      "Public guest verification guarded by the stored checkout email.",
     "POST budpay/webhook":
       "BudPay webhook example. Production webhooks are server-verified against BudPay before order finalization.",
     "GET budpay/public-key":
@@ -915,7 +1135,8 @@ function configureBudPayRequests(collection) {
     const isPublic =
       route === "budpay/webhook" ||
       route === "budpay/public-key" ||
-      route === "budpay/initialize-guest";
+      route === "budpay/initialize-guest" ||
+      route === "budpay/verify-guest";
     request.header = (request.header || []).filter(
       (header) =>
         !isPublic || String(header.key || "").toLowerCase() !== "authorization",
@@ -979,6 +1200,54 @@ function configureBudPayRequests(collection) {
   });
 }
 
+function configurePalmPayRequests(collection) {
+  const descriptions = {
+    "POST palmpay/initialize":
+      "Initialize a direct PalmPay Checkout transaction. Amount is in kobo.",
+    "POST palmpay/initialize-checkout":
+      "Authenticated PalmPay checkout. The backend calculates the amount and the signed webhook creates the orders.",
+    "POST palmpay/initialize-guest":
+      "Guest PalmPay checkout. Run calculate_delivery/public first and provide its delivery token.",
+    "POST palmpay/verify":
+      "Server-query PalmPay by merchant order reference and validate the stored checkout amount.",
+    "GET palmpay/verify":
+      "Server-query PalmPay using the paymentReference collection variable.",
+    "POST palmpay/verify-guest":
+      "Public guest verification guarded by the stored checkout email.",
+    "POST palmpay/webhook":
+      "PalmPay provider callback. A hand-written payload will fail unless sign is a real PalmPay RSA signature; successful processing returns plain text success.",
+  };
+
+  walkRequests(collection.item, (item) => {
+    const request = item?.request;
+    const segments = Array.isArray(request?.url?.path) ? request.url.path : [];
+    if (segments[0] !== "palmpay") return;
+
+    const method = String(request.method || "GET").toUpperCase();
+    const route = segments.join("/");
+    request.description =
+      descriptions[`${method} ${route}`] || request.description;
+
+    const isPublic = [
+      "palmpay/initialize-guest",
+      "palmpay/verify-guest",
+      "palmpay/webhook",
+    ].includes(route);
+    request.header = (request.header || []).filter(
+      (header) =>
+        !isPublic || String(header.key || "").toLowerCase() !== "authorization",
+    );
+
+    if (method === "GET" && route === "palmpay/verify") {
+      request.url.raw =
+        "{{baseUrl}}/palmpay/verify?reference={{paymentReference}}";
+      request.url.query = [
+        { key: "reference", value: "{{paymentReference}}" },
+      ];
+    }
+  });
+}
+
 function upsertCollectionVariables(collection) {
   collection.variable = Array.isArray(collection.variable)
     ? collection.variable
@@ -993,7 +1262,8 @@ function upsertCollectionVariables(collection) {
       if (
         existing.value == null ||
         variable.key === "userEmail" ||
-        variable.key === "guestEmail"
+        variable.key === "guestEmail" ||
+        variable.key === "password"
       ) {
         existing.value = variable.value;
       }
@@ -1019,7 +1289,9 @@ function replaceInString(value) {
     .replaceAll("user@example.com", "{{userEmail}}")
     .replaceAll("jane@example.com", "{{userEmail}}")
     .replaceAll("newemail@example.com", "{{userEmail}}")
-    .replaceAll("guest@example.com", "{{guestEmail}}");
+    .replaceAll("guest@example.com", "{{guestEmail}}")
+    .replaceAll("Options123#", "{{password}}")
+    .replaceAll("P@ssw0rd", "{{password}}");
 }
 
 function normalizeEmailsInRequest(request) {
@@ -1314,6 +1586,7 @@ function buildContextualScript(pathSegments = [], requestName = "") {
   const isAddressLike = resource === "address" || resource === "new-address";
   const isPaystackLike = resource === "paystack";
   const isBudPayLike = resource === "budpay";
+  const isPalmPayLike = resource === "palmpay";
   const isCategoryLike = resource === "category";
   const isSubCategoryLike = resource === "sub_category";
   const isProductSearchLike = resource === "product_search";
@@ -1515,6 +1788,17 @@ function buildContextualScript(pathSegments = [], requestName = "") {
       "  setIf('budpayVirtualAccountId', importResult?.budpay?.virtual_account_id || importResult?.budpay_virtual_account_id);",
       "  setIf('budpayAccountNumber', importResult?.budpay?.account_number || importResult?.budpay_account_number);",
       "  setIf('budpayImportStatus', importResult?.result || importResult?.status || data?.status || json?.status);",
+      "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
+    );
+  }
+
+  if (isPalmPayLike) {
+    script.push(
+      "  const palmpayReference = data?.reference || json?.reference || payment?.ref;",
+      "  setIf('paymentReference', palmpayReference);",
+      "  setIf('reconcileReference', palmpayReference);",
+      "  setIf('palmpayOrderNo', data?.provider_reference || data?.orderNo);",
+      "  setIf('paystackAuthUrl', data?.authorization_url || data?.checkout_url);",
       "  setIf('guestEmail', data?.customer?.email || first?.guest_email);",
     );
   }
@@ -2710,6 +2994,7 @@ function updateCollectionFile(filePath) {
   normalizeExistingRequestUrls(collection);
   syncControllerRoutes(collection);
   configureBudPayRequests(collection);
+  configurePalmPayRequests(collection);
   ensurePaystackReconcileRequest(collection);
   ensurePaystackManualSettlementAuditRequest(collection);
   ensurePaystackSubaccountPercentageUpdateRequest(collection);
@@ -2729,6 +3014,7 @@ function updateCollectionFile(filePath) {
     collection.item.forEach((item) => processItem(item, summary));
   }
   configureBudPayRequests(collection);
+  configurePalmPayRequests(collection);
   walkRequests(collection.item, (item) => {
     normalizeEmailsInRequest(item.request);
   });
