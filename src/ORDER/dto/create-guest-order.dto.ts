@@ -67,10 +67,10 @@ export class GuestDeliveryAddressDto {
   @IsNotEmpty()
   full_address: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional()
   @IsString()
-  @IsNotEmpty()
-  city: string;
+  @IsOptional()
+  city?: string;
 
   @ApiProperty()
   @IsString()
