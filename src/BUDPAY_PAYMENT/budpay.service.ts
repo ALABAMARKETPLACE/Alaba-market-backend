@@ -54,6 +54,18 @@ export class BudPayService {
     private readonly jwtService: JwtService,
   ) {}
 
+  private assertNotProduction(): void {
+    if (process.env.NODE_ENV === "production") {
+      throw new HttpException(
+        {
+          status: false,
+          message: "BudPay payments are coming soon. Please use Paystack or PalmPay to complete your purchase.",
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
   private get baseUrl(): string {
     return this.budPayAccountConfigService.getBaseUrl();
   }
@@ -203,6 +215,7 @@ export class BudPayService {
   }
 
   async initializePayment(initData: PaystackInitializeDto): Promise<any> {
+    this.assertNotProduction();
     const data = await this.initializeTransaction(initData);
     return {
       status: true,
@@ -218,6 +231,7 @@ export class BudPayService {
     userId: number,
     initData: PaystackUserInitializeDto,
   ): Promise<any> {
+    this.assertNotProduction();
     const user = await this.userRepository.findByPk(userId);
     if (!user?.email) {
       throw new BadRequestException("Authenticated user not found");
@@ -260,6 +274,7 @@ export class BudPayService {
   async initializeGuestPayment(
     guestData: PaystackGuestInitializeDto,
   ): Promise<any> {
+    this.assertNotProduction();
     // The client's amount/delivery_charge/unit_price fields are never trusted for
     // what we actually charge — recompute from the DB and the signed delivery
     // token, same as the Paystack guest checkout path.
